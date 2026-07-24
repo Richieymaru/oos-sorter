@@ -10,6 +10,15 @@
  */
 
 /**
+ * True when COLLECTION_HANDLES means "every collection" — i.e. it's empty, or
+ * it's the single keyword "all". Otherwise the merchant gave an explicit list.
+ * @param {string[]} explicit  handles parsed from COLLECTION_HANDLES
+ */
+export function isAllHandles(explicit) {
+  return explicit.length === 0 || (explicit.length === 1 && explicit[0].toLowerCase() === 'all');
+}
+
+/**
  * IDs that are sold out now but were not sold out on the previous run.
  * @param {Iterable<string>} prevSoldOut  ids sold out as of last run
  * @param {Iterable<string>} nowSoldOut   ids sold out this run
