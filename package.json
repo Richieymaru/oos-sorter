@@ -1,0 +1,19 @@
+{
+  "name": "oos-sorter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pushes sold-out Shopify products to the end of collections, optionally drafts them, and emails a daily sold-out digest.",
+  "scripts": {
+    "start": "node --env-file=.env sort-oos.mjs",
+    "check": "node --env-file=.env check-setup.mjs",
+    "report": "node --env-file=.env report.mjs",
+    "test": "node moves.test.mjs && node features.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.6"
+  },
+  "dependencies": {
+    "nodemailer": "^9.0.3"
+  }
+}

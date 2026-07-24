@@ -1,0 +1,68 @@
+# Save this as .github/workflows/oos-sort.yml in a PRIVATE repo.
+# Free tier covers this easily (a couple of minutes of runner time per day).
+#
+# Secrets to set (Settings > Secrets and variables > Actions > Secrets):
+#   SHOP_DOMAIN, CLIENT_ID, CLIENT_SECRET   (or ADMIN_TOKEN instead of the two)
+#   NOTIFY_EMAIL, GMAIL_USER, GMAIL_APP_PASSWORD   (only if notify is on)
+# Variables (same screen > Variables):
+#   COLLECTION_HANDLES, SHOPIFY_API_VERSION
+#   FEATURE_SORT, FEATURE_NOTIFY, FEATURE_DRAFT   ("true"/"false")
+
+name: OOS Sorter
+
+on:
+  schedule:
+    # Frequent run: sort + draft + accumulate the day's sold-out list. No email.
+    - cron: '*/15 * * * *' # every 15 minutes (GitHub's minimum is 5)
+    # Daily digest run: also sends the one email.
+    # 08:00 UTC = 4:00pm Philippine time (UTC+8, no DST). Correct as-is.
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'What to run'
+        type: choice
+        options: [run, dry-run, report] # "report" = email the current sold-out list now
+        default: run
+
+concurrency:
+  group: oos-sort
+  cancel-in-progress: false # never let two runs reorder at the same time
+
+jobs:
+  oos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+
+      - name: Run OOS Sorter
+        env:
+          SHOP_DOMAIN: ${{ secrets.SHOP_DOMAIN }}
+          CLIENT_ID: ${{ secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          COLLECTION_HANDLES: ${{ vars.COLLECTION_HANDLES }}
+          SHOPIFY_API_VERSION: ${{ vars.SHOPIFY_API_VERSION }}
+          FEATURE_SORT: ${{ vars.FEATURE_SORT }}
+          FEATURE_NOTIFY: ${{ vars.FEATURE_NOTIFY }}
+          FEATURE_DRAFT: ${{ vars.FEATURE_DRAFT }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          # Send the daily digest only on the daily cron entry.
+          SEND_DIGEST: ${{ github.event.schedule == '0 8 * * *' }}
+          # Manual "dry-run" mode logs the plan and writes nothing.
+          DRY_RUN: ${{ inputs.mode == 'dry-run' }}
+        run: |
+          if [ "${{ inputs.mode }}" = "report" ]; then
+            node report.mjs
+          else
+            node sort-oos.mjs
+          fi
