@@ -99,6 +99,34 @@ export async function fetchCollectionProducts(collectionId) {
   return normalize(all, onlineLocIds);
 }
 
+/**
+ * Given an inventory item id (short or gid), return the handles of every
+ * collection its product(s) belong to. Used by the webhook receiver to re-sort
+ * ONLY the collections affected by an inventory change, not the whole store.
+ * @param {string} inventoryItemId short numeric id or a gid
+ * @returns {Promise<string[]>} unique collection handles
+ */
+export async function collectionsForInventoryItem(inventoryItemId) {
+  const gid = String(inventoryItemId).startsWith('gid://')
+    ? String(inventoryItemId)
+    : `gid://shopify/InventoryItem/${inventoryItemId}`;
+  const d = await gql(
+    `query Inv($id: ID!) {
+       inventoryItem(id: $id) {
+         variants(first: 25) {
+           nodes { product { collections(first: 250) { nodes { handle } } } }
+         }
+       }
+     }`,
+    { id: gid }
+  );
+  const handles = new Set();
+  for (const v of d.inventoryItem?.variants?.nodes ?? []) {
+    for (const c of v.product?.collections?.nodes ?? []) handles.add(c.handle);
+  }
+  return [...handles];
+}
+
 /** Fetch specific products by short id, each variant carrying `onlineAvailable`. */
 export async function fetchProductsByIds(ids) {
   const onlineLocIds = await getOnlineLocationIds();

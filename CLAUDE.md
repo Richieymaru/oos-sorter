@@ -164,6 +164,16 @@ email delivery is the one path not yet tested live — no app password on hand.
 Timezone resolved: Philippines (UTC+8), so 4pm = 08:00 UTC, which is already the
 digest `cron:` line — no edit needed.
 
+**Scaling to many collections: webhook-driven, not full-scan.** A full run scans
+every collection; at hundreds of collections that blows the Vercel 60s limit and
+Shopify's rate limit. So `/api/webhook` (topic `INVENTORY_LEVELS_UPDATE`,
+registered via `register-webhook.mjs`) fires on every inventory change and
+re-sorts ONLY that product's collections (`collectionsForInventoryItem` →
+`runEngine({ handles })`). Near-instant, and independent of total collection
+count. Targeted runs skip the notify diff and don't overwrite the store-wide
+`soldOut` state (partial scan) — the periodic `/api/run` full sweep maintains
+those. Guarded by `WEBHOOK_TOKEN` in the callback URL.
+
 **Scheduling: do NOT rely on GitHub's cron.** GitHub's free scheduled workflow
 is unreliable — observed 1 run in 90 minutes on a `*/5` schedule, nowhere near
 every 5 min. The reliable trigger is a free external cron service (cron-job.org)

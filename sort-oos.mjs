@@ -369,7 +369,7 @@ async function sortCollection(col, { products, currentIds, byId, tagsOf }, ctx) 
  * be driven from the CLI (main) or from the Vercel /api/run endpoint.
  * @param {{ sendDigest?: boolean }} opts
  */
-export async function runEngine({ sendDigest = SEND_DIGEST } = {}) {
+export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null } = {}) {
   if (!SHOP) throw new Error('SHOP_DOMAIN not set');
 
   const settings = await loadSettings();
@@ -377,8 +377,9 @@ export async function runEngine({ sendDigest = SEND_DIGEST } = {}) {
   FEATURE_NOTIFY = resolveFlag(process.env.FEATURE_NOTIFY, settings.notify);
   FEATURE_DRAFT = resolveFlag(process.env.FEATURE_DRAFT, settings.draft);
 
+  // `only` (from the webhook) restricts to specific collections; otherwise
   // COLLECTION_HANDLES empty or "all" => auto-discover every collection.
-  const handles = await resolveHandles();
+  const handles = only && only.length ? only : await resolveHandles();
   if (!handles.length) {
     console.warn('No collections found to process.');
     return { ok: true, collections: 0, failures: 0, features: 'nothing', soldOut: 0 };
@@ -387,7 +388,9 @@ export async function runEngine({ sendDigest = SEND_DIGEST } = {}) {
   const on = [FEATURE_SORT && 'sort', FEATURE_NOTIFY && 'notify', FEATURE_DRAFT && 'draft']
     .filter(Boolean)
     .join('+') || 'nothing';
-  const scope = isAllHandles(HANDLES) ? `all ${handles.length} collections` : `${handles.length} collection(s)`;
+  const scope = only && only.length
+    ? `${handles.length} affected collection(s)`
+    : isAllHandles(HANDLES) ? `all ${handles.length} collections` : `${handles.length} collection(s)`;
   console.log(
     `Shop: ${SHOP} | API ${API_VERSION} | features: ${on} | ${scope}${DRY_RUN ? ' | DRY RUN' : ''}`
   );
@@ -418,8 +421,9 @@ export async function runEngine({ sendDigest = SEND_DIGEST } = {}) {
   }
 
   // Phase 3: notify — accumulate the day's newly-sold-out, send the digest at
-  // the daily slot only.
-  if (FEATURE_NOTIFY) {
+  // the daily slot only. Skipped on targeted (webhook) runs, which see only a
+  // few collections — the newly-sold-out diff needs a full-store scan.
+  if (FEATURE_NOTIFY && !only) {
     const newly = diffNewlySoldOut(state.soldOut, [...ctx.soldOutNow]);
     const freshInfos = newly.map((id) => ctx.soldOutInfo.get(id)).filter(Boolean);
     state.pending = mergePending(state.pending, freshInfos);
@@ -443,8 +447,10 @@ export async function runEngine({ sendDigest = SEND_DIGEST } = {}) {
     }
   }
 
-  // Phase 4: persist state (always — records lastRun + current sold-out count).
-  state.soldOut = [...ctx.soldOutNow];
+  // Phase 4: persist state (records lastRun; drafted always; soldOut only on a
+  // FULL run — a targeted run's soldOutNow covers only a few collections and
+  // would clobber the store-wide list the status line and notify diff rely on).
+  if (!only) state.soldOut = [...ctx.soldOutNow];
   state.drafted = [...draftedSet];
   state.lastRun = new Date().toISOString();
   if (DRY_RUN) {
