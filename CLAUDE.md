@@ -118,7 +118,7 @@ Deployment is the only thing left.
 | `README.md` | setup + tradeoffs (auth section may still lag CLAUDE.md) |
 | `.github/workflows/oos-sort.yml` | the cron: 5-min engine run + daily digest |
 | `vercel.json` | routes `/` to the settings page |
-| `api/*.mjs` | settings page: index (GET), save, report; `_auth` guard |
+| `api/*.mjs` | settings page (index/save/report), `_auth` guard, **`run`** (cron endpoint) |
 | `settings.mjs` / `panel.mjs` | toggles metafield I/O / pure page render + auth |
 
 Run with `npm install` once, then `node --env-file=.env sort-oos.mjs` (Node
@@ -163,6 +163,15 @@ by design — otherwise day one would email every currently-sold-out product. Us
 email delivery is the one path not yet tested live — no app password on hand.
 Timezone resolved: Philippines (UTC+8), so 4pm = 08:00 UTC, which is already the
 digest `cron:` line — no edit needed.
+
+**Scheduling: do NOT rely on GitHub's cron.** GitHub's free scheduled workflow
+is unreliable — observed 1 run in 90 minutes on a `*/5` schedule, nowhere near
+every 5 min. The reliable trigger is a free external cron service (cron-job.org)
+hitting the Vercel endpoint `POST/GET /api/run?token=RUN_TOKEN` every 5 minutes;
+that fires on time. `runEngine()` (exported from `sort-oos.mjs`) is the shared
+entry point for the CLI, the GitHub workflow, and the endpoint. GitHub Actions
+stays as a manual "Run workflow" backup. `/api/run` sets `maxDuration: 60`;
+fine for this store (~15s runs) — a very large store could need Vercel Pro.
 
 **Architecture note:** `sort-oos.mjs` was refactored from one file into small
 modules (`shopify`, `stock`, `features`, `state`, `draft`, `notify`). The pure
