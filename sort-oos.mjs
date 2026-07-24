@@ -52,6 +52,7 @@ import {
   retainBaseOrder,
 } from './features.mjs';
 import { isInStock } from './stock.mjs';
+import { findCollection, fetchCollectionProducts } from './catalog.mjs';
 import { loadState, saveState } from './state.mjs';
 import { loadSettings } from './settings.mjs';
 import { restoreRestocked, applyDrafts } from './draft.mjs';
@@ -91,34 +92,6 @@ function requireEnv(name) {
 /* ------------------------------------------------------------------ */
 /* Queries / mutations                                                 */
 /* ------------------------------------------------------------------ */
-
-const Q_COLLECTION = `
-  query Col($q: String!) {
-    collections(first: 1, query: $q) {
-      nodes {
-        id handle title sortOrder
-        productsCount { count }
-        metafield(namespace: "${NAMESPACE}", key: "${KEY}") { value }
-      }
-    }
-  }
-`;
-
-const Q_PRODUCTS = `
-  query Prods($id: ID!, $cursor: String) {
-    collection(id: $id) {
-      products(first: 250, after: $cursor) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id title status tags tracksInventory totalInventory
-          variants(first: 100) {
-            nodes { inventoryQuantity inventoryPolicy inventoryItem { tracked } }
-          }
-        }
-      }
-    }
-  }
-`;
 
 // NB: the argument is `collection: CollectionUpdateInput`, not `input: CollectionInput`.
 // Verified by introspecting the store's own schema — do not "restore" the old shape.
@@ -208,11 +181,6 @@ function alignDesired(desired, liveIds) {
 /* Collection reads (shared with report.mjs)                           */
 /* ------------------------------------------------------------------ */
 
-export async function findCollection(handle) {
-  const found = await gql(Q_COLLECTION, { q: `handle:'${handle}'` });
-  return found.collections.nodes[0] ?? null;
-}
-
 /** Every collection handle in the store (paginated). */
 export async function fetchAllCollectionHandles() {
   const handles = [];
@@ -240,18 +208,6 @@ export async function fetchAllCollectionHandles() {
  */
 export async function resolveHandles() {
   return isAllHandles(HANDLES) ? await fetchAllCollectionHandles() : HANDLES;
-}
-
-export async function fetchProducts(collectionId) {
-  const all = [];
-  let cursor = null;
-  do {
-    const data = await gql(Q_PRODUCTS, { id: collectionId, cursor });
-    const conn = data.collection.products;
-    all.push(...conn.nodes);
-    cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
-  } while (cursor);
-  return all;
 }
 
 async function waitForJob(jobId, timeoutMs = 120000) {
@@ -284,7 +240,7 @@ async function processCollection(handle, ctx) {
     return;
   }
 
-  const products = await fetchProducts(col.id);
+  const products = await fetchCollectionProducts(col.id);
   if (!products.length) {
     console.log('  empty collection, nothing to do');
     return;
@@ -380,7 +336,7 @@ async function sortCollection(col, { products, currentIds, byId, tagsOf }, ctx) 
     // Flipping to MANUAL swaps the live order over to Shopify's separately-stored
     // manual position list — NOT the order read above. Re-read, or moves computed
     // against the old order strand any product that needed no move. Verified live.
-    liveIds = (await fetchProducts(col.id)).map((p) => shortId(p.id));
+    liveIds = (await fetchCollectionProducts(col.id)).map((p) => shortId(p.id));
     console.log(`  re-read order after MANUAL switch`);
   }
 

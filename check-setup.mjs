@@ -18,7 +18,7 @@ if (!SHOP) {
   process.exit(1);
 }
 
-const NEEDED = ['read_products', 'write_products', 'read_inventory'];
+const NEEDED = ['read_products', 'write_products', 'read_inventory', 'read_locations'];
 
 const ok = (s) => `\x1b[32m✓\x1b[0m ${s}`;
 const bad = (s) => `\x1b[31m✗\x1b[0m ${s}`;

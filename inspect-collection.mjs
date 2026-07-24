@@ -16,7 +16,8 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { getAccessToken } from './auth.mjs';
-import { isInStock } from './sort-oos.mjs';
+import { isInStock } from './stock.mjs';
+import { fetchCollectionProducts } from './catalog.mjs';
 
 const SHOP = process.env.SHOP_DOMAIN;
 const API_VERSION = process.env.SHOPIFY_API_VERSION || '2026-07';
@@ -78,29 +79,8 @@ if (!col) {
   process.exit(1);
 }
 
-const products = [];
-let cursor = null;
-do {
-  const d = await gql(
-    `query Prods($id: ID!, $cursor: String) {
-       collection(id: $id) {
-         products(first: 250, after: $cursor) {
-           pageInfo { hasNextPage endCursor }
-           nodes {
-             id title tags tracksInventory totalInventory
-             variants(first: 100) {
-               nodes { inventoryQuantity inventoryPolicy inventoryItem { tracked } }
-             }
-           }
-         }
-       }
-     }`,
-    { id: col.id, cursor }
-  );
-  const conn = d.collection.products;
-  products.push(...conn.nodes);
-  cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
-} while (cursor);
+// Shared catalog fetch so "in stock" here matches the engine (online-availability based).
+const products = await fetchCollectionProducts(col.id);
 
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
