@@ -18,6 +18,7 @@
 
 import { gql, shortId, longId, assertNoUserErrors } from './shopify.mjs';
 import { isInStock } from './stock.mjs';
+import { fetchProductsByIds } from './catalog.mjs';
 import { planRestores } from './features.mjs';
 
 const M_STATUS = `
@@ -36,32 +37,16 @@ async function setStatus(id, status) {
 }
 
 /**
- * Fetch stock + status for a set of product ids directly (not via a collection).
- * Used to detect which drafted products have restocked.
+ * Fetch status + online-stock for a set of product ids directly (not via a
+ * collection). Used to detect which drafted products have restocked. Uses the
+ * shared catalog fetch so "in stock" is online-availability based.
  * @param {string[]} ids short product ids
  * @returns {Promise<Map<string, {status, inStock}>>}
  */
 export async function fetchProductsById(ids) {
+  const products = await fetchProductsByIds(ids);
   const out = new Map();
-  const CHUNK = 100; // keep query cost well under the 1000 ceiling
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const gids = ids.slice(i, i + CHUNK).map(longId);
-    const d = await gql(
-      `query Byid($ids: [ID!]!) {
-         nodes(ids: $ids) {
-           ... on Product {
-             id status tracksInventory totalInventory
-             variants(first: 100) { nodes { inventoryQuantity inventoryPolicy inventoryItem { tracked } } }
-           }
-         }
-       }`,
-      { ids: gids }
-    );
-    for (const n of d.nodes) {
-      if (!n) continue;
-      out.set(shortId(n.id), { status: n.status, inStock: isInStock(n) });
-    }
-  }
+  for (const p of products) out.set(shortId(p.id), { status: p.status, inStock: isInStock(p) });
   return out;
 }
 

@@ -15,7 +15,8 @@
  */
 
 import { pathToFileURL } from 'node:url';
-import { findCollection, fetchProducts, resolveHandles } from './sort-oos.mjs';
+import { resolveHandles } from './sort-oos.mjs';
+import { findCollection, fetchCollectionProducts } from './catalog.mjs';
 import { isInStock } from './stock.mjs';
 import { shortId } from './shopify.mjs';
 import { sendReport, buildReport } from './notify.mjs';
@@ -34,7 +35,7 @@ export async function gatherSoldOut() {
       console.warn(`  ! collection "${handle}" not found, skipping`);
       continue;
     }
-    const products = await fetchProducts(col.id);
+    const products = await fetchCollectionProducts(col.id);
     for (const p of products) {
       if (isInStock(p)) continue;
       const id = shortId(p.id);

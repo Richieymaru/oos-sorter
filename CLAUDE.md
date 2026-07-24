@@ -224,6 +224,18 @@ Consequence for dry runs: on a not-yet-MANUAL collection the dry-run plan is
 *indicative only* — the real order isn't knowable without performing the flip.
 The engine says so in its output. Don't "fix" that by trusting the dry-run count.
 
+**"Sold out" = no inventory at ONLINE-fulfilling locations, not zero total.**
+`isInStock()` counts each variant's available quantity only at locations where
+`fulfillsOnlineOrders = true` (`variant.onlineAvailable`, computed in
+`catalog.mjs`). This matches the storefront: a product stocked only at a
+third-party/warehouse location (e.g. Shopify's "3p Fulfilled" demo product,
+20 units at "Snow City Warehouse") shows "Sold out" online, and the engine now
+agrees — `totalInventory` and `sellableOnlineQuantity` both wrongly counted it.
+Needs the `read_locations` scope (added 25 Jul 2026). All product fetches go
+through `catalog.mjs` so every path (sort, report, draft-restore, inspect) uses
+the same online-availability definition — a product fetched without it has no
+`onlineAvailable` and would look sold out, so never bypass `catalog.mjs`.
+
 **Stock logic is isolated in `isInStock()`.** Untracked inventory and
 oversell-enabled variants count as in stock. Multi-location or Markets rules go
 in that function and nowhere else.

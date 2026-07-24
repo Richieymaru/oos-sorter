@@ -13,6 +13,7 @@ import {
   planRestores,
   retainBaseOrder,
 } from './features.mjs';
+import { isInStock } from './stock.mjs';
 
 let failures = 0;
 let checks = 0;
@@ -35,6 +36,31 @@ eq('nothing new', diffNewlySoldOut(['1', '2', '3'], ['1', '2']), []);
 eq('empty prev = all new', diffNewlySoldOut([], ['5', '6']), ['5', '6']);
 eq('dedupes now-list', diffNewlySoldOut(['1'], ['2', '2', '3']), ['2', '3']);
 eq('preserves now order', diffNewlySoldOut([], ['9', '3', '7']), ['9', '3', '7']);
+
+console.log('\n--- isInStock (online-availability based) ---');
+const prod = (over) => ({
+  tracksInventory: true,
+  variants: { nodes: [{ inventoryPolicy: 'DENY', inventoryItem: { tracked: true }, onlineAvailable: 0, ...over }] },
+});
+eq('untracked product -> in stock', isInStock({ tracksInventory: false, variants: { nodes: [] } }), true);
+eq('online available > 0 -> in stock', isInStock(prod({ onlineAvailable: 5 })), true);
+eq('online available 0, DENY, tracked -> SOLD OUT (3p case)', isInStock(prod({ onlineAvailable: 0 })), false);
+eq('oversell variant -> in stock even at 0', isInStock(prod({ inventoryPolicy: 'CONTINUE' })), true);
+eq('untracked variant -> in stock even at 0', isInStock(prod({ inventoryItem: { tracked: false } })), true);
+eq('missing onlineAvailable treated as 0 -> sold out', isInStock(prod({ onlineAvailable: undefined })), false);
+eq(
+  'multi-variant sums online availability',
+  isInStock({
+    tracksInventory: true,
+    variants: {
+      nodes: [
+        { inventoryPolicy: 'DENY', inventoryItem: { tracked: true }, onlineAvailable: 0 },
+        { inventoryPolicy: 'DENY', inventoryItem: { tracked: true }, onlineAvailable: 3 },
+      ],
+    },
+  }),
+  true
+);
 
 console.log('\n--- isAllHandles ---');
 eq('empty -> all', isAllHandles([]), true);
