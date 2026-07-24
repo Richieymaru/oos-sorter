@@ -45,6 +45,7 @@ import {
 } from './shopify.mjs';
 import {
   isAllHandles,
+  resolveFlag,
   diffNewlySoldOut,
   mergePending,
   planDrafts,
@@ -411,11 +412,9 @@ async function main() {
   requireEnv('SHOP_DOMAIN');
 
   const settings = await loadSettings();
-  const resolve = (envName, key) =>
-    process.env[envName] !== undefined ? process.env[envName] === 'true' : settings[key];
-  FEATURE_SORT = resolve('FEATURE_SORT', 'sort');
-  FEATURE_NOTIFY = resolve('FEATURE_NOTIFY', 'notify');
-  FEATURE_DRAFT = resolve('FEATURE_DRAFT', 'draft');
+  FEATURE_SORT = resolveFlag(process.env.FEATURE_SORT, settings.sort);
+  FEATURE_NOTIFY = resolveFlag(process.env.FEATURE_NOTIFY, settings.notify);
+  FEATURE_DRAFT = resolveFlag(process.env.FEATURE_DRAFT, settings.draft);
 
   // COLLECTION_HANDLES empty or "all" => auto-discover every collection.
   const handles = await resolveHandles();
