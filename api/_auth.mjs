@@ -1,10 +1,17 @@
 import { isAuthorized } from '../panel.mjs';
 
-/** Returns true if authorized; otherwise writes a 401 challenge and returns false. */
+/**
+ * Guard for actions (save, report). The page itself is viewable without a
+ * password so it can render inside the Shopify admin frame; only the actions
+ * that change the store or send email require it. The page sends the panel
+ * password as an `x-panel-password` header; HTTP Basic is still accepted.
+ * Returns true if authorized; otherwise writes a plain 401 and returns false.
+ */
 export function requireAuth(req, res) {
-  if (isAuthorized(req.headers['authorization'], process.env.PANEL_PASSWORD)) return true;
+  const pw = process.env.PANEL_PASSWORD;
+  if (pw && req.headers?.['x-panel-password'] === pw) return true;
+  if (isAuthorized(req.headers?.['authorization'], pw)) return true;
   res.statusCode = 401;
-  res.setHeader('WWW-Authenticate', 'Basic realm="OOS Sorter"');
-  res.end('Authentication required');
+  res.end('unauthorized');
   return false;
 }
