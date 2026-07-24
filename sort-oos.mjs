@@ -364,8 +364,13 @@ async function sortCollection(col, { products, currentIds, byId, tagsOf }, ctx) 
 /* Main routine                                                        */
 /* ------------------------------------------------------------------ */
 
-async function main() {
-  requireEnv('SHOP_DOMAIN');
+/**
+ * Run the engine once. Returns a summary (never calls process.exit), so it can
+ * be driven from the CLI (main) or from the Vercel /api/run endpoint.
+ * @param {{ sendDigest?: boolean }} opts
+ */
+export async function runEngine({ sendDigest = SEND_DIGEST } = {}) {
+  if (!SHOP) throw new Error('SHOP_DOMAIN not set');
 
   const settings = await loadSettings();
   FEATURE_SORT = resolveFlag(process.env.FEATURE_SORT, settings.sort);
@@ -375,8 +380,8 @@ async function main() {
   // COLLECTION_HANDLES empty or "all" => auto-discover every collection.
   const handles = await resolveHandles();
   if (!handles.length) {
-    console.error('No collections found to process.');
-    process.exit(1);
+    console.warn('No collections found to process.');
+    return { ok: true, collections: 0, failures: 0, features: 'nothing', soldOut: 0 };
   }
 
   const on = [FEATURE_SORT && 'sort', FEATURE_NOTIFY && 'notify', FEATURE_DRAFT && 'draft']
@@ -423,13 +428,13 @@ async function main() {
     );
 
     const today = new Date().toISOString().slice(0, 10);
-    if (SEND_DIGEST && state.pending.length && state.lastDigest !== today) {
+    if (sendDigest && state.pending.length && state.lastDigest !== today) {
       await sendDigest(state.pending, { dryRun: DRY_RUN });
       if (!DRY_RUN) {
         state.pending = [];
         state.lastDigest = today;
       }
-    } else if (SEND_DIGEST) {
+    } else if (sendDigest) {
       console.log(
         state.pending.length
           ? `  digest already sent today (${state.lastDigest}) — skipping`
@@ -449,12 +454,14 @@ async function main() {
   }
 
   console.log(`\nFinished. ${handles.length - failures}/${handles.length} collections OK.`);
-  if (failures) process.exit(1);
+  return { ok: failures === 0, collections: handles.length, failures, features: on, soldOut: ctx.soldOutNow.size };
 }
 
 if (IS_MAIN) {
-  main().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  runEngine()
+    .then((r) => process.exit(r.ok ? 0 : 1))
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
 }
