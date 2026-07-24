@@ -147,7 +147,7 @@ lastDigest }`. First run establishes the sold-out baseline and sends no digest
 by design — otherwise day one would email every currently-sold-out product. Use
 `report.mjs` to get the full list any time.
 
-**Owner still needs to provide:** a Gmail App Password for stainesrinand@gmail.com
+**Owner still needs to provide:** a Gmail App Password for you@example.com
 (that account is both sender and recipient; 2-step verification required). Real
 email delivery is the one path not yet tested live — no app password on hand.
 Timezone resolved: Philippines (UTC+8), so 4pm = 08:00 UTC, which is already the

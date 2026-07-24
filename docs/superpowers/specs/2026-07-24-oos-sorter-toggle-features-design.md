@@ -59,7 +59,7 @@ cron). All booleans are `"true"`/`"false"` strings, matching the existing
 | `FEATURE_SORT` | `true` | Push sold-out products to the bottom |
 | `FEATURE_NOTIFY` | `false` | Email on newly sold-out products |
 | `FEATURE_DRAFT` | `false` | Set sold-out products to Draft status |
-| `NOTIFY_EMAIL` | — | Recipient for alerts. For testing: `stainesrinand@gmail.com` |
+| `NOTIFY_EMAIL` | — | Recipient for alerts. For testing: `you@example.com` |
 | `GMAIL_USER` | — | The Gmail address the mail is sent *from* |
 | `GMAIL_APP_PASSWORD` | — | 16-char Gmail App Password (needs 2-step verification on the account) |
 | `SEND_DIGEST` | `false` | Set by the daily 4pm cron entry — send the accumulated digest this run |
