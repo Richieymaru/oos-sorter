@@ -13,10 +13,13 @@
  * Read-only against the store (never writes).
  */
 
+import { pathToFileURL } from 'node:url';
 import { findCollection, fetchProducts } from './sort-oos.mjs';
 import { isInStock } from './stock.mjs';
 import { shortId } from './shopify.mjs';
 import { sendReport, buildReport } from './notify.mjs';
+
+const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 const HANDLES = (process.env.COLLECTION_HANDLES || '')
   .split(',')
@@ -24,17 +27,9 @@ const HANDLES = (process.env.COLLECTION_HANDLES || '')
   .filter(Boolean);
 const PRINT_ONLY = process.argv.includes('--print');
 
-async function main() {
-  if (!process.env.SHOP_DOMAIN) {
-    console.error('Set SHOP_DOMAIN in .env first.');
-    process.exit(1);
-  }
-  if (!HANDLES.length) {
-    console.error('COLLECTION_HANDLES is empty — nothing to report.');
-    process.exit(1);
-  }
-
-  const byId = new Map(); // id -> { id, title, collections }
+/** Current sold-out products across COLLECTION_HANDLES, deduped by product id. */
+export async function gatherSoldOut() {
+  const byId = new Map();
   for (const handle of HANDLES) {
     const col = await findCollection(handle);
     if (!col) {
@@ -50,8 +45,20 @@ async function main() {
       byId.set(id, info);
     }
   }
+  return [...byId.values()];
+}
 
-  const items = [...byId.values()];
+async function main() {
+  if (!process.env.SHOP_DOMAIN) {
+    console.error('Set SHOP_DOMAIN in .env first.');
+    process.exit(1);
+  }
+  if (!HANDLES.length) {
+    console.error('COLLECTION_HANDLES is empty — nothing to report.');
+    process.exit(1);
+  }
+
+  const items = await gatherSoldOut();
   console.log(`${items.length} product(s) currently sold out across ${HANDLES.length} collection(s).`);
 
   if (PRINT_ONLY) {
@@ -63,7 +70,9 @@ async function main() {
   await sendReport(items, {});
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (IS_MAIN) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
