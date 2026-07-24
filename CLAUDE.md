@@ -116,7 +116,10 @@ Deployment is the only thing left.
 | `inspect-collection.mjs` | read-only snapshot / diff of a collection's live order |
 | `package.json` | one dependency: nodemailer (for Gmail). Run `npm install`. |
 | `README.md` | setup + tradeoffs (auth section may still lag CLAUDE.md) |
-| `github-actions-workflow.yml` | rename to `.github/workflows/oos-sort.yml` |
+| `.github/workflows/oos-sort.yml` | the cron: 5-min engine run + daily digest |
+| `vercel.json` | routes `/` to the settings page |
+| `api/*.mjs` | settings page: index (GET), save, report; `_auth` guard |
+| `settings.mjs` / `panel.mjs` | toggles metafield I/O / pure page render + auth |
 
 Run with `npm install` once, then `node --env-file=.env sort-oos.mjs` (Node
 20.6+). One dependency now (nodemailer). User is on Windows/PowerShell — `curl`
