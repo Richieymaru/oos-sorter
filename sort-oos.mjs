@@ -51,6 +51,7 @@ import {
 } from './features.mjs';
 import { isInStock } from './stock.mjs';
 import { loadState, saveState } from './state.mjs';
+import { loadSettings } from './settings.mjs';
 import { restoreRestocked, applyDrafts } from './draft.mjs';
 import { sendDigest } from './notify.mjs';
 
@@ -66,9 +67,10 @@ const PIN_TAG = (process.env.PIN_TAG || 'pin-top').toLowerCase();
 const IGNORE_TAG = (process.env.IGNORE_TAG || 'oos-ignore').toLowerCase();
 const DRY_RUN = process.env.DRY_RUN === 'true';
 
-const FEATURE_SORT = (process.env.FEATURE_SORT ?? 'true') === 'true';
-const FEATURE_NOTIFY = process.env.FEATURE_NOTIFY === 'true';
-const FEATURE_DRAFT = process.env.FEATURE_DRAFT === 'true';
+// Resolved in main() from the settings metafield; env overrides for local testing.
+let FEATURE_SORT = false;
+let FEATURE_NOTIFY = false;
+let FEATURE_DRAFT = false;
 const SEND_DIGEST = process.env.SEND_DIGEST === 'true';
 
 const NAMESPACE = 'oos_sort';
@@ -378,6 +380,13 @@ async function sortCollection(col, { products, currentIds, byId, tagsOf }, ctx) 
 async function main() {
   requireEnv('SHOP_DOMAIN');
 
+  const settings = await loadSettings();
+  const resolve = (envName, key) =>
+    process.env[envName] !== undefined ? process.env[envName] === 'true' : settings[key];
+  FEATURE_SORT = resolve('FEATURE_SORT', 'sort');
+  FEATURE_NOTIFY = resolve('FEATURE_NOTIFY', 'notify');
+  FEATURE_DRAFT = resolve('FEATURE_DRAFT', 'draft');
+
   if (!HANDLES.length) {
     console.error('COLLECTION_HANDLES is empty — nothing to do.');
     process.exit(1);
@@ -390,9 +399,9 @@ async function main() {
     `Shop: ${SHOP} | API ${API_VERSION} | features: ${on}${DRY_RUN ? ' | DRY RUN' : ''}`
   );
 
-  // Notify and Draft need remembered state; Sort alone does not.
-  const usesState = FEATURE_NOTIFY || FEATURE_DRAFT;
-  const state = usesState ? await loadState() : null;
+  // Always keep state so the settings page has a fresh status line, even when
+  // only sort is on or all features are off.
+  const state = await loadState();
   const draftedSet = new Set(state?.drafted ?? []);
 
   // Phase 1: restore any app-drafted product that has restocked.
@@ -417,7 +426,7 @@ async function main() {
 
   // Phase 3: notify — accumulate the day's newly-sold-out, send the digest at
   // the daily slot only.
-  if (FEATURE_NOTIFY && state) {
+  if (FEATURE_NOTIFY) {
     const newly = diffNewlySoldOut(state.soldOut, [...ctx.soldOutNow]);
     const freshInfos = newly.map((id) => ctx.soldOutInfo.get(id)).filter(Boolean);
     state.pending = mergePending(state.pending, freshInfos);
@@ -441,15 +450,14 @@ async function main() {
     }
   }
 
-  // Phase 4: persist state.
-  if (usesState && state) {
-    state.soldOut = [...ctx.soldOutNow];
-    state.drafted = [...draftedSet];
-    if (DRY_RUN) {
-      console.log('\n[dry run] would save state:', JSON.stringify(state));
-    } else {
-      await saveState(state);
-    }
+  // Phase 4: persist state (always — records lastRun + current sold-out count).
+  state.soldOut = [...ctx.soldOutNow];
+  state.drafted = [...draftedSet];
+  state.lastRun = new Date().toISOString();
+  if (DRY_RUN) {
+    console.log('\n[dry run] would save state:', JSON.stringify(state));
+  } else {
+    await saveState(state);
   }
 
   console.log(`\nFinished. ${HANDLES.length - failures}/${HANDLES.length} collections OK.`);

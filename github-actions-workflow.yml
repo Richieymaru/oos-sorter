@@ -13,7 +13,7 @@ name: OOS Sorter
 on:
   schedule:
     # Frequent run: sort + draft + accumulate the day's sold-out list. No email.
-    - cron: '*/15 * * * *' # every 15 minutes (GitHub's minimum is 5)
+    - cron: '*/5 * * * *' # every 5 minutes (GitHub's minimum)
     # Daily digest run: also sends the one email.
     # 08:00 UTC = 4:00pm Philippine time (UTC+8, no DST). Correct as-is.
     - cron: '0 8 * * *'

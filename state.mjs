@@ -17,7 +17,7 @@ import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
 const NAMESPACE = 'oos_sort';
 const KEY = 'state';
 
-const EMPTY = () => ({ soldOut: [], drafted: [], pending: [], lastDigest: null });
+const EMPTY = () => ({ soldOut: [], drafted: [], pending: [], lastDigest: null, lastRun: null });
 
 export async function loadState() {
   const d = await gql(
@@ -41,6 +41,7 @@ export async function saveState(state) {
     drafted: state.drafted ?? [],
     pending: state.pending ?? [],
     lastDigest: state.lastDigest ?? null,
+    lastRun: state.lastRun ?? null,
   });
   const d = await gql(
     `mutation Save($m: [MetafieldsSetInput!]!) {
