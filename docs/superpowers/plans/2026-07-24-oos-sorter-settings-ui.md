@@ -726,16 +726,16 @@ git commit -m "chore(deploy): Vercel routing + 5-minute engine cron"
 
 Run (records what must change):
 ```
-node -e "const fs=require('fs'),g=require('child_process').execSync('git ls-files',{encoding:'utf8'}).split('\n').filter(Boolean); const pats=[/test-apps-bzfmnf8l/, /4697b5904f7cc974adb072f81197e6cb/, /stainesrinand@gmail\.com/]; for(const f of g){ let t; try{t=fs.readFileSync(f,'utf8')}catch{continue} pats.forEach(p=>{ if(p.test(t)) console.log(f,'contains',p) }); }"
+node -e "const fs=require('fs'),g=require('child_process').execSync('git ls-files',{encoding:'utf8'}).split('\n').filter(Boolean); const pats=[/your-store/, /your_client_id/, /stainesrinand@gmail\.com/]; for(const f of g){ let t; try{t=fs.readFileSync(f,'utf8')}catch{continue} pats.forEach(p=>{ if(p.test(t)) console.log(f,'contains',p) }); }"
 ```
 Expected: a list of files/patterns. If empty, skip to Step 3.
 
 - [ ] **Step 2: Replace each with a placeholder**
 
 For every file reported, replace:
-- `test-apps-bzfmnf8l.myshopify.com` → `your-store.myshopify.com`
-- the client id `4697b5904f7cc974adb072f81197e6cb` → `your_client_id`
-- `stainesrinand@gmail.com` → `you@example.com`
+- `your-store.myshopify.com` → `your-store.myshopify.com`
+- the client id `your_client_id` → `your_client_id`
+- `you@example.com` → `you@example.com`
 
 Use the Edit tool per occurrence (do NOT touch `.env`, which is gitignored and keeps the real values).
 
