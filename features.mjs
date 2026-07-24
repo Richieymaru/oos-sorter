@@ -19,6 +19,21 @@ export function isAllHandles(explicit) {
 }
 
 /**
+ * Resolve a feature flag: the env var wins ONLY when it's actually set to
+ * something. An UNDEFINED or EMPTY-STRING env var falls through to the metafield
+ * value (the settings-page toggle). This matters because CI passes
+ * `${{ vars.FEATURE_X }}` which becomes "" when the variable doesn't exist —
+ * without the empty-string check that "" would wrongly force the feature off.
+ * @param {string|undefined} envVal        raw process.env.FEATURE_X
+ * @param {boolean} metafieldVal           the toggle from oos_sort.settings
+ * @returns {boolean}
+ */
+export function resolveFlag(envVal, metafieldVal) {
+  if (envVal === undefined || envVal === '') return metafieldVal;
+  return envVal === 'true';
+}
+
+/**
  * IDs that are sold out now but were not sold out on the previous run.
  * @param {Iterable<string>} prevSoldOut  ids sold out as of last run
  * @param {Iterable<string>} nowSoldOut   ids sold out this run

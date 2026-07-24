@@ -6,6 +6,7 @@
 
 import {
   isAllHandles,
+  resolveFlag,
   diffNewlySoldOut,
   mergePending,
   planDrafts,
@@ -41,6 +42,15 @@ eq('"all" keyword -> all', isAllHandles(['all']), true);
 eq('"ALL" case-insensitive -> all', isAllHandles(['ALL']), true);
 eq('explicit single -> not all', isAllHandles(['x']), false);
 eq('explicit list -> not all', isAllHandles(['x', 'y']), false);
+
+console.log('\n--- resolveFlag (env override vs metafield) ---');
+eq('undefined env -> metafield true', resolveFlag(undefined, true), true);
+eq('undefined env -> metafield false', resolveFlag(undefined, false), false);
+eq('EMPTY env -> metafield true (the CI bug)', resolveFlag('', true), true);
+eq('EMPTY env -> metafield false', resolveFlag('', false), false);
+eq('env "true" overrides metafield false', resolveFlag('true', false), true);
+eq('env "false" overrides metafield true', resolveFlag('false', true), false);
+eq('env garbage -> false', resolveFlag('yes', true), false);
 
 console.log('\n--- mergePending ---');
 eq(
