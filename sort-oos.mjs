@@ -44,6 +44,7 @@ import {
   assertNoUserErrors,
 } from './shopify.mjs';
 import {
+  isAllHandles,
   diffNewlySoldOut,
   mergePending,
   planDrafts,
@@ -209,6 +210,35 @@ function alignDesired(desired, liveIds) {
 export async function findCollection(handle) {
   const found = await gql(Q_COLLECTION, { q: `handle:'${handle}'` });
   return found.collections.nodes[0] ?? null;
+}
+
+/** Every collection handle in the store (paginated). */
+export async function fetchAllCollectionHandles() {
+  const handles = [];
+  let cursor = null;
+  do {
+    const d = await gql(
+      `query All($cursor: String) {
+         collections(first: 250, after: $cursor) {
+           pageInfo { hasNextPage endCursor }
+           nodes { handle }
+         }
+       }`,
+      { cursor }
+    );
+    const conn = d.collections;
+    handles.push(...conn.nodes.map((n) => n.handle));
+    cursor = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
+  } while (cursor);
+  return handles;
+}
+
+/**
+ * The collections to process: COLLECTION_HANDLES if set, otherwise every
+ * collection in the store (auto-discovery). Empty or "all" => all.
+ */
+export async function resolveHandles() {
+  return isAllHandles(HANDLES) ? await fetchAllCollectionHandles() : HANDLES;
 }
 
 export async function fetchProducts(collectionId) {
@@ -387,16 +417,19 @@ async function main() {
   FEATURE_NOTIFY = resolve('FEATURE_NOTIFY', 'notify');
   FEATURE_DRAFT = resolve('FEATURE_DRAFT', 'draft');
 
-  if (!HANDLES.length) {
-    console.error('COLLECTION_HANDLES is empty — nothing to do.');
+  // COLLECTION_HANDLES empty or "all" => auto-discover every collection.
+  const handles = await resolveHandles();
+  if (!handles.length) {
+    console.error('No collections found to process.');
     process.exit(1);
   }
 
   const on = [FEATURE_SORT && 'sort', FEATURE_NOTIFY && 'notify', FEATURE_DRAFT && 'draft']
     .filter(Boolean)
     .join('+') || 'nothing';
+  const scope = isAllHandles(HANDLES) ? `all ${handles.length} collections` : `${handles.length} collection(s)`;
   console.log(
-    `Shop: ${SHOP} | API ${API_VERSION} | features: ${on}${DRY_RUN ? ' | DRY RUN' : ''}`
+    `Shop: ${SHOP} | API ${API_VERSION} | features: ${on} | ${scope}${DRY_RUN ? ' | DRY RUN' : ''}`
   );
 
   // Always keep state so the settings page has a fresh status line, even when
@@ -415,7 +448,7 @@ async function main() {
   // Phase 2: per collection — record sold-out, sort, draft.
   const ctx = { draftedSet, soldOutNow: new Set(), soldOutInfo: new Map() };
   let failures = 0;
-  for (const handle of HANDLES) {
+  for (const handle of handles) {
     try {
       await processCollection(handle, ctx);
     } catch (err) {
@@ -460,7 +493,7 @@ async function main() {
     await saveState(state);
   }
 
-  console.log(`\nFinished. ${HANDLES.length - failures}/${HANDLES.length} collections OK.`);
+  console.log(`\nFinished. ${handles.length - failures}/${handles.length} collections OK.`);
   if (failures) process.exit(1);
 }
 

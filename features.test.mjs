@@ -5,6 +5,7 @@
  */
 
 import {
+  isAllHandles,
   diffNewlySoldOut,
   mergePending,
   planDrafts,
@@ -33,6 +34,13 @@ eq('nothing new', diffNewlySoldOut(['1', '2', '3'], ['1', '2']), []);
 eq('empty prev = all new', diffNewlySoldOut([], ['5', '6']), ['5', '6']);
 eq('dedupes now-list', diffNewlySoldOut(['1'], ['2', '2', '3']), ['2', '3']);
 eq('preserves now order', diffNewlySoldOut([], ['9', '3', '7']), ['9', '3', '7']);
+
+console.log('\n--- isAllHandles ---');
+eq('empty -> all', isAllHandles([]), true);
+eq('"all" keyword -> all', isAllHandles(['all']), true);
+eq('"ALL" case-insensitive -> all', isAllHandles(['ALL']), true);
+eq('explicit single -> not all', isAllHandles(['x']), false);
+eq('explicit list -> not all', isAllHandles(['x', 'y']), false);
 
 console.log('\n--- mergePending ---');
 eq(

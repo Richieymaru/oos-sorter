@@ -2,8 +2,9 @@
 /**
  * On-demand sold-out report — the "give me the list now" action.
  *
- * Gathers every currently sold-out product across COLLECTION_HANDLES and emails
- * the list immediately. This is the no-hosting equivalent of a button: wire it
+ * Gathers every currently sold-out product across the resolved collections
+ * (COLLECTION_HANDLES, or all collections if unset) and emails the list
+ * immediately. This is the no-hosting equivalent of a button: wire it
  * to a GitHub Actions "Run workflow" (workflow_dispatch) button, or run it
  * locally any time:
  *
@@ -14,23 +15,20 @@
  */
 
 import { pathToFileURL } from 'node:url';
-import { findCollection, fetchProducts } from './sort-oos.mjs';
+import { findCollection, fetchProducts, resolveHandles } from './sort-oos.mjs';
 import { isInStock } from './stock.mjs';
 import { shortId } from './shopify.mjs';
 import { sendReport, buildReport } from './notify.mjs';
 
 const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
-const HANDLES = (process.env.COLLECTION_HANDLES || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
 const PRINT_ONLY = process.argv.includes('--print');
 
-/** Current sold-out products across COLLECTION_HANDLES, deduped by product id. */
+/** Current sold-out products across the resolved collections, deduped by id. */
 export async function gatherSoldOut() {
   const byId = new Map();
-  for (const handle of HANDLES) {
+  const handles = await resolveHandles();
+  for (const handle of handles) {
     const col = await findCollection(handle);
     if (!col) {
       console.warn(`  ! collection "${handle}" not found, skipping`);
@@ -53,13 +51,9 @@ async function main() {
     console.error('Set SHOP_DOMAIN in .env first.');
     process.exit(1);
   }
-  if (!HANDLES.length) {
-    console.error('COLLECTION_HANDLES is empty — nothing to report.');
-    process.exit(1);
-  }
 
   const items = await gatherSoldOut();
-  console.log(`${items.length} product(s) currently sold out across ${HANDLES.length} collection(s).`);
+  console.log(`${items.length} product(s) currently sold out.`);
 
   if (PRINT_ONLY) {
     const { subject, text } = buildReport(items);

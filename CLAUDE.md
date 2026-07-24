@@ -131,8 +131,16 @@ is aliased to `Invoke-WebRequest`, bash `\` continuations don't work, and
 
 ## Feature toggles
 
-Three independent switches (env, `"true"`/`"false"`), applied to every handle
-in `COLLECTION_HANDLES`. Any combination. Defaults: sort on, notify/draft off.
+Three independent switches (metafield `oos_sort.settings`, or env `"true"`/
+`"false"` override), applied to the resolved collections. Default all off.
+
+**Collections are auto-discovered.** `COLLECTION_HANDLES` empty (or `"all"`) =>
+sort *every* collection in the store; `resolveHandles()` fetches them via
+`fetchAllCollectionHandles()`. Set a comma-separated list to restrict to those.
+Chosen by the owner 25 Jul 2026 — note this flips every collection to `MANUAL`
+sort on first touch (same as Nada does; verified it's a hard Shopify rule that
+reordering requires MANUAL — there is no way to reorder while keeping an
+automatic sort, for us or Nada).
 
 - `FEATURE_SORT` — push sold-out to the bottom (the original engine).
 - `FEATURE_NOTIFY` — accumulate newly-sold-out across the day; send ONE Gmail
