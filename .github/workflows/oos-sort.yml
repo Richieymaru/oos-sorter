@@ -10,13 +10,11 @@
 
 name: OOS Sorter
 
+# NOTE: GitHub's scheduled cron is unreliable (observed 1 run in 90 min on */5),
+# so the automatic 5-minute trigger lives elsewhere: a free external cron service
+# (cron-job.org) hits the Vercel endpoint /api/run every 5 minutes. This workflow
+# is kept as a MANUAL backup ("Run workflow") only.
 on:
-  schedule:
-    # Frequent run: sort + draft + accumulate the day's sold-out list. No email.
-    - cron: '*/5 * * * *' # every 5 minutes (GitHub's minimum)
-    # Daily digest run: also sends the one email.
-    # 08:00 UTC = 4:00pm Philippine time (UTC+8, no DST). Correct as-is.
-    - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
       mode:
