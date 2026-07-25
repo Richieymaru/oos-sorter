@@ -118,8 +118,10 @@ Deployment is the only thing left.
 | `README.md` | setup + tradeoffs (auth section may still lag CLAUDE.md) |
 | `.github/workflows/oos-sort.yml` | the cron: 5-min engine run + daily digest |
 | `vercel.json` | routes `/` to the settings page |
-| `api/*.mjs` | settings page (index/save/report), `_auth` guard, **`run`** (cron endpoint) |
-| `settings.mjs` / `panel.mjs` | toggles metafield I/O / pure page render + auth |
+| `ui.mjs` | shared multi-page shell + design system (Polaris-feel + emerald/telemetry) |
+| `api/index,collections,settings.mjs` | the 3 UI pages (Dashboard, Collections table, Settings) |
+| `api/save,report,run,webhook.mjs` | actions + cron + webhook endpoints; `_auth` guard |
+| `settings.mjs` / `panel.mjs` | toggles metafield I/O / `settingsBody` + auth check |
 
 Run with `npm install` once, then `node --env-file=.env sort-oos.mjs` (Node
 20.6+). One dependency now (nodemailer). User is on Windows/PowerShell — `curl`
