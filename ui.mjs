@@ -6,6 +6,9 @@
  * Polaris clone. Pure string rendering — no framework, no build step.
  */
 
+/** Brand name shown across the UI + emails. Per-store: set APP_NAME in the env. */
+export const APP_NAME = process.env.APP_NAME || 'OOS Sorter';
+
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -123,10 +126,10 @@ export function shell({ title, active = 'home', body }) {
     `<a href="${href}" class="${active === key ? 'on' : ''}">${label}</a>`;
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} · OOS Sorter</title>
+<title>${esc(title)} · ${esc(APP_NAME)}</title>
 <style>${CSS}</style></head><body>
 <header class="topbar"><div class="topinner">
-  <span class="brand">${mark} OOS Sorter</span>
+  <span class="brand">${mark} ${esc(APP_NAME)}</span>
   <nav class="tabs">
     ${tab('/', 'home', 'Dashboard')}
     ${tab('/collections', 'collections', 'Collections')}

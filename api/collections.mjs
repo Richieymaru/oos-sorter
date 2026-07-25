@@ -1,6 +1,6 @@
 import { fetchAllCollections } from '../catalog.mjs';
 import { loadSettings } from '../settings.mjs';
-import { shell, setPageHeaders, statCard, badge, esc } from '../ui.mjs';
+import { shell, setPageHeaders, statCard, badge, esc, APP_NAME } from '../ui.mjs';
 
 const SORT_LABELS = {
   MANUAL: 'Manual',
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
   const body = `
   <div class="pagehead">
     <h1>Collections</h1>
-    <p>Every collection OOS Sorter watches. Sold-out products are kept at the bottom of each.</p>
+    <p>Every collection ${esc(APP_NAME)} watches. Sold-out products are kept at the bottom of each.</p>
   </div>
   <div class="grid c3" style="margin-bottom:18px">
     ${statCard({ value: cols.length || '—', label: 'Collections' })}

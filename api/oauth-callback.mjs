@@ -8,6 +8,8 @@
 import { verifyState, verifyCallbackHmac, exchangeToken } from '../oauth.mjs';
 import { sendPlain } from '../notify.mjs';
 
+const APP_NAME = process.env.APP_NAME || 'OOS Sorter';
+
 function query(req) {
   if (req.query && typeof req.query === 'object') return req.query;
   try {
@@ -46,11 +48,11 @@ export default async function handler(req, res) {
   try {
     const { token, scope } = await exchangeToken({ shop, clientId, clientSecret: secret, code: q.code });
     await sendPlain(
-      `OOS Sorter: access token for ${shop}`,
+      `${APP_NAME}: access token for ${shop}`,
       `Offline access token for ${shop}\n(non-expiring — put it in ADMIN_TOKEN for that store's deployment):\n\n${token}\n\nGranted scopes: ${scope}\n`
     ).catch((e) => console.error('token email failed:', e.message));
     res.statusCode = 200;
-    res.end(page('Connected', `<h1>OOS Sorter is connected ✓</h1><p><b>${shop}</b> is authorized. You can close this tab — nothing else to do.</p>`));
+    res.end(page('Connected', `<h1>${APP_NAME} is connected ✓</h1><p><b>${shop}</b> is authorized. You can close this tab — nothing else to do.</p>`));
   } catch (err) {
     res.statusCode = 500;
     res.end(page('Error', `<h1>Couldn’t finish connecting</h1><p>${err.message}</p>`));

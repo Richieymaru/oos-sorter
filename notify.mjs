@@ -13,6 +13,7 @@
 import nodemailer from 'nodemailer';
 
 const SHOP = process.env.SHOP_DOMAIN;
+const APP_NAME = process.env.APP_NAME || 'OOS Sorter';
 
 function creds() {
   const user = process.env.GMAIL_USER;
@@ -71,7 +72,7 @@ function emailHtml({ subtitle, lead, items }) {
               </div>
             </td>
             <td style="vertical-align:middle">
-              <div style="font-size:16px;font-weight:700;color:#161b22;letter-spacing:-.01em">OOS Sorter</div>
+              <div style="font-size:16px;font-weight:700;color:#161b22;letter-spacing:-.01em">${esc(APP_NAME)}</div>
               <div style="font-size:12px;color:#5f6875">${esc(subtitle)}</div>
             </td>
           </tr></table>
@@ -79,7 +80,7 @@ function emailHtml({ subtitle, lead, items }) {
         <tr><td style="padding:20px 24px 4px;font-size:15px;color:#161b22;line-height:1.5">${lead}</td></tr>
         <tr><td style="padding:8px 24px 20px">${rows}</td></tr>
         <tr><td style="padding:16px 24px;border-top:1px solid #eef1f6;font-size:11px;color:#8b95a3;line-height:1.5">
-          Sent by OOS Sorter. Sold-out is judged by what your online store can actually sell.
+          Sent by ${esc(APP_NAME)}. Sold-out is judged by what your online store can actually sell.
         </td></tr>
       </table>
     </td></tr></table>
@@ -89,11 +90,11 @@ function emailHtml({ subtitle, lead, items }) {
 /** Pure: build the daily digest email (subject, text, html) from pending entries. */
 export function buildDigest(pending) {
   const n = pending.length;
-  const subject = `OOS Sorter: ${n} product${n === 1 ? '' : 's'} sold out today`;
+  const subject = `${APP_NAME}: ${n} product${n === 1 ? '' : 's'} sold out today`;
   const text =
     `${n} product${n === 1 ? '' : 's'} newly sold out on ${SHOP} today:\n\n` +
     pending.map(textLine).join('\n') +
-    `\n\n— OOS Sorter`;
+    `\n\n— ${APP_NAME}`;
   const html = emailHtml({
     subtitle: 'Daily sold-out digest',
     lead: `<b>${n}</b> product${n === 1 ? '' : 's'} newly sold out on <span style="color:#0a6b4a">${esc(SHOP)}</span> today.`,
@@ -105,13 +106,13 @@ export function buildDigest(pending) {
 /** Pure: build the on-demand report email (subject, text, html). */
 export function buildReport(items) {
   const n = items.length;
-  const subject = `OOS Sorter: sold-out report (${n})`;
+  const subject = `${APP_NAME}: sold-out report (${n})`;
   const text =
     n === 0
-      ? `No products are currently sold out on ${SHOP}.\n\n— OOS Sorter`
+      ? `No products are currently sold out on ${SHOP}.\n\n— ${APP_NAME}`
       : `${n} product${n === 1 ? '' : 's'} currently sold out on ${SHOP}:\n\n` +
         items.map(textLine).join('\n') +
-        `\n\n— OOS Sorter`;
+        `\n\n— ${APP_NAME}`;
   const html = emailHtml({
     subtitle: 'Sold-out report',
     lead:
@@ -145,7 +146,7 @@ async function send({ subject, text, html }, { dryRun } = {}) {
   }
   const { user, pass, to } = creds();
   const info = await transport(user, pass).sendMail({
-    from: `OOS Sorter <${user}>`,
+    from: `${APP_NAME} <${user}>`,
     to,
     subject,
     text,
@@ -158,7 +159,7 @@ async function send({ subject, text, html }, { dryRun } = {}) {
 /** Send a plain-text email (used by the OAuth flow to deliver the offline token). */
 export async function sendPlain(subject, text) {
   const { user, pass, to } = creds();
-  const info = await transport(user, pass).sendMail({ from: `OOS Sorter <${user}>`, to, subject, text });
+  const info = await transport(user, pass).sendMail({ from: `${APP_NAME} <${user}>`, to, subject, text });
   console.log(`  emailed ${to}: "${subject}" (${info.messageId})`);
   return info;
 }
