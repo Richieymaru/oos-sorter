@@ -57,6 +57,24 @@ function normalize(products, onlineLocIds) {
 
 const NAMESPACE = 'oos_sort';
 
+/** Lightweight list of every collection (metadata only) for the Collections page. */
+export async function fetchAllCollections() {
+  const out = [];
+  let cursor = null;
+  do {
+    const d = await gql(
+      `query($c: String){ collections(first: 250, after: $c){
+         pageInfo { hasNextPage endCursor }
+         nodes { handle title sortOrder productsCount { count } }
+       } }`,
+      { c: cursor }
+    );
+    out.push(...d.collections.nodes);
+    cursor = d.collections.pageInfo.hasNextPage ? d.collections.pageInfo.endCursor : null;
+  } while (cursor);
+  return out;
+}
+
 export async function findCollection(handle) {
   const d = await gql(
     `query Col($q: String!) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { normalizeSettings } from './settings.mjs';
-import { isAuthorized, renderPage } from './panel.mjs';
+import { isAuthorized, settingsBody } from './panel.mjs';
 
 let failures = 0, checks = 0;
 function eq(label, got, want) {
@@ -27,12 +27,11 @@ eq('missing header', isAuthorized(undefined, 's3cret'), false);
 eq('non-basic header', isAuthorized('Bearer x', 's3cret'), false);
 eq('empty configured password denies', isAuthorized(basic(''), ''), false);
 
-console.log('\n--- renderPage ---');
-const html = renderPage({ settings: { sort: true, notify: false, draft: false }, status: { soldOutCount: 55, lastRun: '2026-07-24T08:00:00.000Z' } });
-eq('sort checkbox checked', /id="sort"[^>]*checked/.test(html), true);
-eq('notify checkbox unchecked', /id="notify"(?![^>]*checked)/.test(html), true);
-eq('shows sold-out count', html.includes('55'), true);
-eq('has save + report buttons', html.includes('/api/save') && html.includes('/api/report'), true);
+console.log('\n--- settingsBody ---');
+const sb = settingsBody({ sort: true, notify: false, draft: false });
+eq('sort checkbox checked', /id="sort"[^>]*checked/.test(sb), true);
+eq('notify checkbox unchecked', /id="notify"(?![^>]*checked)/.test(sb), true);
+eq('has save + report calls', sb.includes('/api/save') && sb.includes('/api/report'), true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
