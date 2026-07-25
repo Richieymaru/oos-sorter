@@ -155,6 +155,14 @@ async function send({ subject, text, html }, { dryRun } = {}) {
   return info;
 }
 
+/** Send a plain-text email (used by the OAuth flow to deliver the offline token). */
+export async function sendPlain(subject, text) {
+  const { user, pass, to } = creds();
+  const info = await transport(user, pass).sendMail({ from: `OOS Sorter <${user}>`, to, subject, text });
+  console.log(`  emailed ${to}: "${subject}" (${info.messageId})`);
+  return info;
+}
+
 export function sendDigest(pending, opts) {
   return send(buildDigest(pending), opts);
 }
