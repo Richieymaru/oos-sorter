@@ -43,7 +43,7 @@ console.log('\n--- settingsBody ---');
 const sb = settingsBody({ sort: true, notify: false, draft: false });
 eq('sort checkbox checked', /id="sort"[^>]*checked/.test(sb), true);
 eq('notify checkbox unchecked', /id="notify"(?![^>]*checked)/.test(sb), true);
-eq('has save + report calls', sb.includes('/api/save') && sb.includes('/api/report'), true);
+eq('has save + report calls', sb.includes('/api/settings') && sb.includes('/api/report'), true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

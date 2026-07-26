@@ -1,8 +1,39 @@
+import { requireAuth } from './_auth.mjs';
 import { shell, setPageHeaders, esc } from '../ui.mjs';
-import { productsWithWaitlist } from '../restock.mjs';
-import { shortId } from '../shopify.mjs';
+import { productsWithWaitlist, notifyOneProduct } from '../restock.mjs';
+import { shortId, longId } from '../shopify.mjs';
+
+async function readJson(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  let data = '';
+  for await (const chunk of req) data += chunk;
+  try { return JSON.parse(data || '{}'); } catch { return {}; }
+}
+
+function statCard(value, label) {
+  return `<div class="card stat"><div class="statval mono">${value}</div><div class="statlabel">${esc(label)}</div></div>`;
+}
 
 export default async function handler(req, res) {
+  // POST = "Send now" for one product (password / session-token gated).
+  if (req.method === 'POST') {
+    if (!requireAuth(req, res)) return;
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const { productId } = await readJson(req);
+      const s = String(productId || '');
+      const num = s.replace(/\D/g, '');
+      const gid = s.startsWith('gid://') ? s : (num ? longId(num) : null);
+      if (!gid) { res.end(JSON.stringify({ ok: false, error: 'Missing product.' })); return; }
+      const r = await notifyOneProduct(gid, {});
+      res.end(JSON.stringify({ ok: true, sent: r.sent }));
+    } catch (e) {
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // GET = the page.
   const items = await productsWithWaitlist().catch(() => []);
   const total = items.reduce((n, w) => n + w.list.length, 0);
   const rows = items.length
@@ -45,7 +76,7 @@ export default async function handler(req, res) {
         if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
         if(!confirm('Email everyone waiting for "'+b.dataset.title+'" and clear the list?')) return;
         b.disabled=true; var old=b.textContent; b.textContent='Sending...';
-        var r=await fetch('/api/notify-waitlist',{method:'POST',headers:await authH(),body:JSON.stringify({productId:b.dataset.id})});
+        var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify({productId:b.dataset.id})});
         var j=await r.json().catch(function(){return{};});
         if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } msg.textContent='Sent to '+(j.sent||0)+' \\u2713'; var row=b.closest('tr'); if(row) row.remove(); }
         else { msg.textContent=r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send'); b.disabled=false; b.textContent=old; }
@@ -54,8 +85,4 @@ export default async function handler(req, res) {
   </script>`;
   setPageHeaders(res);
   res.end(shell({ title: 'Waitlists', active: 'waitlists', body }));
-}
-
-function statCard(value, label) {
-  return `<div class="card stat"><div class="statval mono">${value}</div><div class="statlabel">${esc(label)}</div></div>`;
 }

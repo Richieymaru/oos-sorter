@@ -96,7 +96,7 @@ export function settingsBody(settings) {
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
       var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, notifyEmails:document.getElementById('recips').value };
-      var r=await fetch('/api/save',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
+      var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);
     });
