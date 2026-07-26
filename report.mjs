@@ -20,6 +20,7 @@ import { findCollection, fetchCollectionProducts } from './catalog.mjs';
 import { isInStock } from './stock.mjs';
 import { shortId } from './shopify.mjs';
 import { sendReport, buildReport } from './notify.mjs';
+import { loadSettings } from './settings.mjs';
 
 const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
@@ -62,7 +63,8 @@ async function main() {
     return;
   }
 
-  await sendReport(items, {});
+  const settings = await loadSettings().catch(() => ({}));
+  await sendReport(items, { recipients: settings.notifyEmails });
 }
 
 if (IS_MAIN) {

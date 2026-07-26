@@ -25,6 +25,8 @@ export function isAuthorized(authHeader, password) {
  */
 export function settingsBody(settings) {
   const ck = (b) => (b ? ' checked' : '');
+  const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const recips = (settings.notifyEmails || []).join('\n');
   const rows = [
     {
       id: 'sort',
@@ -62,6 +64,11 @@ export function settingsBody(settings) {
   return `
   <p class="eyebrow">Automations</p>
   <form id="f" class="card rows">${toggles}</form>
+  <div class="card pad" style="margin-top:14px">
+    <label class="rowtitle" for="recips">Notification recipients</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Extra emails that also get the daily digest and the "email me" report. One per line.</p>
+    <textarea id="recips" rows="3" placeholder="teammate@example.com" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc(recips)}</textarea>
+  </div>
   <div class="actions">
     <button type="submit" form="f" class="primary" id="save">Save changes</button>
     <button type="button" class="ghost" id="report">Email me the sold-out list</button>
@@ -79,7 +86,7 @@ export function settingsBody(settings) {
     function needPw(){ var v=(pw.value||'').trim(); if(!v){ flash('Enter the panel password',true); pw.focus(); } return v; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); var p=needPw(); if(!p) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, notifyEmails:document.getElementById('recips').value };
       var r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json','x-panel-password':p},body:JSON.stringify(body)});
       if(r.ok){ try{localStorage.setItem('oos_pw',p);}catch(e){} flash('Saved \\u2713'); }
       else flash(r.status===401?'Wrong password':'Couldn\\u2019t save',true);

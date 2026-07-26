@@ -137,14 +137,21 @@ function transport(user, pass) {
   return transportCache;
 }
 
-async function send({ subject, text, html }, { dryRun } = {}) {
+/** Owner (NOTIFY_EMAIL) plus any extra recipients, deduped, as a comma list. */
+function recipientList(base, recipients) {
+  const extra = Array.isArray(recipients) ? recipients : [];
+  return [...new Set([base, ...extra].filter(Boolean))].join(', ');
+}
+
+async function send({ subject, text, html }, { dryRun, recipients } = {}) {
   if (dryRun) {
-    const to = process.env.NOTIFY_EMAIL ?? '(NOTIFY_EMAIL unset)';
+    const to = recipientList(process.env.NOTIFY_EMAIL ?? '(NOTIFY_EMAIL unset)', recipients);
     console.log(`  [dry run] would email ${to}: "${subject}"`);
     text.split('\n').forEach((l) => console.log(`      ${l}`));
     return { dryRun: true };
   }
-  const { user, pass, to } = creds();
+  const { user, pass, to: base } = creds();
+  const to = recipientList(base, recipients);
   const info = await transport(user, pass).sendMail({
     from: `${APP_NAME} <${user}>`,
     to,

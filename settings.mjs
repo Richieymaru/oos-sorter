@@ -7,10 +7,35 @@ import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
 const NAMESPACE = 'oos_sort';
 const KEY = 'settings';
 
-/** Pure: coerce an arbitrary object to strict boolean toggles (default false). */
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Pure: parse recipients (array, or a string split on comma/space/semicolon/
+ *  newline) into clean, lowercased, valid, deduped emails (max 20). */
+export function normalizeEmails(input) {
+  const parts = Array.isArray(input) ? input : String(input ?? '').split(/[\s,;]+/);
+  const seen = new Set();
+  const out = [];
+  for (const p of parts) {
+    const v = String(p).trim().toLowerCase();
+    if (v && EMAIL_RE.test(v) && !seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+      if (out.length >= 20) break;
+    }
+  }
+  return out;
+}
+
+/** Pure: coerce an arbitrary object to strict toggles (default false) + the
+ *  extra digest/report recipients list. */
 export function normalizeSettings(obj) {
   const o = obj || {};
-  return { sort: o.sort === true, notify: o.notify === true, draft: o.draft === true };
+  return {
+    sort: o.sort === true,
+    notify: o.notify === true,
+    draft: o.draft === true,
+    notifyEmails: normalizeEmails(o.notifyEmails),
+  };
 }
 
 export async function loadSettings() {

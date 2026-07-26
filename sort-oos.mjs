@@ -433,7 +433,7 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null
 
     const today = new Date().toISOString().slice(0, 10);
     if (sendDigest && state.pending.length && state.lastDigest !== today) {
-      await sendDigest(state.pending, { dryRun: DRY_RUN });
+      await sendDigest(state.pending, { dryRun: DRY_RUN, recipients: settings.notifyEmails });
       if (!DRY_RUN) {
         state.pending = [];
         state.lastDigest = today;
