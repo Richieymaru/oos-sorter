@@ -34,6 +34,7 @@ export function normalizeSettings(obj) {
     sort: o.sort === true,
     notify: o.notify === true,
     draft: o.draft === true,
+    waitlist: o.waitlist === true,
     notifyEmails: normalizeEmails(o.notifyEmails),
   };
 }

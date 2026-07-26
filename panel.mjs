@@ -46,6 +46,12 @@ export function settingsBody(settings) {
       title: 'Draft sold-out products',
       desc: 'Hide them from the storefront until they’re back in stock.',
     },
+    {
+      id: 'waitlist',
+      on: settings.waitlist,
+      title: 'Back-in-stock waitlist',
+      desc: 'Let shoppers get an email when a sold-out product returns; auto-notify them on restock.',
+    },
   ];
   const toggles = rows
     .map(
@@ -86,7 +92,7 @@ export function settingsBody(settings) {
     function needPw(){ var v=(pw.value||'').trim(); if(!v){ flash('Enter the panel password',true); pw.focus(); } return v; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); var p=needPw(); if(!p) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, notifyEmails:document.getElementById('recips').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, notifyEmails:document.getElementById('recips').value };
       var r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json','x-panel-password':p},body:JSON.stringify(body)});
       if(r.ok){ try{localStorage.setItem('oos_pw',p);}catch(e){} flash('Saved \\u2713'); }
       else flash(r.status===401?'Wrong password':'Couldn\\u2019t save',true);

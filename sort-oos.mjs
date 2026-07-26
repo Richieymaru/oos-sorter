@@ -57,6 +57,7 @@ import { loadState, saveState } from './state.mjs';
 import { loadSettings } from './settings.mjs';
 import { restoreRestocked, applyDrafts } from './draft.mjs';
 import { sendDigest } from './notify.mjs';
+import { notifyRestocks } from './restock.mjs';
 
 /** True only when this file is the process entry point, not an import. */
 const IS_MAIN =
@@ -74,6 +75,7 @@ const DRY_RUN = process.env.DRY_RUN === 'true';
 let FEATURE_SORT = false;
 let FEATURE_NOTIFY = false;
 let FEATURE_DRAFT = false;
+let FEATURE_WAITLIST = false;
 const SEND_DIGEST = process.env.SEND_DIGEST === 'true';
 
 const NAMESPACE = 'oos_sort';
@@ -376,6 +378,7 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null
   FEATURE_SORT = resolveFlag(process.env.FEATURE_SORT, settings.sort);
   FEATURE_NOTIFY = resolveFlag(process.env.FEATURE_NOTIFY, settings.notify);
   FEATURE_DRAFT = resolveFlag(process.env.FEATURE_DRAFT, settings.draft);
+  FEATURE_WAITLIST = resolveFlag(process.env.FEATURE_WAITLIST, settings.waitlist);
 
   // `only` (from the webhook) restricts to specific collections; otherwise
   // COLLECTION_HANDLES empty or "all" => auto-discover every collection.
@@ -385,7 +388,7 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null
     return { ok: true, collections: 0, failures: 0, features: 'nothing', soldOut: 0 };
   }
 
-  const on = [FEATURE_SORT && 'sort', FEATURE_NOTIFY && 'notify', FEATURE_DRAFT && 'draft']
+  const on = [FEATURE_SORT && 'sort', FEATURE_NOTIFY && 'notify', FEATURE_DRAFT && 'draft', FEATURE_WAITLIST && 'waitlist']
     .filter(Boolean)
     .join('+') || 'nothing';
   const scope = only && only.length
@@ -443,6 +446,18 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null
         state.pending.length
           ? `  digest already sent today (${state.lastDigest}) — skipping`
           : `  nothing pending — no digest`
+      );
+    }
+  }
+
+  // Phase 3.5: back-in-stock — email the waitlist of any product that returned
+  // to stock, then clear it. Full runs only (it scans the whole store).
+  if (FEATURE_WAITLIST && !only) {
+    const rr = await notifyRestocks({ dryRun: DRY_RUN });
+    if (rr.waitlisted) {
+      console.log(
+        `\nBack-in-stock: ${rr.waitlisted} product(s) with a waitlist | ` +
+          `${DRY_RUN ? 'would email' : 'emailed'} ${rr.emailsSent} shopper(s) across ${rr.productsNotified} restocked product(s)`
       );
     }
   }

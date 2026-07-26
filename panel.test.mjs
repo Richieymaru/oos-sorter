@@ -12,12 +12,13 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-eq('empty -> all false', normalizeSettings({}), { sort: false, notify: false, draft: false, notifyEmails: E });
-eq('undefined -> all false', normalizeSettings(undefined), { sort: false, notify: false, draft: false, notifyEmails: E });
-eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { sort: true, notify: true, draft: true, notifyEmails: E });
-eq('mixed', normalizeSettings({ sort: true, notify: false }), { sort: true, notify: false, draft: false, notifyEmails: E });
-eq('string "true" is not true', normalizeSettings({ sort: 'true' }), { sort: false, notify: false, draft: false, notifyEmails: E });
-eq('extra keys ignored', normalizeSettings({ sort: true, evil: true }), { sort: true, notify: false, draft: false, notifyEmails: E });
+eq('empty -> all false', normalizeSettings({}), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E });
+eq('undefined -> all false', normalizeSettings(undefined), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E });
+eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { sort: true, notify: true, draft: true, waitlist: false, notifyEmails: E });
+eq('mixed', normalizeSettings({ sort: true, notify: false }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E });
+eq('string "true" is not true', normalizeSettings({ sort: 'true' }), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E });
+eq('extra keys ignored', normalizeSettings({ sort: true, evil: true }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E });
+eq('waitlist toggle', normalizeSettings({ waitlist: true }).waitlist, true);
 eq('recipients parsed inside settings', normalizeSettings({ notifyEmails: 'A@x.com, b@y.com' }).notifyEmails, ['a@x.com', 'b@y.com']);
 
 console.log('\n--- normalizeEmails ---');
