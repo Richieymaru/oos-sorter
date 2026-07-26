@@ -36,16 +36,19 @@ export default async function handler(req, res) {
   </div>
   <script>
     var pw=document.getElementById('pw'), msg=document.getElementById('msg');
-    try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){}
+    var embedded=(typeof shopify!=='undefined' && !!shopify.idToken);
+    if(embedded){ var pwd=document.querySelector('.pw'); if(pwd) pwd.style.display='none'; }
+    else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
+    async function authH(){ var h={'Content-Type':'application/json'}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.querySelectorAll('.send').forEach(function(b){
       b.addEventListener('click', async function(){
-        var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; }
+        if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
         if(!confirm('Email everyone waiting for "'+b.dataset.title+'" and clear the list?')) return;
         b.disabled=true; var old=b.textContent; b.textContent='Sending...';
-        var r=await fetch('/api/notify-waitlist',{method:'POST',headers:{'Content-Type':'application/json','x-panel-password':p},body:JSON.stringify({productId:b.dataset.id})});
+        var r=await fetch('/api/notify-waitlist',{method:'POST',headers:await authH(),body:JSON.stringify({productId:b.dataset.id})});
         var j=await r.json().catch(function(){return{};});
-        if(r.ok&&j.ok){ try{localStorage.setItem('oos_pw',p);}catch(e){} msg.textContent='Sent to '+(j.sent||0)+' \\u2713'; var row=b.closest('tr'); if(row) row.remove(); }
-        else { msg.textContent=r.status===401?'Wrong password':(j.error||'Could not send'); b.disabled=false; b.textContent=old; }
+        if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } msg.textContent='Sent to '+(j.sent||0)+' \\u2713'; var row=b.closest('tr'); if(row) row.remove(); }
+        else { msg.textContent=r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send'); b.disabled=false; b.textContent=old; }
       });
     });
   </script>`;

@@ -87,23 +87,26 @@ export function settingsBody(settings) {
   <p class="faint" style="margin:22px 4px 0;font-size:11.5px">Changes take effect on the next run. Sold-out is judged by what your online store can actually sell.</p>
   <script>
     var pw=document.getElementById('pw'), msg=document.getElementById('msg');
-    try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){}
+    var embedded=(typeof shopify!=='undefined' && !!shopify.idToken);
+    if(embedded){ var pwd=document.querySelector('.pw'); if(pwd) pwd.style.display='none'; }
+    else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
     function flash(t,err){ msg.textContent=t; msg.className=err?'err':''; if(!err) setTimeout(function(){ if(msg.textContent===t) msg.textContent=''; },2500); }
-    function needPw(){ var v=(pw.value||'').trim(); if(!v){ flash('Enter the panel password',true); pw.focus(); } return v; }
+    function needAuth(){ if(embedded) return true; var v=(pw.value||'').trim(); if(!v){ flash('Enter the panel password',true); pw.focus(); return false; } return true; }
+    async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
-      e.preventDefault(); var p=needPw(); if(!p) return;
+      e.preventDefault(); if(!needAuth()) return;
       var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, notifyEmails:document.getElementById('recips').value };
-      var r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json','x-panel-password':p},body:JSON.stringify(body)});
-      if(r.ok){ try{localStorage.setItem('oos_pw',p);}catch(e){} flash('Saved \\u2713'); }
-      else flash(r.status===401?'Wrong password':'Couldn\\u2019t save',true);
+      var r=await fetch('/api/save',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
+      if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
+      else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);
     });
     document.getElementById('report').addEventListener('click', async function(){
-      var p=needPw(); if(!p) return;
+      if(!needAuth()) return;
       var b=document.getElementById('report'); b.disabled=true; var old=b.textContent; b.textContent='Sending\\u2026';
-      var r=await fetch('/api/report',{method:'POST',headers:{'x-panel-password':p}});
+      var r=await fetch('/api/report',{method:'POST',headers:await authH(false)});
       var j=await r.json().catch(function(){return{};});
-      if(r.ok){ try{localStorage.setItem('oos_pw',p);}catch(e){} flash('Sent to your email ('+(j.count!=null?j.count:'?')+') \\u2713'); }
-      else flash(r.status===401?'Wrong password':'Couldn\\u2019t send',true);
+      if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Sent to your email ('+(j.count!=null?j.count:'?')+') \\u2713'); }
+      else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t send',true);
       b.disabled=false; b.textContent=old;
     });
   </script>`;

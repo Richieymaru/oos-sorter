@@ -120,12 +120,21 @@ const CSS = `
   .pw label{font-size:12px;color:var(--faint)}
 `;
 
-/** Full HTML document with the shared shell. `active` = 'home'|'collections'|'settings'. */
+/** App Bridge tags so pages opened inside the Shopify admin can fetch a session
+ *  token (shopify.idToken) — used for password-free auth on the actions. */
+export function appBridgeHead() {
+  const key = process.env.CLIENT_ID || '';
+  return `<meta name="shopify-api-key" content="${esc(key)}">
+<script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>`;
+}
+
+/** Full HTML document with the shared shell. `active` = 'home'|'collections'|'waitlists'|'settings'. */
 export function shell({ title, active = 'home', body }) {
   const tab = (href, key, label) =>
     `<a href="${href}" class="${active === key ? 'on' : ''}">${label}</a>`;
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+${appBridgeHead()}
 <title>${esc(title)} · ${esc(APP_NAME)}</title>
 <style>${CSS}</style></head><body>
 <header class="topbar"><div class="topinner">
