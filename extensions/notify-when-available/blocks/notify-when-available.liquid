@@ -1,0 +1,46 @@
+{%- comment -%}
+  "Notify When Available" — shows an email form only when the product is sold out.
+  Posts to the OOS Sorter /api/subscribe endpoint (set in block settings).
+{%- endcomment -%}
+{%- assign v = product.selected_or_first_available_variant -%}
+{%- assign available = false -%}
+{%- if v and v.available -%}{%- assign available = true -%}{%- endif -%}
+{%- unless available -%}
+  <div
+    class="oos-notify"
+    data-oos-notify
+    data-product-id="{{ product.id }}"
+    data-endpoint="{{ block.settings.endpoint }}"
+    data-success="{{ block.settings.success_text | escape }}"
+    {{ block.shopify_attributes }}
+  >
+    <p class="oos-notify__title">{{ block.settings.heading }}</p>
+    <form class="oos-notify__form" novalidate>
+      <input type="email" class="oos-notify__email" placeholder="{{ block.settings.placeholder }}" autocomplete="email" required>
+      <input type="text" class="oos-notify__hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <label class="oos-notify__consent">
+        <input type="checkbox" class="oos-notify__consent-cb" required>
+        <span>{{ block.settings.consent_text }}</span>
+      </label>
+      <button type="submit" class="oos-notify__btn">{{ block.settings.button_text }}</button>
+    </form>
+    <p class="oos-notify__msg" role="status" aria-live="polite"></p>
+  </div>
+{%- endunless -%}
+{% schema %}
+{
+  "name": "Notify When Available",
+  "target": "section",
+  "enabled_on": { "templates": ["product"] },
+  "stylesheet": "notify.css",
+  "javascript": "notify.js",
+  "settings": [
+    { "type": "text", "id": "endpoint", "label": "Subscribe endpoint", "default": "https://oos-sorter.vercel.app/api/subscribe", "info": "Your OOS Sorter /api/subscribe URL." },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Sold out - get notified when it's back" },
+    { "type": "text", "id": "placeholder", "label": "Email placeholder", "default": "you@email.com" },
+    { "type": "text", "id": "button_text", "label": "Button text", "default": "Notify me" },
+    { "type": "text", "id": "consent_text", "label": "Consent text", "default": "Email me once when this is back in stock." },
+    { "type": "text", "id": "success_text", "label": "Success message", "default": "Done! We'll email you when it's back." }
+  ]
+}
+{% endschema %}

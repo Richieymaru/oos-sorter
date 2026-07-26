@@ -1,0 +1,10 @@
+# Theme app extension for the "Notify When Available" storefront button.
+# If `shopify app deploy` rejects this file, regenerate it with
+#   shopify app generate extension --template theme_app_extension
+# then keep the blocks/ and assets/ files from this folder.
+api_version = "2026-07"
+
+[[extensions]]
+type = "theme"
+name = "Notify When Available"
+handle = "notify-when-available"

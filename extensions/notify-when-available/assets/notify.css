@@ -1,0 +1,27 @@
+.oos-notify {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid #e4e8ef;
+  border-radius: 12px;
+  background: #fafbfc;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.oos-notify__title { margin: 0 0 8px; font-weight: 600; color: #161b22; }
+.oos-notify__form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.oos-notify__email {
+  flex: 1 1 200px; min-width: 160px;
+  padding: 9px 11px; border: 1px solid #d7dbe2; border-radius: 8px; font-size: 14px;
+}
+.oos-notify__btn {
+  padding: 9px 16px; border: 0; border-radius: 8px;
+  background: #0e9c6b; color: #fff; font-weight: 600; cursor: pointer;
+}
+.oos-notify__btn:disabled { opacity: .6; cursor: default; }
+.oos-notify__consent {
+  flex-basis: 100%; display: flex; gap: 7px; align-items: flex-start;
+  font-size: 12.5px; color: #5f6875;
+}
+.oos-notify__consent input { margin-top: 2px; }
+.oos-notify__hp { position: absolute !important; left: -9999px !important; width: 1px; height: 1px; opacity: 0; }
+.oos-notify__msg { margin: 8px 0 0; font-size: 13px; color: #0a6b4a; min-height: 1em; }
