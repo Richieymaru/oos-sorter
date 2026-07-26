@@ -1,6 +1,6 @@
 {%- comment -%}
-  "Notify When Available" — shows an email form only when the product is sold out.
-  Posts to the OOS Sorter /api/subscribe endpoint (set in block settings).
+  "Notify When Available" — on a sold-out product, shows a button that opens an
+  email popup. Posts to the OOS Sorter /api/subscribe endpoint.
 {%- endcomment -%}
 {%- assign v = product.selected_or_first_available_variant -%}
 {%- assign available = false -%}
@@ -11,20 +11,14 @@
     data-oos-notify
     data-product-id="{{ product.id }}"
     data-endpoint="{{ block.settings.endpoint }}"
+    data-heading="{{ block.settings.modal_heading | escape }}"
+    data-subtitle="{{ block.settings.modal_subtitle | escape }}"
+    data-placeholder="{{ block.settings.placeholder | escape }}"
+    data-submit="{{ block.settings.submit_text | escape }}"
     data-success="{{ block.settings.success_text | escape }}"
     {{ block.shopify_attributes }}
   >
-    <p class="oos-notify__title">{{ block.settings.heading }}</p>
-    <form class="oos-notify__form" novalidate>
-      <input type="email" class="oos-notify__email" placeholder="{{ block.settings.placeholder }}" autocomplete="email" required>
-      <input type="text" class="oos-notify__hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <label class="oos-notify__consent">
-        <input type="checkbox" class="oos-notify__consent-cb" required>
-        <span>{{ block.settings.consent_text }}</span>
-      </label>
-      <button type="submit" class="oos-notify__btn">{{ block.settings.button_text }}</button>
-    </form>
-    <p class="oos-notify__msg" role="status" aria-live="polite"></p>
+    <button type="button" class="oos-notify__open">{{ block.settings.button_text }}</button>
   </div>
 {%- endunless -%}
 {% schema %}
@@ -36,11 +30,12 @@
   "javascript": "notify.js",
   "settings": [
     { "type": "text", "id": "endpoint", "label": "Subscribe endpoint", "default": "https://oos-sorter.vercel.app/api/subscribe", "info": "Your OOS Sorter /api/subscribe URL." },
-    { "type": "text", "id": "heading", "label": "Heading", "default": "Sold out - get notified when it's back" },
+    { "type": "text", "id": "button_text", "label": "Button", "default": "Notify me when available" },
+    { "type": "text", "id": "modal_heading", "label": "Popup heading", "default": "Get notified when it's back" },
+    { "type": "text", "id": "modal_subtitle", "label": "Popup subtitle", "default": "We'll email you once, the moment this is back in stock." },
     { "type": "text", "id": "placeholder", "label": "Email placeholder", "default": "you@email.com" },
-    { "type": "text", "id": "button_text", "label": "Button text", "default": "Notify me" },
-    { "type": "text", "id": "consent_text", "label": "Consent text", "default": "Email me once when this is back in stock." },
-    { "type": "text", "id": "success_text", "label": "Success message", "default": "Done! We'll email you when it's back." }
+    { "type": "text", "id": "submit_text", "label": "Submit button", "default": "Notify me" },
+    { "type": "text", "id": "success_text", "label": "Success message", "default": "You're on the list! We'll email you the moment it's back." }
   ]
 }
 {% endschema %}

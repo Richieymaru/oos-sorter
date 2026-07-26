@@ -36,17 +36,26 @@ export default async function handler(req, res) {
   // GET = the page.
   const items = await productsWithWaitlist().catch(() => []);
   const total = items.reduce((n, w) => n + w.list.length, 0);
-  const rows = items.length
+  const fmt = (ts) => esc(String(ts || '').replace('T', ' ').slice(0, 16));
+  const cards = items.length
     ? items
         .map(
-          (w) => `<tr>
-          <td class="cname">${esc(w.title)}</td>
-          <td class="num">${w.list.length}</td>
-          <td style="text-align:right"><button class="ghost send" data-id="${esc(shortId(w.id))}" data-title="${esc(w.title)}">Send now</button></td>
-        </tr>`
+          (w) => `<div class="card pad" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <div class="cname" style="font-size:15px">${esc(w.title)}</div>
+            <div class="faint" style="font-size:12.5px">${w.list.length} shopper(s) waiting</div>
+          </div>
+          <button class="ghost send" data-id="${esc(shortId(w.id))}" data-title="${esc(w.title)}">Send now</button>
+        </div>
+        <table style="margin-top:12px">
+          <thead><tr><th>Email</th><th class="num">Joined</th></tr></thead>
+          <tbody>${w.list.map((s) => `<tr><td class="mono">${esc(s.email)}</td><td class="num">${fmt(s.ts)}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>`
         )
         .join('')
-    : `<tr><td colspan="3" class="empty">No waitlists yet. Shoppers join from the "Notify When Available" button on sold-out product pages.</td></tr>`;
+    : `<div class="card empty">No waitlists yet. Shoppers join from the "Notify me when available" button on sold-out product pages.</div>`;
 
   const body = `
   <div class="pagehead"><h1>Waitlists</h1><p>Shoppers waiting for a sold-out product to return. They're emailed automatically on restock &mdash; or send now.</p></div>
@@ -54,12 +63,7 @@ export default async function handler(req, res) {
     ${statCard(items.length, 'Products with a waitlist')}
     ${statCard(total, 'Shoppers waiting')}
   </div>
-  <div class="card">
-    <table>
-      <thead><tr><th>Product</th><th class="num">Waiting</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  </div>
+  ${cards}
   <div class="pw" style="margin-top:16px">
     <label for="pw">Panel password</label>
     <input type="password" id="pw" placeholder="to send" autocomplete="current-password">
@@ -78,7 +82,7 @@ export default async function handler(req, res) {
         b.disabled=true; var old=b.textContent; b.textContent='Sending...';
         var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify({productId:b.dataset.id})});
         var j=await r.json().catch(function(){return{};});
-        if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } msg.textContent='Sent to '+(j.sent||0)+' \\u2713'; var row=b.closest('tr'); if(row) row.remove(); }
+        if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } msg.textContent='Sent to '+(j.sent||0)+' \\u2713'; var card=b.closest('.card'); if(card) card.remove(); }
         else { msg.textContent=r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send'); b.disabled=false; b.textContent=old; }
       });
     });
