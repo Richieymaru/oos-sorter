@@ -47,6 +47,21 @@ export function verifyUnsub(productId, email, sig, secret) {
   return got.length === exp.length && crypto.timingSafeEqual(got, exp);
 }
 
+/** Secret used to sign unsubscribe links — any stable app secret works. */
+export function unsubSecret() {
+  return process.env.CLIENT_SECRET || process.env.WEBHOOK_TOKEN || process.env.RUN_TOKEN || '';
+}
+
+/** A signed one-click unsubscribe URL for a product (short id) + email. */
+export function unsubUrl(base, productShortId, email) {
+  const root = base || process.env.PUBLIC_URL || 'https://oos-sorter.vercel.app';
+  const u = new URL('/api/unsubscribe', root);
+  u.searchParams.set('product', String(productShortId));
+  u.searchParams.set('email', email);
+  u.searchParams.set('sig', signUnsub(productShortId, email, unsubSecret()));
+  return u.toString();
+}
+
 /* ---- metafield I/O ---- */
 
 /** Read a product's waitlist (empty array if unset/unparsable). */
