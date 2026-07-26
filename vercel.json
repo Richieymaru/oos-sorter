@@ -2,6 +2,7 @@
   "rewrites": [
     { "source": "/", "destination": "/api/index" },
     { "source": "/collections", "destination": "/api/collections" },
+    { "source": "/waitlists", "destination": "/api/waitlists" },
     { "source": "/settings", "destination": "/api/settings" }
   ]
 }

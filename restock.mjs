@@ -10,11 +10,11 @@
 import { gql, shortId } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock } from './stock.mjs';
-import { clearWaitlist, unsubUrl } from './waitlist.mjs';
+import { readWaitlist, clearWaitlist, unsubUrl } from './waitlist.mjs';
 import { sendBackInStock } from './notify.mjs';
 
 /** Every product that currently has at least one waitlist subscriber. */
-async function productsWithWaitlist() {
+export async function productsWithWaitlist() {
   const out = [];
   let cursor = null;
   do {
@@ -65,4 +65,24 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
     productsNotified++;
   }
   return { waitlisted: waited.length, productsNotified, emailsSent };
+}
+
+/** Manually email + clear ONE product's waitlist (admin "Send now"), regardless
+ *  of stock — the merchant is deciding it's back. Returns { sent, title }. */
+export async function notifyOneProduct(productGid, { dryRun = false, base = null } = {}) {
+  const d = await gql(`query($id: ID!) { product(id: $id) { title handle } }`, { id: productGid });
+  const p = d.product || {};
+  const list = await readWaitlist(productGid);
+  let sent = 0;
+  for (const sub of list) {
+    const unsub = unsubUrl(base, shortId(productGid), sub.email);
+    try {
+      await sendBackInStock(sub.email, { title: p.title, handle: p.handle }, unsub, { dryRun });
+      sent++;
+    } catch (e) {
+      console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
+    }
+  }
+  if (!dryRun) await clearWaitlist(productGid);
+  return { sent, title: p.title, total: list.length };
 }

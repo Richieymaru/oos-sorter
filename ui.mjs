@@ -133,6 +133,7 @@ export function shell({ title, active = 'home', body }) {
   <nav class="tabs">
     ${tab('/', 'home', 'Dashboard')}
     ${tab('/collections', 'collections', 'Collections')}
+    ${tab('/waitlists', 'waitlists', 'Waitlists')}
     ${tab('/settings', 'settings', 'Settings')}
   </nav>
 </div></header>
