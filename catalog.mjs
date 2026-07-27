@@ -31,6 +31,7 @@ function variantFields(onlineLocIds) {
     .map((id, i) => `l${i}: inventoryLevel(locationId: "${id}") { quantities(names: ["available"]) { name quantity } }`)
     .join('\n            ');
   return `
+    id
     inventoryQuantity
     inventoryPolicy
     inventoryItem { tracked ${levels} }`;
@@ -156,7 +157,8 @@ export async function fetchProductsByIds(ids) {
       `query Byid($ids: [ID!]!) {
          nodes(ids: $ids) {
            ... on Product {
-             id title status tracksInventory totalInventory
+             id title handle status tracksInventory totalInventory
+             featuredImage { url }
              variants(first: 100) { nodes { ${variantFields(onlineLocIds)} } }
            }
          }

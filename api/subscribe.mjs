@@ -5,7 +5,8 @@
  * per-product cap, a honeypot field, and required consent.
  */
 import { subscribe } from '../waitlist.mjs';
-import { longId } from '../shopify.mjs';
+import { longId, gql } from '../shopify.mjs';
+import { notifySlackSignup } from '../slack.mjs';
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -44,6 +45,18 @@ export default async function handler(req, res) {
     const r = await subscribe(gid, email, new Date().toISOString());
     if (r.reason === 'invalid') { res.end(JSON.stringify({ ok: false, error: 'Enter a valid email.' })); return; }
     if (r.reason === 'full') { res.end(JSON.stringify({ ok: false, error: 'This waitlist is full right now.' })); return; }
+
+    // Slack ping on a genuinely new signup (only when a webhook is configured,
+    // so there's no extra product fetch otherwise). Never blocks/breaks the reply.
+    if (r.added && process.env.SLACK_WEBHOOK_URL) {
+      try {
+        const d = await gql(`query($id: ID!) { product(id: $id) { title handle } }`, { id: gid });
+        await notifySlackSignup({ email, title: d.product?.title, handle: d.product?.handle, count: r.count });
+      } catch (e) {
+        console.error(`  ! Slack signup notify skipped: ${e.message}`);
+      }
+    }
+
     res.end(JSON.stringify({ ok: true, already: r.reason === 'exists', count: r.count }));
   } catch (e) {
     res.end(JSON.stringify({ ok: false, error: e.message }));

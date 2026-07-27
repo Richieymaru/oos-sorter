@@ -52,10 +52,17 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
   for (const w of waited) {
     const sp = byId.get(w.id);
     if (!sp || !isInStock(sp)) continue; // still sold out — keep the list
+    const first = sp.variants?.nodes?.[0];
+    const product = {
+      title: w.title,
+      handle: w.handle,
+      image: sp.featuredImage?.url || null,
+      variantId: first?.id ? shortId(first.id) : null,
+    };
     for (const sub of w.list) {
       const unsub = unsubUrl(base, shortId(w.id), sub.email);
       try {
-        await sendBackInStock(sub.email, { title: w.title, handle: w.handle }, unsub, { dryRun });
+        await sendBackInStock(sub.email, product, unsub, { dryRun });
         emailsSent++;
       } catch (e) {
         console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
@@ -70,14 +77,26 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
 /** Manually email + clear ONE product's waitlist (admin "Send now"), regardless
  *  of stock — the merchant is deciding it's back. Returns { sent, title }. */
 export async function notifyOneProduct(productGid, { dryRun = false, base = null } = {}) {
-  const d = await gql(`query($id: ID!) { product(id: $id) { title handle } }`, { id: productGid });
+  const d = await gql(
+    `query($id: ID!) { product(id: $id) {
+       title handle featuredImage { url } variants(first: 1) { nodes { id } }
+     } }`,
+    { id: productGid }
+  );
   const p = d.product || {};
+  const first = p.variants?.nodes?.[0];
+  const product = {
+    title: p.title,
+    handle: p.handle,
+    image: p.featuredImage?.url || null,
+    variantId: first?.id ? shortId(first.id) : null,
+  };
   const list = await readWaitlist(productGid);
   let sent = 0;
   for (const sub of list) {
     const unsub = unsubUrl(base, shortId(productGid), sub.email);
     try {
-      await sendBackInStock(sub.email, { title: p.title, handle: p.handle }, unsub, { dryRun });
+      await sendBackInStock(sub.email, product, unsub, { dryRun });
       sent++;
     } catch (e) {
       console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);

@@ -8,7 +8,7 @@
     "start": "node --env-file=.env sort-oos.mjs",
     "check": "node --env-file=.env check-setup.mjs",
     "report": "node --env-file=.env report.mjs",
-    "test": "node moves.test.mjs && node features.test.mjs && node panel.test.mjs && node oauth.test.mjs && node waitlist.test.mjs && node session.test.mjs"
+    "test": "node moves.test.mjs && node features.test.mjs && node panel.test.mjs && node oauth.test.mjs && node waitlist.test.mjs && node session.test.mjs && node slack.test.mjs && node notify.test.mjs"
   },
   "engines": {
     "node": ">=20.6"

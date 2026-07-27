@@ -124,24 +124,38 @@ export function buildReport(items) {
   return { subject, text, html };
 }
 
-/** Pure: build a single-product "back in stock" email for one shopper. */
+/** Pure: build a single-product "back in stock" email for one shopper.
+ *  product: { title, handle, image, variantId } — image + variantId are optional.
+ *  When variantId is present the "Add to Cart" button deep-links to the cart. */
 export function buildBackInStock(product, unsub) {
   const title = product.title ?? 'Your item';
-  const url = product.handle && SHOP ? `https://${SHOP}/products/${product.handle}` : (SHOP ? `https://${SHOP}` : '#');
+  const productUrl = product.handle && SHOP ? `https://${SHOP}/products/${product.handle}` : (SHOP ? `https://${SHOP}` : '#');
+  // A /cart/<variantId>:1 permalink adds the item and lands the shopper on the cart.
+  const cartUrl = product.variantId && SHOP ? `https://${SHOP}/cart/${product.variantId}:1` : productUrl;
   const subject = `${title} is back in stock`;
   const text =
     `Good news! "${title}" is available again on ${SHOP}.\n\n` +
-    `Get it here: ${url}\n\n— ${APP_NAME}\n\n` +
+    `Add it to your cart: ${cartUrl}\n` +
+    `Or view the product: ${productUrl}\n\n— ${APP_NAME}\n\n` +
     `Don't want these emails? Unsubscribe: ${unsub}`;
+  const imageBlock = product.image
+    ? `<tr><td style="padding:0 24px 4px" align="center">
+         <a href="${esc(cartUrl)}"><img src="${esc(product.image)}" alt="${esc(title)}" width="512" style="width:100%;max-width:512px;height:auto;border-radius:12px;border:1px solid #eef1f6;display:block"></a>
+       </td></tr>`
+    : '';
   const html = `<!doctype html><html><body style="margin:0;background:#eef1f6">
   <div style="background:#eef1f6;padding:28px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;width:100%;background:#fff;border:1px solid #e4e8ef;border-radius:16px;overflow:hidden">
-        <tr><td style="padding:24px">
+        <tr><td style="padding:24px 24px 12px">
           <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:#0a6b4a;text-transform:uppercase">Back in stock</div>
           <div style="font-size:20px;font-weight:700;color:#161b22;margin:8px 0 6px">${esc(title)}</div>
           <div style="font-size:14px;color:#5f6875;line-height:1.5">It's available again on ${esc(SHOP)}. Grab it before it sells out.</div>
-          <a href="${esc(url)}" style="display:inline-block;margin-top:18px;background:#0e9c6b;color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:11px 20px;border-radius:10px">View product</a>
+        </td></tr>
+        ${imageBlock}
+        <tr><td style="padding:16px 24px 24px">
+          <a href="${esc(cartUrl)}" style="display:inline-block;background:#0e9c6b;color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:10px">Add to Cart</a>
+          <a href="${esc(productUrl)}" style="display:inline-block;margin-left:6px;color:#0a6b4a;text-decoration:none;font-size:14px;font-weight:600;padding:12px 10px">View product</a>
         </td></tr>
         <tr><td style="padding:16px 24px;border-top:1px solid #eef1f6;font-size:11px;color:#8b95a3;line-height:1.5">
           You asked ${esc(APP_NAME)} to notify you when this came back. <a href="${esc(unsub)}" style="color:#8b95a3">Unsubscribe</a>.
