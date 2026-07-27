@@ -1,5 +1,5 @@
 import { loadSettings, saveSettings, normalizeSettings } from '../settings.mjs';
-import { shell, setPageHeaders } from '../ui.mjs';
+import { shell, setPageHeaders, notConnectedBody, shopOf } from '../ui.mjs';
 import { settingsBody } from '../panel.mjs';
 import { requireAuth } from './_auth.mjs';
 
@@ -22,7 +22,15 @@ export default async function handler(req, res) {
   }
 
   // GET = the page.
-  const settings = await loadSettings();
+  let settings;
+  try {
+    settings = await loadSettings();
+  } catch (e) {
+    console.error('settings: not connected —', e.message);
+    setPageHeaders(res);
+    res.end(shell({ title: 'Settings', active: 'settings', body: notConnectedBody(shopOf(req)) }));
+    return;
+  }
   const body =
     `<div class="pagehead"><h1>Settings</h1><p>Choose what happens when a product sells out.</p></div>` +
     settingsBody(settings);

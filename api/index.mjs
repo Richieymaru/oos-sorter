@@ -1,14 +1,23 @@
 import { loadSettings } from '../settings.mjs';
 import { loadState } from '../state.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
-import { shell, setPageHeaders, statCard, badge, relTime, esc } from '../ui.mjs';
+import { shell, setPageHeaders, statCard, badge, relTime, esc, notConnectedBody, shopOf } from '../ui.mjs';
 
 export default async function handler(req, res) {
-  const [settings, state, handles] = await Promise.all([
-    loadSettings(),
-    loadState(),
-    fetchAllCollectionHandles().catch(() => []),
-  ]);
+  let settings, state, handles;
+  try {
+    [settings, state, handles] = await Promise.all([
+      loadSettings(),
+      loadState(),
+      fetchAllCollectionHandles().catch(() => []),
+    ]);
+  } catch (e) {
+    // No valid token yet (app not installed / not authorized on this shop).
+    console.error('index: not connected —', e.message);
+    setPageHeaders(res);
+    res.end(shell({ title: 'Dashboard', active: 'home', body: notConnectedBody(shopOf(req)) }));
+    return;
+  }
   const soldOut = (state.soldOut || []).length;
   const feat = [
     { on: settings.sort, label: 'Sort to bottom' },

@@ -159,6 +159,26 @@ export function setPageHeaders(res) {
   );
 }
 
+/**
+ * Body for the "app isn't connected to this store yet" state. Shown instead of
+ * crashing when a token can't be obtained (no ADMIN_TOKEN + client-credentials
+ * can't authenticate — e.g. the app isn't installed on the shop yet).
+ */
+export function notConnectedBody(shop) {
+  const install = shop ? `/api/install?shop=${encodeURIComponent(shop)}` : '/api/install';
+  return `<div class="pagehead"><h1>Finish connecting ${esc(APP_NAME)}</h1>
+    <p>This store isn't authorized yet, so there's nothing to show. One approval and you're set.</p></div>
+  <div class="card pad">
+    <b>Authorize ${esc(APP_NAME)} on your store</b>
+    <p class="muted" style="margin:6px 0 14px">It needs permission to read your products and reorder collections. Nothing runs until you approve it.</p>
+    <a href="${install}" target="_top" style="text-decoration:none"><button class="primary">Install / reconnect</button></a>
+    <p class="faint" style="margin:14px 0 0;font-size:12px">If this keeps appearing right after installing, the store may not be in the same Dev Dashboard organization as the app — that path needs the authorization-code install, which yields an offline token to set as <span class="mono">ADMIN_TOKEN</span>.</p>
+  </div>`;
+}
+
+/** The shop domain for the current request, from the embedded query string. */
+export const shopOf = (req) => (req && req.query && req.query.shop) || '';
+
 /** Friendly relative time from an ISO string, server-side (dashboard/collections). */
 export function relTime(iso) {
   if (!iso) return 'never';
