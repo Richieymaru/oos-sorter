@@ -27,6 +27,7 @@ export function settingsBody(settings) {
   const ck = (b) => (b ? ' checked' : '');
   const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const recips = (settings.notifyEmails || []).join('\n');
+  const slack = settings.slackWebhook || '';
   const rows = [
     {
       id: 'sort',
@@ -75,6 +76,11 @@ export function settingsBody(settings) {
     <p class="rowdesc" style="margin:3px 0 9px">Extra emails that also get the daily digest and the "email me" report. One per line.</p>
     <textarea id="recips" rows="3" placeholder="teammate@example.com" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc(recips)}</textarea>
   </div>
+  <div class="card pad" style="margin-top:14px">
+    <label class="rowtitle" for="slack">Slack notifications</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a shopper joins a back-in-stock waitlist. Change it any time to point at a different channel or Slack workspace. Leave blank to turn Slack off.</p>
+    <input id="slack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(slack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+  </div>
   <div class="actions">
     <button type="submit" form="f" class="primary" id="save">Save changes</button>
     <button type="button" class="ghost" id="report">Email me the sold-out list</button>
@@ -95,7 +101,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, notifyEmails:document.getElementById('recips').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { normalizeSettings, normalizeEmails } from './settings.mjs';
+import { normalizeSettings, normalizeEmails, normalizeSlackWebhook } from './settings.mjs';
 import { isAuthorized, settingsBody } from './panel.mjs';
 
 let failures = 0, checks = 0;
@@ -12,14 +12,24 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-eq('empty -> all false', normalizeSettings({}), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E });
-eq('undefined -> all false', normalizeSettings(undefined), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E });
-eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { sort: true, notify: true, draft: true, waitlist: false, notifyEmails: E });
-eq('mixed', normalizeSettings({ sort: true, notify: false }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E });
-eq('string "true" is not true', normalizeSettings({ sort: 'true' }), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E });
-eq('extra keys ignored', normalizeSettings({ sort: true, evil: true }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E });
+eq('empty -> all false', normalizeSettings({}), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
+eq('undefined -> all false', normalizeSettings(undefined), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
+eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { sort: true, notify: true, draft: true, waitlist: false, notifyEmails: E, slackWebhook: '' });
+eq('mixed', normalizeSettings({ sort: true, notify: false }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
+eq('string "true" is not true', normalizeSettings({ sort: 'true' }), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
+eq('extra keys ignored', normalizeSettings({ sort: true, evil: true }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
 eq('waitlist toggle', normalizeSettings({ waitlist: true }).waitlist, true);
 eq('recipients parsed inside settings', normalizeSettings({ notifyEmails: 'A@x.com, b@y.com' }).notifyEmails, ['a@x.com', 'b@y.com']);
+
+eq('slack webhook stored inside settings', normalizeSettings({ slackWebhook: 'https://hooks.slack.com/services/A/B/C' }).slackWebhook, 'https://hooks.slack.com/services/A/B/C');
+
+console.log('\n--- normalizeSlackWebhook ---');
+eq('valid slack hook kept', normalizeSlackWebhook('https://hooks.slack.com/services/T1/B1/xyz'), 'https://hooks.slack.com/services/T1/B1/xyz');
+eq('trims whitespace', normalizeSlackWebhook('  https://hooks.slack.com/services/T1/B1/xyz  '), 'https://hooks.slack.com/services/T1/B1/xyz');
+eq('non-slack url rejected', normalizeSlackWebhook('https://evil.com/hook'), '');
+eq('random string rejected', normalizeSlackWebhook('not a url'), '');
+eq('empty -> empty', normalizeSlackWebhook(''), '');
+eq('null -> empty', normalizeSlackWebhook(null), '');
 
 console.log('\n--- normalizeEmails ---');
 eq('comma + space split', normalizeEmails('a@x.com, b@y.com'), ['a@x.com', 'b@y.com']);
@@ -44,6 +54,8 @@ const sb = settingsBody({ sort: true, notify: false, draft: false });
 eq('sort checkbox checked', /id="sort"[^>]*checked/.test(sb), true);
 eq('notify checkbox unchecked', /id="notify"(?![^>]*checked)/.test(sb), true);
 eq('has save + report calls', sb.includes('/api/settings') && sb.includes('/api/report'), true);
+eq('renders the slack webhook field', /id="slack"/.test(sb) && sb.includes('slackWebhook:'), true);
+eq('prefills existing slack webhook', settingsBody({ slackWebhook: 'https://hooks.slack.com/services/x/y/z' }).includes('https://hooks.slack.com/services/x/y/z'), true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

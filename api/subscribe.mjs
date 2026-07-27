@@ -7,6 +7,7 @@
 import { subscribe } from '../waitlist.mjs';
 import { longId, gql } from '../shopify.mjs';
 import { notifySlackSignup } from '../slack.mjs';
+import { loadSettings } from '../settings.mjs';
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -46,12 +47,16 @@ export default async function handler(req, res) {
     if (r.reason === 'invalid') { res.end(JSON.stringify({ ok: false, error: 'Enter a valid email.' })); return; }
     if (r.reason === 'full') { res.end(JSON.stringify({ ok: false, error: 'This waitlist is full right now.' })); return; }
 
-    // Slack ping on a genuinely new signup (only when a webhook is configured,
-    // so there's no extra product fetch otherwise). Never blocks/breaks the reply.
-    if (r.added && process.env.SLACK_WEBHOOK_URL) {
+    // Slack ping on a genuinely new signup. The webhook comes from Settings
+    // (overrides the SLACK_WEBHOOK_URL env default). Never blocks/breaks the reply.
+    if (r.added) {
       try {
-        const d = await gql(`query($id: ID!) { product(id: $id) { title handle } }`, { id: gid });
-        await notifySlackSignup({ email, title: d.product?.title, handle: d.product?.handle, count: r.count });
+        let webhookUrl = process.env.SLACK_WEBHOOK_URL || '';
+        try { const s = await loadSettings(); if (s.slackWebhook) webhookUrl = s.slackWebhook; } catch {}
+        if (webhookUrl) {
+          const d = await gql(`query($id: ID!) { product(id: $id) { title handle } }`, { id: gid });
+          await notifySlackSignup({ email, title: d.product?.title, handle: d.product?.handle, count: r.count, webhookUrl });
+        }
       } catch (e) {
         console.error(`  ! Slack signup notify skipped: ${e.message}`);
       }

@@ -17,10 +17,11 @@ export function buildSignupMessage({ email, title, handle, count, shop }) {
   return { text: `:bell: New waitlist signup: *${email}* wants ${product}${waiting}` };
 }
 
-/** Post a signup notification to Slack, if SLACK_WEBHOOK_URL is configured.
+/** Post a signup notification to Slack. The webhook comes from `webhookUrl`
+ *  (the app Settings value) and falls back to the SLACK_WEBHOOK_URL env default.
  *  Never throws. @returns {Promise<{ok?:boolean, skipped?:boolean, error?:string}>} */
-export async function notifySlackSignup({ email, title, handle, count }) {
-  const url = process.env.SLACK_WEBHOOK_URL;
+export async function notifySlackSignup({ email, title, handle, count, webhookUrl }) {
+  const url = webhookUrl || process.env.SLACK_WEBHOOK_URL;
   if (!url) return { skipped: true };
   const payload = buildSignupMessage({ email, title, handle, count, shop: process.env.SHOP_DOMAIN });
   try {

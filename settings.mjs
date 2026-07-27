@@ -26,8 +26,15 @@ export function normalizeEmails(input) {
   return out;
 }
 
+/** Pure: accept a Slack Incoming Webhook URL, else ''. Guards against pasting
+ *  a random string — only real Slack hook URLs are stored. */
+export function normalizeSlackWebhook(input) {
+  const v = String(input ?? '').trim();
+  return /^https:\/\/hooks\.slack\.com\/services\//.test(v) ? v : '';
+}
+
 /** Pure: coerce an arbitrary object to strict toggles (default false) + the
- *  extra digest/report recipients list. */
+ *  extra digest/report recipients list + the Slack webhook URL. */
 export function normalizeSettings(obj) {
   const o = obj || {};
   return {
@@ -36,6 +43,7 @@ export function normalizeSettings(obj) {
     draft: o.draft === true,
     waitlist: o.waitlist === true,
     notifyEmails: normalizeEmails(o.notifyEmails),
+    slackWebhook: normalizeSlackWebhook(o.slackWebhook),
   };
 }
 
