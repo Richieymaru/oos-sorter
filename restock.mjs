@@ -10,7 +10,7 @@
 import { gql, shortId } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock } from './stock.mjs';
-import { readWaitlist, clearWaitlist, unsubUrl } from './waitlist.mjs';
+import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl } from './waitlist.mjs';
 import { sendBackInStock } from './notify.mjs';
 
 /** Every product that currently has at least one waitlist subscriber. */
@@ -59,6 +59,7 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
       image: sp.featuredImage?.url || null,
       variantId: first?.id ? shortId(first.id) : null,
     };
+    const failed = [];
     for (const sub of w.list) {
       const unsub = unsubUrl(base, shortId(w.id), sub.email);
       try {
@@ -66,9 +67,14 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
         emailsSent++;
       } catch (e) {
         console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
+        failed.push(sub);
       }
     }
-    if (!dryRun) await clearWaitlist(w.id);
+    // Keep anyone whose email failed so they retry next run; only clear on full success.
+    if (!dryRun) {
+      if (failed.length) await setWaitlist(w.id, failed);
+      else await clearWaitlist(w.id);
+    }
     productsNotified++;
   }
   return { waitlisted: waited.length, productsNotified, emailsSent };
@@ -93,6 +99,7 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
   };
   const list = await readWaitlist(productGid);
   let sent = 0;
+  const failed = [];
   for (const sub of list) {
     const unsub = unsubUrl(base, shortId(productGid), sub.email);
     try {
@@ -100,8 +107,13 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
       sent++;
     } catch (e) {
       console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
+      failed.push(sub);
     }
   }
-  if (!dryRun) await clearWaitlist(productGid);
+  // Keep anyone whose email failed so they retry; only clear on full success.
+  if (!dryRun) {
+    if (failed.length) await setWaitlist(productGid, failed);
+    else await clearWaitlist(productGid);
+  }
   return { sent, title: p.title, total: list.length };
 }

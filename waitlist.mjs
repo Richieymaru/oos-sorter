@@ -106,3 +106,9 @@ export async function unsubscribe(productGid, email) {
 export async function clearWaitlist(productGid) {
   await writeWaitlist(productGid, []);
 }
+
+/** Replace a product's waitlist with exactly `list` — e.g. keep only the
+ *  subscribers whose back-in-stock email failed, so they retry next run. */
+export async function setWaitlist(productGid, list) {
+  await writeWaitlist(productGid, list);
+}
