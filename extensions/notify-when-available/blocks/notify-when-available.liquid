@@ -1,21 +1,29 @@
 {%- comment -%}
-  "Notify When Available" — on a sold-out product, shows a button that opens an
-  email popup. Posts to the OOS Sorter /api/subscribe endpoint.
+  "Notify When Available" — on a sold-out product, hides the theme's Sold out /
+  Add to cart button and shows a button that opens an email popup. Posts to the
+  OOS Sorter /api/subscribe endpoint. All styling is editable in the theme editor.
 {%- endcomment -%}
 {%- assign v = product.selected_or_first_available_variant -%}
 {%- assign available = false -%}
 {%- if v and v.available -%}{%- assign available = true -%}{%- endif -%}
 {%- unless available -%}
+  {%- assign width_class = '' -%}
+  {%- if block.settings.full_width -%}{%- assign width_class = ' oos-notify--full' -%}{%- endif -%}
   <div
-    class="oos-notify"
+    class="oos-notify{{ width_class }}"
     data-oos-notify
     data-product-id="{{ product.id }}"
     data-endpoint="{{ block.settings.endpoint }}"
+    data-hide-native="{{ block.settings.hide_sold_out }}"
+    data-bg="{{ block.settings.bg_color }}"
+    data-fg="{{ block.settings.text_color }}"
+    data-radius="{{ block.settings.border_radius }}"
     data-heading="{{ block.settings.modal_heading | escape }}"
     data-subtitle="{{ block.settings.modal_subtitle | escape }}"
     data-placeholder="{{ block.settings.placeholder | escape }}"
     data-submit="{{ block.settings.submit_text | escape }}"
     data-success="{{ block.settings.success_text | escape }}"
+    style="--oos-bg:{{ block.settings.bg_color }};--oos-fg:{{ block.settings.text_color }};--oos-radius:{{ block.settings.border_radius }}px;--oos-fs:{{ block.settings.font_size }}px;--oos-py:{{ block.settings.vertical_padding }}px;"
     {{ block.shopify_attributes }}
   >
     <button type="button" class="oos-notify__open">{{ block.settings.button_text }}</button>
@@ -29,8 +37,17 @@
   "stylesheet": "notify.css",
   "javascript": "notify.js",
   "settings": [
+    { "type": "text", "id": "button_text", "label": "Button text", "default": "Notify me When Available" },
+    { "type": "checkbox", "id": "hide_sold_out", "label": "Hide the theme's \"Sold out\" button", "default": true, "info": "Replaces the disabled Sold out / Add to cart button with this one." },
+    { "type": "header", "content": "Button style" },
+    { "type": "color", "id": "bg_color", "label": "Background color", "default": "#111820" },
+    { "type": "color", "id": "text_color", "label": "Text color", "default": "#ffffff" },
+    { "type": "range", "id": "border_radius", "label": "Corner radius", "min": 0, "max": 40, "step": 1, "unit": "px", "default": 10 },
+    { "type": "range", "id": "font_size", "label": "Text size", "min": 12, "max": 22, "step": 1, "unit": "px", "default": 15 },
+    { "type": "range", "id": "vertical_padding", "label": "Height", "min": 8, "max": 28, "step": 1, "unit": "px", "default": 15 },
+    { "type": "checkbox", "id": "full_width", "label": "Full width", "default": true },
+    { "type": "header", "content": "Popup" },
     { "type": "text", "id": "endpoint", "label": "Subscribe endpoint", "default": "https://oos-sorter.vercel.app/api/subscribe", "info": "Your OOS Sorter /api/subscribe URL." },
-    { "type": "text", "id": "button_text", "label": "Button", "default": "Notify me when available" },
     { "type": "text", "id": "modal_heading", "label": "Popup heading", "default": "Get notified when it's back" },
     { "type": "text", "id": "modal_subtitle", "label": "Popup subtitle", "default": "We'll email you once, the moment this is back in stock." },
     { "type": "text", "id": "placeholder", "label": "Email placeholder", "default": "you@email.com" },

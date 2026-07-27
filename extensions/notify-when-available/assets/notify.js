@@ -5,6 +5,28 @@
     });
   }
 
+  // Find the product section that contains BOTH this block and the add-to-cart
+  // form, so we only touch this product's buttons — not recommendations below.
+  function productScope(el) {
+    var node = el.parentElement;
+    while (node && node !== document.body) {
+      if (node.querySelector && node.querySelector('form[action*="/cart/add"]')) return node;
+      node = node.parentElement;
+    }
+    return document;
+  }
+
+  function hideNative(root) {
+    var scope = productScope(root);
+    var kill = [];
+    scope.querySelectorAll('form[action*="/cart/add"]').forEach(function (form) {
+      form.querySelectorAll('button[name="add"], button[type="submit"], input[type="submit"], .product-form__submit').forEach(function (b) { kill.push(b); });
+    });
+    scope.querySelectorAll('.shopify-payment-button, [data-shopify="payment-button"]').forEach(function (b) { kill.push(b); });
+    kill.forEach(function (b) { b.style.setProperty('display', 'none', 'important'); b.setAttribute('data-oos-hidden', '1'); });
+    return scope;
+  }
+
   function init(root) {
     if (root.__oosInit) return;
     root.__oosInit = true;
@@ -13,6 +35,9 @@
     var d = {
       endpoint: root.getAttribute('data-endpoint'),
       productId: root.getAttribute('data-product-id'),
+      bg: root.getAttribute('data-bg') || '',
+      fg: root.getAttribute('data-fg') || '',
+      radius: root.getAttribute('data-radius') || '',
       heading: root.getAttribute('data-heading') || "Get notified when it's back",
       subtitle: root.getAttribute('data-subtitle') || '',
       placeholder: root.getAttribute('data-placeholder') || 'you@email.com',
@@ -20,12 +45,25 @@
       success: root.getAttribute('data-success') || "You're on the list!"
     };
 
+    if (root.getAttribute('data-hide-native') === 'true') {
+      var scope = hideNative(root);
+      // Re-hide if the theme re-renders the button (variant swap / AJAX).
+      try {
+        var obs = new MutationObserver(function () { hideNative(root); });
+        obs.observe(scope === document ? document.body : scope, { childList: true, subtree: true });
+      } catch (e) {}
+    }
+
     openBtn.addEventListener('click', function () { openModal(root, openBtn, d); });
   }
 
   function openModal(root, openBtn, d) {
     var overlay = document.createElement('div');
     overlay.className = 'oos-modal';
+    // carry the block's colors/radius into the modal (it lives on document.body)
+    if (d.bg) overlay.style.setProperty('--oos-bg', d.bg);
+    if (d.fg) overlay.style.setProperty('--oos-fg', d.fg);
+    if (d.radius) overlay.style.setProperty('--oos-radius', d.radius + 'px');
     overlay.innerHTML =
       '<div class="oos-modal__card" role="dialog" aria-modal="true" aria-label="' + esc(d.heading) + '">' +
         '<button type="button" class="oos-modal__close" aria-label="Close">&times;</button>' +
@@ -41,7 +79,6 @@
     document.body.appendChild(overlay);
     document.documentElement.style.overflow = 'hidden';
 
-    var card = overlay.querySelector('.oos-modal__card');
     var email = overlay.querySelector('.oos-modal__email');
     var hp = overlay.querySelector('.oos-modal__hp');
     var form = overlay.querySelector('.oos-modal__form');

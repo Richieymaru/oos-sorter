@@ -1,20 +1,21 @@
 .oos-notify { margin: 12px 0; }
 
-/* Primary CTA button (sits where the sold-out button is) */
+/* Primary CTA button — colors/radius/size come from the theme editor */
 .oos-notify__open {
-  width: 100%;
-  padding: 15px 20px;
+  display: inline-block;
+  padding: var(--oos-py, 15px) 22px;
   border: 0;
-  border-radius: 10px;
-  background: #111820;
-  color: #fff;
+  border-radius: var(--oos-radius, 10px);
+  background: var(--oos-bg, #111820);
+  color: var(--oos-fg, #fff);
   font: inherit;
-  font-size: 15px;
+  font-size: var(--oos-fs, 15px);
   font-weight: 600;
   letter-spacing: .01em;
   cursor: pointer;
   transition: filter .15s ease;
 }
+.oos-notify--full .oos-notify__open { display: block; width: 100%; }
 .oos-notify__open:hover { filter: brightness(1.15); }
 .oos-notify__open:disabled { opacity: .75; cursor: default; }
 
@@ -47,12 +48,13 @@
   padding: 12px 13px; border: 1px solid #d7dbe2; border-radius: 10px;
   font: inherit; font-size: 15px;
 }
-.oos-modal__email:focus { outline: 2px solid #0e9c6b; outline-offset: 1px; border-color: transparent; }
+.oos-modal__email:focus { outline: 2px solid var(--oos-bg, #0e9c6b); outline-offset: 1px; border-color: transparent; }
 .oos-modal__submit {
-  padding: 12px 16px; border: 0; border-radius: 10px;
-  background: #0e9c6b; color: #fff; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  padding: 12px 16px; border: 0; border-radius: var(--oos-radius, 10px);
+  background: var(--oos-bg, #0e9c6b); color: var(--oos-fg, #fff);
+  font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
 }
-.oos-modal__submit:hover { filter: brightness(1.06); }
+.oos-modal__submit:hover { filter: brightness(1.1); }
 .oos-modal__submit:disabled { opacity: .7; cursor: default; }
 .oos-modal__hp { position: absolute !important; left: -9999px !important; width: 1px; height: 1px; opacity: 0; }
 .oos-modal__msg { margin: 12px 0 0; font-size: 13.5px; min-height: 1em; line-height: 1.5; }
