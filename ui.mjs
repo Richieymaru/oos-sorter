@@ -166,14 +166,33 @@ export function setPageHeaders(res) {
  */
 export function notConnectedBody(shop) {
   const install = shop ? `/api/install?shop=${encodeURIComponent(shop)}` : '/api/install';
-  return `<div class="pagehead"><h1>Finish connecting ${esc(APP_NAME)}</h1>
-    <p>This store isn't authorized yet, so there's nothing to show. One approval and you're set.</p></div>
+  return `<div class="pagehead"><h1>Finishing setup for ${esc(APP_NAME)}</h1>
+    <p>If you're opening this inside your Shopify admin, it connects automatically.</p></div>
   <div class="card pad">
-    <b>Authorize ${esc(APP_NAME)} on your store</b>
-    <p class="muted" style="margin:6px 0 14px">It needs permission to read your products and reorder collections. Nothing runs until you approve it.</p>
-    <a href="${install}" target="_top" style="text-decoration:none"><button class="primary">Install / reconnect</button></a>
-    <p class="faint" style="margin:14px 0 0;font-size:12px">If this keeps appearing right after installing, the store may not be in the same Dev Dashboard organization as the app — that path needs the authorization-code install, which yields an offline token to set as <span class="mono">ADMIN_TOKEN</span>.</p>
-  </div>`;
+    <b id="cxstatus">Connecting…</b>
+    <p class="muted" id="cxdetail" style="margin:6px 0 14px">Authorizing ${esc(APP_NAME)} for your store.</p>
+    <a href="${install}" target="_top" style="text-decoration:none"><button class="primary" id="cxinstall" style="display:none">Install / reconnect</button></a>
+  </div>
+  <script>
+  (async function(){
+    var s=document.getElementById('cxstatus'), d=document.getElementById('cxdetail'), b=document.getElementById('cxinstall');
+    // Managed installation: when embedded, App Bridge gives us a session token we
+    // exchange (server-side) for an offline token. When not embedded, offer install.
+    if (typeof shopify==='undefined' || !shopify.idToken){
+      s.textContent='Connect ${esc(APP_NAME)}';
+      d.textContent='Open this app from your Shopify admin to finish setup.';
+      if(b) b.style.display='';
+      return;
+    }
+    try{
+      var token=await shopify.idToken();
+      var r=await fetch('/api/oauth-callback',{method:'POST',headers:{'Authorization':'Bearer '+token}});
+      var j=await r.json().catch(function(){return {};});
+      if(r.ok && j.ok){ s.textContent='Connected \\u2713'; d.textContent='${esc(APP_NAME)} is authorized for your store. You can close this tab.'; }
+      else { s.textContent='Couldn\\u2019t finish connecting'; d.textContent=(j.error||('Error '+r.status))+' — try reopening the app.'; if(b) b.style.display=''; }
+    }catch(e){ s.textContent='Couldn\\u2019t finish connecting'; d.textContent=String(e&&e.message||e); if(b) b.style.display=''; }
+  })();
+  </script>`;
 }
 
 /** The shop domain for the current request, from the embedded query string. */

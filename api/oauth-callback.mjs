@@ -7,6 +7,8 @@
  */
 import { verifyState, verifyCallbackHmac, exchangeToken } from '../oauth.mjs';
 import { sendPlain } from '../notify.mjs';
+import { verifySessionToken } from '../session.mjs';
+import { tokenExchange } from '../auth.mjs';
 
 const APP_NAME = process.env.APP_NAME || 'OOS Sorter';
 
@@ -28,9 +30,36 @@ h1{font-size:1.35rem;margin:0 0 .4rem} p{color:#5f6875;line-height:1.5}</style>
 <div class="mk"><i></i><i></i><i></i></div>${body}`;
 
 export default async function handler(req, res) {
-  const q = query(req);
   const secret = process.env.CLIENT_SECRET;
   const clientId = process.env.CLIENT_ID;
+
+  // POST = Shopify managed-installation completion. The embedded app sends its
+  // App Bridge session token; we exchange it for an offline token and email it
+  // (dev drops it into ADMIN_TOKEN). Used for custom-distribution installs where
+  // the classic authorization-code grant (the GET branch below) is unavailable.
+  if (req.method === 'POST') {
+    res.setHeader('Content-Type', 'application/json');
+    const payload = verifySessionToken(req.headers['authorization'], { clientId, clientSecret: secret });
+    if (!payload) { res.statusCode = 401; res.end(JSON.stringify({ ok: false, error: 'Invalid session token.' })); return; }
+    let shop = null;
+    try { shop = new URL(payload.dest).host; } catch {}
+    if (!shop) { res.end(JSON.stringify({ ok: false, error: 'No shop in session token.' })); return; }
+    try {
+      const sessionToken = String(req.headers['authorization']).replace(/^Bearer\s+/i, '');
+      const token = await tokenExchange(shop, sessionToken);
+      await sendPlain(
+        `${APP_NAME}: access token for ${shop}`,
+        `Offline access token for ${shop} (managed install / token exchange)\n` +
+          `Put it in ADMIN_TOKEN for that store's deployment:\n\n${token}\n`
+      ).catch((e) => console.error('token email failed:', e.message));
+      res.end(JSON.stringify({ ok: true }));
+    } catch (e) {
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  const q = query(req);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
   const shop = verifyState(q.state, secret || '');

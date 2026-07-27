@@ -62,3 +62,32 @@ export async function getAccessToken() {
   };
   return cached.token;
 }
+
+/**
+ * Exchange an App Bridge session token for a non-expiring OFFLINE access token
+ * (Shopify managed-installation flow). Used for custom-distribution installs on
+ * stores outside the app's org, where the classic authorization-code grant is
+ * rejected. Verified request shape against shopify.dev token-exchange docs.
+ * @param {string} shop  e.g. "gel-ball-undercover.myshopify.com"
+ * @param {string} sessionToken  the id_token JWT from shopify.idToken()
+ * @returns {Promise<string>} the offline access token (shpat_/shpua_)
+ */
+export async function tokenExchange(shop, sessionToken) {
+  const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams({
+      client_id: process.env.CLIENT_ID,
+      client_secret: process.env.CLIENT_SECRET,
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      subject_token: sessionToken,
+      subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
+      requested_token_type: 'urn:shopify:params:oauth:token-type:offline-access-token',
+    }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.access_token) {
+    throw new Error(`token exchange failed: ${body.error_description || body.error || 'HTTP ' + res.status}`);
+  }
+  return body.access_token;
+}
