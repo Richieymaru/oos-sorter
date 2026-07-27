@@ -1,0 +1,17 @@
+# GBU "Sold out Sorter" app config — separate from the dev-store shopify.app.toml.
+# Deploy the extension to GBU with:  shopify app deploy --config gbu --allow-updates
+client_id = "2101a4877b6a6245ac13cfbd6ea78da7"
+application_url = "https://sold-out-sorter.vercel.app"
+embedded = true
+name = "Sold out Sorter"
+
+[webhooks]
+api_version = "2026-07"
+
+[access_scopes]
+scopes = "read_products,write_products,read_inventory,read_locations"
+optional_scopes = [ ]
+use_legacy_install_flow = true
+
+[auth]
+redirect_urls = [ "https://sold-out-sorter.vercel.app/api/oauth-callback" ]
