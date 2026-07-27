@@ -37,12 +37,17 @@ export default async function handler(req, res) {
   const items = await productsWithWaitlist().catch(() => []);
   const total = items.reduce((n, w) => n + w.list.length, 0);
   const fmt = (ts) => esc(String(ts || '').replace('T', ' ').slice(0, 16));
+  const thumb = (u) =>
+    u
+      ? `<img src="${esc(u + (u.includes('?') ? '&' : '?') + 'width=96')}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:9px;object-fit:cover;border:1px solid var(--line);flex:none">`
+      : `<div style="width:46px;height:46px;border-radius:9px;background:var(--hover);border:1px solid var(--line);flex:none"></div>`;
   const cards = items.length
     ? items
         .map(
           (w) => `<div class="card pad" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <div style="flex:1;min-width:200px">
+          ${thumb(w.image)}
+          <div style="flex:1;min-width:180px">
             <div class="cname" style="font-size:15px">${esc(w.title)}</div>
             <div class="faint" style="font-size:12.5px">${w.list.length} shopper(s) waiting</div>
           </div>

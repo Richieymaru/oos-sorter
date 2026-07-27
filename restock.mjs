@@ -21,14 +21,14 @@ export async function productsWithWaitlist() {
     const d = await gql(
       `query($c: String) { products(first: 250, after: $c) {
          pageInfo { hasNextPage endCursor }
-         nodes { id title handle metafield(namespace: "oos_sort", key: "waitlist") { value } }
+         nodes { id title handle featuredImage { url } metafield(namespace: "oos_sort", key: "waitlist") { value } }
        } }`,
       { c: cursor }
     );
     for (const p of d.products.nodes) {
       let list = [];
       try { list = JSON.parse(p.metafield?.value || '[]'); } catch { list = []; }
-      if (Array.isArray(list) && list.length) out.push({ id: p.id, title: p.title, handle: p.handle, list });
+      if (Array.isArray(list) && list.length) out.push({ id: p.id, title: p.title, handle: p.handle, image: p.featuredImage?.url || null, list });
     }
     cursor = d.products.pageInfo.hasNextPage ? d.products.pageInfo.endCursor : null;
   } while (cursor);
