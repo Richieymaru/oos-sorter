@@ -1,17 +1,17 @@
-# GBU "Sold out Sorter" app config — separate from the dev-store shopify.app.toml.
-# Deploy the extension to GBU with:  shopify app deploy --config gbu --allow-updates
-client_id = "2101a4877b6a6245ac13cfbd6ea78da7"
+# GBU "GBU Soldout Sorter" app config (the NEW single-store, managed-install app).
+# Deploy the notify extension to GBU with: shopify app deploy --config gbu --allow-updates
+client_id = "c65e0cfd391decaeb61702cc7df311a3"
 application_url = "https://sold-out-sorter.vercel.app"
 embedded = true
-name = "Sold out Sorter"
+name = "GBU Soldout Sorter"
 
 [webhooks]
 api_version = "2026-07"
 
 [access_scopes]
-scopes = "read_products,write_products,read_inventory,read_locations"
+scopes = "read_inventory,read_locations,read_products,write_products"
 optional_scopes = [ ]
-use_legacy_install_flow = true
+use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [ "https://sold-out-sorter.vercel.app/api/oauth-callback" ]
