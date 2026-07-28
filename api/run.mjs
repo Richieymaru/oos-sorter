@@ -38,8 +38,12 @@ export default async function handler(req, res) {
     return;
   }
   const sendDigest = ['1', 'true'].includes(param(req, 'digest'));
+  // ?chunk=N => rotating mini-sweep: sort the next N collections (for big stores
+  // where a full sweep would exceed the 60s limit).
+  const chunkN = parseInt(param(req, 'chunk') || '', 10);
+  const chunk = Number.isFinite(chunkN) && chunkN > 0 ? chunkN : null;
   try {
-    const result = await runEngine({ sendDigest });
+    const result = await runEngine({ sendDigest, chunk });
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ ok: true, ...result }));
   } catch (err) {

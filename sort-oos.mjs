@@ -371,7 +371,8 @@ async function sortCollection(col, { products, currentIds, byId, tagsOf }, ctx) 
  * be driven from the CLI (main) or from the Vercel /api/run endpoint.
  * @param {{ sendDigest?: boolean }} opts
  */
-export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null } = {}) {
+export async function runEngine({ sendDigest = SEND_DIGEST, handles: onlyParam = null, chunk = null } = {}) {
+  let only = onlyParam;
   if (!SHOP) throw new Error('SHOP_DOMAIN not set');
 
   const settings = await loadSettings();
@@ -379,6 +380,27 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null
   FEATURE_NOTIFY = resolveFlag(process.env.FEATURE_NOTIFY, settings.notify);
   FEATURE_DRAFT = resolveFlag(process.env.FEATURE_DRAFT, settings.draft);
   FEATURE_WAITLIST = resolveFlag(process.env.FEATURE_WAITLIST, settings.waitlist);
+
+  // Rotating mini-sweep: sort the next `chunk` collections from a saved cursor,
+  // wrapping around. Lets a big store (where a full sweep times out) still get
+  // every collection re-checked over several small, fast runs — catching manual
+  // reorders and quiet collections. Treated like a targeted run below (skips the
+  // full-store notify/restock phases and the store-wide soldOut overwrite).
+  let sweepNextCursor = null;
+  if (chunk && (!only || !only.length)) {
+    const all = await resolveHandles();
+    if (all.length) {
+      const st = await loadState().catch(() => ({}));
+      const start = Number.isInteger(st.sweepCursor)
+        ? ((st.sweepCursor % all.length) + all.length) % all.length
+        : 0;
+      const n = Math.min(chunk, all.length);
+      only = [];
+      for (let i = 0; i < n; i++) only.push(all[(start + i) % all.length]);
+      sweepNextCursor = (start + n) % all.length;
+      console.log(`Rotating sweep: collections ${start}..${start + n - 1} of ${all.length}`);
+    }
+  }
 
   // `only` (from the webhook) restricts to specific collections; otherwise
   // COLLECTION_HANDLES empty or "all" => auto-discover every collection.
@@ -401,6 +423,7 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: only = null
   // Always keep state so the settings page has a fresh status line, even when
   // only sort is on or all features are off.
   const state = await loadState();
+  if (sweepNextCursor != null) state.sweepCursor = sweepNextCursor;
   const draftedSet = new Set(state?.drafted ?? []);
 
   // Phase 1: restore any app-drafted product that has restocked.
