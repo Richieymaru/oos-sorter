@@ -11,7 +11,7 @@ import { gql, shortId } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl } from './waitlist.mjs';
-import { sendBackInStock } from './notify.mjs';
+import { sendBackInStock, sendSoldOutAlert } from './notify.mjs';
 
 /** Every product that currently has at least one waitlist subscriber. */
 export async function productsWithWaitlist() {
@@ -129,6 +129,63 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
     productsNotified++;
   }
   return { productsNotified, emailsSent };
+}
+
+/* ---- Real-time sold-out alerts to the owner/team ---- */
+
+const ALERT_NS = 'oos_sort';
+const ALERT_KEY = 'sold_out_alerted';
+
+/** Has this product already had a sold-out alert sent for the current episode? */
+async function readAlerted(productGid) {
+  const d = await gql(
+    `query($id: ID!) { product(id: $id) { metafield(namespace: "${ALERT_NS}", key: "${ALERT_KEY}") { value } } }`,
+    { id: productGid }
+  );
+  return d.product?.metafield?.value === 'true';
+}
+
+/** Mark (or clear) a product's sold-out-alerted flag. */
+async function setAlerted(productGid, on) {
+  await gql(
+    `mutation($m: [MetafieldsSetInput!]!) { metafieldsSet(metafields: $m) { userErrors { field message } } }`,
+    { m: [{ ownerId: productGid, namespace: ALERT_NS, key: ALERT_KEY, type: 'boolean', value: on ? 'true' : 'false' }] }
+  );
+}
+
+/**
+ * Email the owner + recipients the moment a product transitions to sold out.
+ * Fires once per sold-out episode (tracked in a per-product metafield, so no
+ * shop-state size limit and no repeat spam); resets when the product restocks.
+ * Called from the webhook — targeted, no full-store scan. @returns {{alerted:number}}
+ */
+export async function alertNewlySoldOut(productGids, { recipients = [], dryRun = false } = {}) {
+  if (!productGids || !productGids.length) return { alerted: 0 };
+  const stock = await fetchProductsByIds(productGids.map((g) => shortId(g)));
+  const byId = new Map(stock.map((p) => [p.id, p]));
+
+  const newly = [];
+  for (const gid of productGids) {
+    const sp = byId.get(gid);
+    if (!sp) continue;
+    const soldOut = !isInStock(sp);
+    const alerted = await readAlerted(gid);
+    if (soldOut && !alerted) {
+      newly.push({ title: sp.title, handle: sp.handle });
+      if (!dryRun) await setAlerted(gid, true);
+    } else if (!soldOut && alerted) {
+      if (!dryRun) await setAlerted(gid, false); // back in stock — reset for next episode
+    }
+  }
+
+  if (newly.length) {
+    try {
+      await sendSoldOutAlert(newly, { dryRun, recipients });
+    } catch (e) {
+      console.error('sold-out alert email failed:', e.message);
+    }
+  }
+  return { alerted: newly.length };
 }
 
 /** Manually email + clear ONE product's waitlist (admin "Send now"), regardless

@@ -10,7 +10,7 @@
  */
 import { runEngine } from '../sort-oos.mjs';
 import { collectionsForInventoryItem, productsForInventoryItem } from '../catalog.mjs';
-import { notifyRestocksForProducts } from '../restock.mjs';
+import { notifyRestocksForProducts, alertNewlySoldOut } from '../restock.mjs';
 import { loadSettings } from '../settings.mjs';
 
 export const config = { maxDuration: 60 };
@@ -62,20 +62,33 @@ export default async function handler(req, res) {
     // product(s) here: if the waitlist feature is on, email anyone waiting on a
     // product that's now back in stock. Targeted, so it stays fast at any scale.
     let restock = null;
+    let soldOutAlert = null;
     if (itemId) {
       const settings = await loadSettings().catch(() => ({}));
-      if (resolveFlag(process.env.FEATURE_WAITLIST, settings.waitlist)) {
+      const waitlistOn = resolveFlag(process.env.FEATURE_WAITLIST, settings.waitlist);
+      const notifyOn = resolveFlag(process.env.FEATURE_NOTIFY, settings.notify);
+      if (waitlistOn || notifyOn) {
         const products = await productsForInventoryItem(itemId);
-        const base = `https://${req.headers['host'] || ''}`;
-        restock = await notifyRestocksForProducts(products, {
-          dryRun: process.env.DRY_RUN === 'true',
-          base,
-        });
+        const dryRun = process.env.DRY_RUN === 'true';
+        if (waitlistOn) {
+          restock = await notifyRestocksForProducts(products, {
+            dryRun,
+            base: `https://${req.headers['host'] || ''}`,
+          });
+        }
+        // Real-time sold-out alert to the owner/team (works at any scale, unlike
+        // the full-sweep digest which times out on big catalogs).
+        if (notifyOn) {
+          soldOutAlert = await alertNewlySoldOut(products, {
+            recipients: settings.notifyEmails,
+            dryRun,
+          });
+        }
       }
     }
 
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, inventoryItem: itemId ?? null, sorted: handles, restock }));
+    res.end(JSON.stringify({ ok: true, inventoryItem: itemId ?? null, sorted: handles, restock, soldOutAlert }));
   } catch (err) {
     // 500 lets Shopify retry a transient failure (rate limit, cold start).
     console.error('webhook error:', err.message);

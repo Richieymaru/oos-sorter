@@ -124,6 +124,29 @@ export function buildReport(items) {
   return { subject, text, html };
 }
 
+/** Pure: build a real-time "just sold out" alert for the owner/team. */
+export function buildSoldOutAlert(items) {
+  const n = items.length;
+  const subject = n === 1
+    ? `${items[0].title ?? 'A product'} just sold out`
+    : `${APP_NAME}: ${n} products just sold out`;
+  const text =
+    `${n} product${n === 1 ? '' : 's'} just sold out on ${SHOP}:\n\n` +
+    items.map(textLine).join('\n') +
+    `\n\n— ${APP_NAME}`;
+  const html = emailHtml({
+    subtitle: 'Sold-out alert',
+    lead: `<b>${n}</b> product${n === 1 ? '' : 's'} just sold out on <span style="color:#0a6b4a">${esc(SHOP)}</span>.`,
+    items,
+  });
+  return { subject, text, html };
+}
+
+/** Send a real-time sold-out alert to the owner + extra recipients. */
+export function sendSoldOutAlert(items, opts) {
+  return send(buildSoldOutAlert(items), opts);
+}
+
 /** Pure: build a single-product "back in stock" email for one shopper.
  *  product: { title, handle, image, variantId } — image + variantId are optional.
  *  When variantId is present the "Add to Cart" button deep-links to the cart. */

@@ -38,8 +38,8 @@ export function settingsBody(settings) {
     {
       id: 'notify',
       on: settings.notify,
-      title: 'Email me a daily digest',
-      desc: 'One summary a day of everything that newly sold out.',
+      title: 'Email me when a product sells out',
+      desc: 'Alerts your notification recipients the moment a product goes out of stock.',
     },
     {
       id: 'draft',
