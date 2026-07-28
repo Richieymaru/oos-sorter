@@ -14,6 +14,9 @@ import nodemailer from 'nodemailer';
 
 const SHOP = process.env.SHOP_DOMAIN;
 const APP_NAME = process.env.APP_NAME || 'OOS Sorter';
+// Brand accent for emails (buttons, labels, links). Per-store via EMAIL_ACCENT;
+// defaults to the OOS Sorter emerald.
+const ACCENT = process.env.EMAIL_ACCENT || '#0e9c6b';
 
 function creds() {
   const user = process.env.GMAIL_USER;
@@ -66,9 +69,9 @@ function emailHtml({ subtitle, lead, items }) {
           <table cellpadding="0" cellspacing="0" role="presentation"><tr>
             <td style="padding-right:12px;vertical-align:middle" width="44">
               <div style="width:32px;height:32px;border:1px solid #e4e8ef;border-radius:8px;padding:7px 6px;box-sizing:border-box">
-                <div style="height:3px;background:#0e9c6b;border-radius:2px;width:100%"></div>
-                <div style="height:3px;background:#0e9c6b;border-radius:2px;width:70%;margin-top:3px;opacity:.6"></div>
-                <div style="height:3px;background:#0e9c6b;border-radius:2px;width:44%;margin-top:3px;opacity:.3"></div>
+                <div style="height:3px;background:${ACCENT};border-radius:2px;width:100%"></div>
+                <div style="height:3px;background:${ACCENT};border-radius:2px;width:70%;margin-top:3px;opacity:.6"></div>
+                <div style="height:3px;background:${ACCENT};border-radius:2px;width:44%;margin-top:3px;opacity:.3"></div>
               </div>
             </td>
             <td style="vertical-align:middle">
@@ -97,7 +100,7 @@ export function buildDigest(pending) {
     `\n\n— ${APP_NAME}`;
   const html = emailHtml({
     subtitle: 'Daily sold-out digest',
-    lead: `<b>${n}</b> product${n === 1 ? '' : 's'} newly sold out on <span style="color:#0a6b4a">${esc(SHOP)}</span> today.`,
+    lead: `<b>${n}</b> product${n === 1 ? '' : 's'} newly sold out on <span style="color:${ACCENT}">${esc(SHOP)}</span> today.`,
     items: pending,
   });
   return { subject, text, html };
@@ -117,8 +120,8 @@ export function buildReport(items) {
     subtitle: 'Sold-out report',
     lead:
       n === 0
-        ? `No products are currently sold out on <span style="color:#0a6b4a">${esc(SHOP)}</span>.`
-        : `<b>${n}</b> product${n === 1 ? '' : 's'} currently sold out on <span style="color:#0a6b4a">${esc(SHOP)}</span>.`,
+        ? `No products are currently sold out on <span style="color:${ACCENT}">${esc(SHOP)}</span>.`
+        : `<b>${n}</b> product${n === 1 ? '' : 's'} currently sold out on <span style="color:${ACCENT}">${esc(SHOP)}</span>.`,
     items,
   });
   return { subject, text, html };
@@ -136,7 +139,7 @@ export function buildSoldOutAlert(items) {
     `\n\n— ${APP_NAME}`;
   const html = emailHtml({
     subtitle: 'Sold-out alert',
-    lead: `<b>${n}</b> product${n === 1 ? '' : 's'} just sold out on <span style="color:#0a6b4a">${esc(SHOP)}</span>.`,
+    lead: `<b>${n}</b> product${n === 1 ? '' : 's'} just sold out on <span style="color:${ACCENT}">${esc(SHOP)}</span>.`,
     items,
   });
   return { subject, text, html };
@@ -171,14 +174,14 @@ export function buildBackInStock(product, unsub) {
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;width:100%;background:#fff;border:1px solid #e4e8ef;border-radius:16px;overflow:hidden">
         <tr><td style="padding:24px 24px 12px">
-          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:#0a6b4a;text-transform:uppercase">Back in stock</div>
+          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:${ACCENT};text-transform:uppercase">Back in stock</div>
           <div style="font-size:20px;font-weight:700;color:#161b22;margin:8px 0 6px">${esc(title)}</div>
           <div style="font-size:14px;color:#5f6875;line-height:1.5">It's available again on ${esc(SHOP)}. Grab it before it sells out.</div>
         </td></tr>
         ${imageBlock}
         <tr><td style="padding:16px 24px 24px">
-          <a href="${esc(cartUrl)}" style="display:inline-block;background:#0e9c6b;color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:10px">Add to Cart</a>
-          <a href="${esc(productUrl)}" style="display:inline-block;margin-left:6px;color:#0a6b4a;text-decoration:none;font-size:14px;font-weight:600;padding:12px 10px">View product</a>
+          <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:10px">Add to Cart</a>
+          <a href="${esc(productUrl)}" style="display:inline-block;margin-left:6px;color:${ACCENT};text-decoration:none;font-size:14px;font-weight:600;padding:12px 10px">View product</a>
         </td></tr>
         <tr><td style="padding:16px 24px;border-top:1px solid #eef1f6;font-size:11px;color:#8b95a3;line-height:1.5">
           You asked ${esc(APP_NAME)} to notify you when this came back. <a href="${esc(unsub)}" style="color:#8b95a3">Unsubscribe</a>.
