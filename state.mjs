@@ -34,16 +34,31 @@ export async function loadState() {
   }
 }
 
+// Shopify metafield JSON values are capped at 131072 bytes. On a very large store
+// (thousands of sold-out products) the notify/digest lists can exceed that, so we
+// trim them until the payload fits — critical fields (sweepCursor/lastRun/drafted)
+// always survive.
+const METAFIELD_LIMIT = 131072;
+
 export async function saveState(state) {
   const shopId = await getShopId();
-  const value = JSON.stringify({
+  const s = {
     soldOut: state.soldOut ?? [],
     drafted: state.drafted ?? [],
     pending: state.pending ?? [],
     lastDigest: state.lastDigest ?? null,
     lastRun: state.lastRun ?? null,
     sweepCursor: state.sweepCursor ?? 0,
-  });
+  };
+  // pending (rich {id,title,collections} objects) is the heaviest — trim it first,
+  // then soldOut (bare ids), leaving a safety margin under the 128KB cap.
+  while (JSON.stringify(s).length > METAFIELD_LIMIT - 2048 && s.pending.length) {
+    s.pending = s.pending.slice(0, Math.max(0, s.pending.length - 100));
+  }
+  while (JSON.stringify(s).length > METAFIELD_LIMIT - 2048 && s.soldOut.length) {
+    s.soldOut = s.soldOut.slice(0, Math.max(0, s.soldOut.length - 500));
+  }
+  const value = JSON.stringify(s);
   const d = await gql(
     `mutation Save($m: [MetafieldsSetInput!]!) {
        metafieldsSet(metafields: $m) { userErrors { field message } }
