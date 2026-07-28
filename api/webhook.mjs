@@ -9,9 +9,14 @@
  * targeted re-sort of a few collections is quick.
  */
 import { runEngine } from '../sort-oos.mjs';
-import { collectionsForInventoryItem } from '../catalog.mjs';
+import { collectionsForInventoryItem, productsForInventoryItem } from '../catalog.mjs';
+import { notifyRestocksForProducts } from '../restock.mjs';
+import { loadSettings } from '../settings.mjs';
 
 export const config = { maxDuration: 60 };
+
+/** env "true"/"false" overrides the saved setting; else the setting decides. */
+const resolveFlag = (env, saved) => (env === 'true' ? true : env === 'false' ? false : !!saved);
 
 function param(req, name) {
   if (req.query && req.query[name] != null) return String(req.query[name]);
@@ -51,8 +56,26 @@ export default async function handler(req, res) {
     } else {
       console.log('webhook: no collections for inventory item', itemId, '— nothing to sort');
     }
+
+    // Back-in-stock is normally done by the full /api/run sweep — but that scans
+    // the whole store and times out on big catalogs. So handle the just-changed
+    // product(s) here: if the waitlist feature is on, email anyone waiting on a
+    // product that's now back in stock. Targeted, so it stays fast at any scale.
+    let restock = null;
+    if (itemId) {
+      const settings = await loadSettings().catch(() => ({}));
+      if (resolveFlag(process.env.FEATURE_WAITLIST, settings.waitlist)) {
+        const products = await productsForInventoryItem(itemId);
+        const base = `https://${req.headers['host'] || ''}`;
+        restock = await notifyRestocksForProducts(products, {
+          dryRun: process.env.DRY_RUN === 'true',
+          base,
+        });
+      }
+    }
+
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, inventoryItem: itemId ?? null, sorted: handles }));
+    res.end(JSON.stringify({ ok: true, inventoryItem: itemId ?? null, sorted: handles, restock }));
   } catch (err) {
     // 500 lets Shopify retry a transient failure (rate limit, cold start).
     console.error('webhook error:', err.message);

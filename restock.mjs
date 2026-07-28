@@ -80,6 +80,57 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
   return { waitlisted: waited.length, productsNotified, emailsSent };
 }
 
+/**
+ * Targeted back-in-stock for specific products (used by the webhook, which can't
+ * afford a full-store scan). Reads each product's waitlist first — cheap, and a
+ * no-op for products without one — then emails only those that are back in stock,
+ * clearing successes (keeping failures for retry). Same "in stock + non-empty
+ * waitlist" rule as notifyRestocks.
+ * @returns {Promise<{productsNotified:number, emailsSent:number}>}
+ */
+export async function notifyRestocksForProducts(productGids, { dryRun = false, base = null } = {}) {
+  const withLists = [];
+  for (const gid of productGids || []) {
+    const list = await readWaitlist(gid);
+    if (Array.isArray(list) && list.length) withLists.push({ gid, list });
+  }
+  if (!withLists.length) return { productsNotified: 0, emailsSent: 0 };
+
+  const stock = await fetchProductsByIds(withLists.map((w) => shortId(w.gid)));
+  const byId = new Map(stock.map((p) => [p.id, p]));
+
+  let productsNotified = 0;
+  let emailsSent = 0;
+  for (const { gid, list } of withLists) {
+    const sp = byId.get(gid);
+    if (!sp || !isInStock(sp)) continue; // still sold out — keep the list
+    const first = sp.variants?.nodes?.[0];
+    const product = {
+      title: sp.title,
+      handle: sp.handle,
+      image: sp.featuredImage?.url || null,
+      variantId: first?.id ? shortId(first.id) : null,
+    };
+    const failed = [];
+    for (const sub of list) {
+      const unsub = unsubUrl(base, shortId(gid), sub.email);
+      try {
+        await sendBackInStock(sub.email, product, unsub, { dryRun });
+        emailsSent++;
+      } catch (e) {
+        console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
+        failed.push(sub);
+      }
+    }
+    if (!dryRun) {
+      if (failed.length) await setWaitlist(gid, failed);
+      else await clearWaitlist(gid);
+    }
+    productsNotified++;
+  }
+  return { productsNotified, emailsSent };
+}
+
 /** Manually email + clear ONE product's waitlist (admin "Send now"), regardless
  *  of stock — the merchant is deciding it's back. Returns { sent, title }. */
 export async function notifyOneProduct(productGid, { dryRun = false, base = null } = {}) {

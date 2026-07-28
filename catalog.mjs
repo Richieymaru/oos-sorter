@@ -146,6 +146,23 @@ export async function collectionsForInventoryItem(inventoryItemId) {
   return [...handles];
 }
 
+/** The product gid(s) an inventory item belongs to — for targeted back-in-stock
+ *  from the webhook (no full-store scan). */
+export async function productsForInventoryItem(inventoryItemId) {
+  const gid = String(inventoryItemId).startsWith('gid://')
+    ? String(inventoryItemId)
+    : `gid://shopify/InventoryItem/${inventoryItemId}`;
+  const d = await gql(
+    `query Inv($id: ID!) {
+       inventoryItem(id: $id) { variants(first: 25) { nodes { product { id } } } }
+     }`,
+    { id: gid }
+  );
+  const ids = new Set();
+  for (const v of d.inventoryItem?.variants?.nodes ?? []) if (v.product?.id) ids.add(v.product.id);
+  return [...ids];
+}
+
 /** Fetch specific products by short id, each variant carrying `onlineAvailable`. */
 export async function fetchProductsByIds(ids) {
   const onlineLocIds = await getOnlineLocationIds();
