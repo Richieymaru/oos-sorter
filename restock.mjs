@@ -1,17 +1,70 @@
 /**
  * Back-in-stock restock pass. Finds every product that has a non-empty waitlist
- * AND is now in stock, emails everyone on that list, and clears it.
+ * AND is now in stock, emails the shoppers whose variant is back, and drops them
+ * from the list.
  *
  * "In stock + non-empty waitlist" is exactly a just-came-back event, because a
  * shopper only joins a waitlist while the product is sold out. Uses the same
  * online-availability stock definition (catalog.mjs / stock.mjs) as the sorter,
  * so it matches what the storefront actually shows.
+ *
+ * Emails are per variant: restocking "Black" emails the people who asked about
+ * Black and leaves the ones waiting on "Tan" on the list. Entries with no
+ * recorded variant (signed up before variants were tracked) keep the old
+ * product-level behaviour.
  */
 import { gql, shortId } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
-import { isInStock } from './stock.mjs';
-import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl } from './waitlist.mjs';
+import { isInStock, isVariantInStock } from './stock.mjs';
+import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, partitionByStock } from './waitlist.mjs';
 import { sendBackInStock, sendSoldOutAlert } from './notify.mjs';
+
+/**
+ * Email one product's due subscribers and write back whoever still waits.
+ * Shared by the scheduled pass, the webhook pass, and the manual "Send now".
+ *
+ * @param {object} args
+ * @param {string} args.gid - product gid
+ * @param {Array} args.list - the full waitlist for that product
+ * @param {Array} args.due - the subset to email now
+ * @param {Array} args.waiting - the subset to keep (still sold out)
+ * @param {{title?:string, handle?:string, image?:string|null}} args.product
+ * @param {string|null} args.fallbackVariantId - variant to link when an entry has none
+ * @returns {Promise<number>} how many emails actually sent
+ */
+async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, dryRun, base }) {
+  let sent = 0;
+  const failed = [];
+
+  for (const sub of due) {
+    // Deep-link the email to the variant the shopper actually asked about.
+    const payload = {
+      ...product,
+      variantId: sub.variantId || fallbackVariantId,
+      variantTitle: sub.variantTitle || null,
+    };
+    try {
+      await sendBackInStock(sub.email, payload, unsubUrl(base, shortId(gid), sub.email), { dryRun });
+      sent++;
+    } catch (e) {
+      console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
+      failed.push(sub); // keep them so they retry next run
+    }
+  }
+
+  if (!dryRun) {
+    const keep = [...waiting, ...failed];
+    if (keep.length === list.length) {
+      /* nothing changed — skip the write */
+    } else if (keep.length) {
+      await setWaitlist(gid, keep);
+    } else {
+      await clearWaitlist(gid);
+    }
+  }
+
+  return sent;
+}
 
 /** Every product that currently has at least one waitlist subscriber. */
 export async function productsWithWaitlist() {
@@ -51,30 +104,22 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
   let emailsSent = 0;
   for (const w of waited) {
     const sp = byId.get(w.id);
-    if (!sp || !isInStock(sp)) continue; // still sold out — keep the list
+    if (!sp || !isInStock(sp)) continue; // every variant still sold out — keep the whole list
+
+    const { notify, waiting } = partitionByStock(w.list, (variantId) => isVariantInStock(sp, variantId));
+    if (!notify.length) continue; // the product is back, but not the variants these people want
+
     const first = sp.variants?.nodes?.[0];
-    const product = {
-      title: w.title,
-      handle: w.handle,
-      image: sp.featuredImage?.url || null,
-      variantId: first?.id ? shortId(first.id) : null,
-    };
-    const failed = [];
-    for (const sub of w.list) {
-      const unsub = unsubUrl(base, shortId(w.id), sub.email);
-      try {
-        await sendBackInStock(sub.email, product, unsub, { dryRun });
-        emailsSent++;
-      } catch (e) {
-        console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
-        failed.push(sub);
-      }
-    }
-    // Keep anyone whose email failed so they retry next run; only clear on full success.
-    if (!dryRun) {
-      if (failed.length) await setWaitlist(w.id, failed);
-      else await clearWaitlist(w.id);
-    }
+    emailsSent += await emailAndPrune({
+      gid: w.id,
+      list: w.list,
+      due: notify,
+      waiting,
+      product: { title: w.title, handle: w.handle, image: sp.featuredImage?.url || null },
+      fallbackVariantId: first?.id ? shortId(first.id) : null,
+      dryRun,
+      base,
+    });
     productsNotified++;
   }
   return { waitlisted: waited.length, productsNotified, emailsSent };
@@ -103,29 +148,22 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
   let emailsSent = 0;
   for (const { gid, list } of withLists) {
     const sp = byId.get(gid);
-    if (!sp || !isInStock(sp)) continue; // still sold out — keep the list
+    if (!sp || !isInStock(sp)) continue; // every variant still sold out — keep the whole list
+
+    const { notify, waiting } = partitionByStock(list, (variantId) => isVariantInStock(sp, variantId));
+    if (!notify.length) continue; // the product is back, but not the variants these people want
+
     const first = sp.variants?.nodes?.[0];
-    const product = {
-      title: sp.title,
-      handle: sp.handle,
-      image: sp.featuredImage?.url || null,
-      variantId: first?.id ? shortId(first.id) : null,
-    };
-    const failed = [];
-    for (const sub of list) {
-      const unsub = unsubUrl(base, shortId(gid), sub.email);
-      try {
-        await sendBackInStock(sub.email, product, unsub, { dryRun });
-        emailsSent++;
-      } catch (e) {
-        console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
-        failed.push(sub);
-      }
-    }
-    if (!dryRun) {
-      if (failed.length) await setWaitlist(gid, failed);
-      else await clearWaitlist(gid);
-    }
+    emailsSent += await emailAndPrune({
+      gid,
+      list,
+      due: notify,
+      waiting,
+      product: { title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null },
+      fallbackVariantId: first?.id ? shortId(first.id) : null,
+      dryRun,
+      base,
+    });
     productsNotified++;
   }
   return { productsNotified, emailsSent };
@@ -188,9 +226,17 @@ export async function alertNewlySoldOut(productGids, { recipients = [], dryRun =
   return { alerted: newly.length };
 }
 
-/** Manually email + clear ONE product's waitlist (admin "Send now"), regardless
- *  of stock — the merchant is deciding it's back. Returns { sent, title }. */
-export async function notifyOneProduct(productGid, { dryRun = false, base = null } = {}) {
+/**
+ * Manually email ONE product's waitlist (admin "Send now"), regardless of stock —
+ * the merchant is deciding it's back.
+ *
+ * Pass `variantId` to email only the shoppers waiting on that variant and leave
+ * the rest on the list; without it every subscriber is emailed, which is the
+ * original behaviour and the right one for a single-variant product.
+ *
+ * @returns {Promise<{sent:number, title:string, total:number}>}
+ */
+export async function notifyOneProduct(productGid, { dryRun = false, base = null, variantId = null } = {}) {
   const d = await gql(
     `query($id: ID!) { product(id: $id) {
        title handle featuredImage { url } variants(first: 1) { nodes { id } }
@@ -199,29 +245,23 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
   );
   const p = d.product || {};
   const first = p.variants?.nodes?.[0];
-  const product = {
-    title: p.title,
-    handle: p.handle,
-    image: p.featuredImage?.url || null,
-    variantId: first?.id ? shortId(first.id) : null,
-  };
   const list = await readWaitlist(productGid);
-  let sent = 0;
-  const failed = [];
-  for (const sub of list) {
-    const unsub = unsubUrl(base, shortId(productGid), sub.email);
-    try {
-      await sendBackInStock(sub.email, product, unsub, { dryRun });
-      sent++;
-    } catch (e) {
-      console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
-      failed.push(sub);
-    }
-  }
-  // Keep anyone whose email failed so they retry; only clear on full success.
-  if (!dryRun) {
-    if (failed.length) await setWaitlist(productGid, failed);
-    else await clearWaitlist(productGid);
-  }
+
+  const want = variantId == null ? null : String(variantId).replace(/\D/g, '');
+  const { notify, waiting } = partitionByStock(list, (entryVariant) =>
+    want === null ? true : String(entryVariant ?? '') === want
+  );
+
+  const sent = await emailAndPrune({
+    gid: productGid,
+    list,
+    due: notify,
+    waiting,
+    product: { title: p.title, handle: p.handle, image: p.featuredImage?.url || null },
+    fallbackVariantId: first?.id ? shortId(first.id) : null,
+    dryRun,
+    base,
+  });
+
   return { sent, title: p.title, total: list.length };
 }

@@ -13,6 +13,8 @@
     class="oos-notify{{ width_class }}"
     data-oos-notify
     data-product-id="{{ product.id }}"
+    data-variant-id="{{ v.id }}"
+    data-variant-title="{{ v.title | escape }}"
     data-endpoint="{{ block.settings.endpoint }}"
     data-hide-native="{{ block.settings.hide_sold_out }}"
     data-bg="{{ block.settings.bg_color }}"

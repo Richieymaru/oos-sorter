@@ -155,12 +155,15 @@ export function sendSoldOutAlert(items, opts) {
  *  When variantId is present the "Add to Cart" button deep-links to the cart. */
 export function buildBackInStock(product, unsub) {
   const title = product.title ?? 'Your item';
+  // Single-variant products are literally titled "Default Title" — never show that.
+  const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
+  const named = variant ? `${title} — ${variant}` : title;
   const productUrl = product.handle && SHOP ? `https://${SHOP}/products/${product.handle}` : (SHOP ? `https://${SHOP}` : '#');
   // A /cart/<variantId>:1 permalink adds the item and lands the shopper on the cart.
   const cartUrl = product.variantId && SHOP ? `https://${SHOP}/cart/${product.variantId}:1` : productUrl;
-  const subject = `${title} is back in stock`;
+  const subject = `${named} is back in stock`;
   const text =
-    `Good news! "${title}" is available again on ${SHOP}.\n\n` +
+    `Good news! "${named}" is available again on ${SHOP}.\n\n` +
     `Add it to your cart: ${cartUrl}\n` +
     `Or view the product: ${productUrl}\n\n— ${APP_NAME}\n\n` +
     `Don't want these emails? Unsubscribe: ${unsub}`;
@@ -176,6 +179,7 @@ export function buildBackInStock(product, unsub) {
         <tr><td style="padding:24px 24px 12px">
           <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:${ACCENT};text-transform:uppercase">Back in stock</div>
           <div style="font-size:20px;font-weight:700;color:#161b22;margin:8px 0 6px">${esc(title)}</div>
+          ${variant ? `<div style="font-size:13px;color:#5f6875;margin:-2px 0 6px">Option: <strong style="color:#161b22">${esc(variant)}</strong></div>` : ''}
           <div style="font-size:14px;color:#5f6875;line-height:1.5">It's available again on ${esc(SHOP)}. Grab it before it sells out.</div>
         </td></tr>
         ${imageBlock}

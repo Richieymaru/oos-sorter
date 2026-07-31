@@ -13,7 +13,7 @@ import {
   planRestores,
   retainBaseOrder,
 } from './features.mjs';
-import { isInStock } from './stock.mjs';
+import { isInStock, isVariantInStock } from './stock.mjs';
 
 let failures = 0;
 let checks = 0;
@@ -59,6 +59,40 @@ eq(
       ],
     },
   }),
+  true
+);
+
+console.log('\n--- isVariantInStock (per-variant, for the waitlist) ---');
+const twoVariants = {
+  tracksInventory: true,
+  variants: {
+    nodes: [
+      { id: 'gid://shopify/ProductVariant/99', inventoryPolicy: 'DENY', inventoryItem: { tracked: true }, onlineAvailable: 0 },
+      { id: 'gid://shopify/ProductVariant/100', inventoryPolicy: 'DENY', inventoryItem: { tracked: true }, onlineAvailable: 4 },
+    ],
+  },
+};
+eq('sold-out variant -> false even though the product is in stock', isVariantInStock(twoVariants, '99'), false);
+eq('restocked variant -> true', isVariantInStock(twoVariants, '100'), true);
+eq('accepts a gid', isVariantInStock(twoVariants, 'gid://shopify/ProductVariant/100'), true);
+eq('null variant falls back to product level', isVariantInStock(twoVariants, null), true);
+eq('empty string falls back to product level', isVariantInStock(twoVariants, ''), true);
+eq('unknown variant falls back rather than stranding them', isVariantInStock(twoVariants, '12345'), true);
+eq('untracked product -> always true', isVariantInStock({ tracksInventory: false, variants: { nodes: [] } }, '99'), true);
+eq(
+  'oversell variant -> true at 0',
+  isVariantInStock(
+    { tracksInventory: true, variants: { nodes: [{ id: 'gid://shopify/ProductVariant/1', inventoryPolicy: 'CONTINUE', inventoryItem: { tracked: true }, onlineAvailable: 0 }] } },
+    '1'
+  ),
+  true
+);
+eq(
+  'untracked variant -> true at 0',
+  isVariantInStock(
+    { tracksInventory: true, variants: { nodes: [{ id: 'gid://shopify/ProductVariant/1', inventoryPolicy: 'DENY', inventoryItem: { tracked: false }, onlineAvailable: 0 }] } },
+    '1'
+  ),
   true
 );
 

@@ -27,6 +27,22 @@
     return scope;
   }
 
+  /**
+   * Which variant is the shopper actually looking at, right now.
+   *
+   * Read at submit time rather than captured at init, because themes switch
+   * variants without re-rendering this block. The ?variant= URL param is the most
+   * current source (themes update it on every switch); the block's own attribute
+   * is the fallback for the first load, before anything has been switched.
+   */
+  function currentVariantId(root) {
+    try {
+      var fromUrl = new URLSearchParams(location.search).get('variant');
+      if (fromUrl && /^\d+$/.test(fromUrl)) return fromUrl;
+    } catch (e) {}
+    return (root.getAttribute('data-variant-id') || '').replace(/\D/g, '') || null;
+  }
+
   function init(root) {
     if (root.__oosInit) return;
     root.__oosInit = true;
@@ -107,7 +123,13 @@
       fetch(d.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.value.trim(), productId: d.productId, consent: true, hp: hp.value })
+        body: JSON.stringify({
+          email: email.value.trim(),
+          productId: d.productId,
+          variantId: currentVariantId(root),
+          consent: true,
+          hp: hp.value
+        })
       })
         .then(function (r) { return r.json(); })
         .then(function (j) {

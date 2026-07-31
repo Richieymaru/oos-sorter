@@ -28,3 +28,26 @@ export function isInStock(product) {
   const online = product.variants.nodes.reduce((sum, v) => sum + (v.onlineAvailable ?? 0), 0);
   return online > 0;
 }
+
+/**
+ * The same question for a single variant — used by the back-in-stock waitlist so
+ * a shopper waiting on "Black" isn't emailed when only "Tan" restocks.
+ *
+ * Same three rules as isInStock, applied to one variant instead of any variant.
+ * Falls back to the product-level answer when the variant isn't found, which is
+ * what a waitlist entry with no recorded variant means.
+ *
+ * @param {object} product - fetched via catalog.mjs (needs `onlineAvailable`)
+ * @param {string|null} variantShortId - numeric variant id, or null for "any variant"
+ */
+export function isVariantInStock(product, variantShortId) {
+  if (product.tracksInventory === false) return true;
+  if (variantShortId == null || variantShortId === '') return isInStock(product);
+
+  const want = String(variantShortId).replace(/\D/g, '');
+  const variant = product.variants.nodes.find((v) => String(v.id).replace(/\D/g, '') === want);
+  if (!variant) return isInStock(product); // variant deleted or renumbered — don't strand them
+
+  if (variant.inventoryPolicy === 'CONTINUE' || variant.inventoryItem?.tracked === false) return true;
+  return (variant.onlineAvailable ?? 0) > 0;
+}
