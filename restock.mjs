@@ -209,7 +209,7 @@ export async function alertNewlySoldOut(productGids, { recipients = [], dryRun =
     const soldOut = !isInStock(sp);
     const alerted = await readAlerted(gid);
     if (soldOut && !alerted) {
-      newly.push({ title: sp.title, handle: sp.handle });
+      newly.push({ title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null });
       if (!dryRun) await setAlerted(gid, true);
     } else if (!soldOut && alerted) {
       if (!dryRun) await setAlerted(gid, false); // back in stock — reset for next episode

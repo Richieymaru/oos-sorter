@@ -56,9 +56,12 @@ function htmlRow(item) {
   return `<tr><td style="padding:10px 0;border-bottom:1px solid #f0f2f6;font-size:14px;color:#161b22">${esc(item.title ?? item.id)}${tags}</td></tr>`;
 }
 
-/** Full HTML document for an email. */
-function emailHtml({ subtitle, lead, items }) {
-  const rows = items.length
+/** Full HTML document for an email. Pass `bodyHtml` for a custom body (e.g. rich
+ *  product cards); otherwise `items` render as plain title rows. */
+function emailHtml({ subtitle, lead, items = [], bodyHtml = null }) {
+  const rows = bodyHtml != null
+    ? bodyHtml
+    : items.length
     ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation">${items.map(htmlRow).join('')}</table>`
     : `<div style="font-size:14px;color:#5f6875;padding:6px 0">Nothing sold out right now — every product is available online.</div>`;
   return `<!doctype html><html><body style="margin:0;background:#eef1f6">
@@ -127,7 +130,36 @@ export function buildReport(items) {
   return { subject, text, html };
 }
 
-/** Pure: build a real-time "just sold out" alert for the owner/team. */
+/** The storefront product URL for an alert item, or the shop home as a fallback. */
+function productUrl(item) {
+  if (item.handle && SHOP) return `https://${SHOP}/products/${item.handle}`;
+  return SHOP ? `https://${SHOP}` : '#';
+}
+
+/** One rich product card (thumbnail + linked title + "View product") for the alert. */
+function alertCard(item) {
+  const url = productUrl(item);
+  const title = item.title ?? item.id;
+  const thumb = item.image
+    ? `<td width="78" style="padding-right:14px;vertical-align:top">
+         <a href="${esc(url)}"><img src="${esc(item.image)}" alt="${esc(title)}" width="64" height="64" style="width:64px;height:64px;border-radius:10px;border:1px solid #eef1f6;object-fit:cover;display:block"></a>
+       </td>`
+    : '';
+  return `<tr><td style="padding:9px 0;border-bottom:1px solid #f0f2f6">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
+      ${thumb}
+      <td style="vertical-align:middle">
+        <a href="${esc(url)}" style="font-size:15px;font-weight:600;color:#161b22;text-decoration:none;line-height:1.35">${esc(title)}</a>
+        <div style="margin-top:5px">
+          <a href="${esc(url)}" style="font-size:12.5px;font-weight:600;color:${ACCENT};text-decoration:none">View product &rarr;</a>
+        </div>
+      </td>
+    </tr></table>
+  </td></tr>`;
+}
+
+/** Pure: build a real-time "just sold out" alert for the owner/team. Each product
+ *  shows its image and links to its storefront page. */
 export function buildSoldOutAlert(items) {
   const n = items.length;
   const subject = n === 1
@@ -135,12 +167,13 @@ export function buildSoldOutAlert(items) {
     : `${APP_NAME}: ${n} products just sold out`;
   const text =
     `${n} product${n === 1 ? '' : 's'} just sold out on ${SHOP}:\n\n` +
-    items.map(textLine).join('\n') +
+    items.map((it) => `  • ${it.title ?? it.id}\n    ${productUrl(it)}`).join('\n\n') +
     `\n\n— ${APP_NAME}`;
+  const bodyHtml = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation">${items.map(alertCard).join('')}</table>`;
   const html = emailHtml({
     subtitle: 'Sold-out alert',
-    lead: `<b>${n}</b> product${n === 1 ? '' : 's'} just sold out on <span style="color:${ACCENT}">${esc(SHOP)}</span>.`,
-    items,
+    lead: `<b>${n}</b> product${n === 1 ? '' : 's'} just sold out on <a href="https://${esc(SHOP)}" style="color:${ACCENT};text-decoration:none">${esc(SHOP)}</a>.`,
+    bodyHtml,
   });
   return { subject, text, html };
 }
