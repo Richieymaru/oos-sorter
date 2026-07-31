@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" width="1200" height="1200">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF4D57"/>
+      <stop offset="0.52" stop-color="#E4222E"/>
+      <stop offset="1" stop-color="#AC0B16"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.30" cy="0.20" r="0.95">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="1200" height="1200" rx="272" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="1200" rx="272" fill="url(#glow)"/>
+  <rect x="6" y="6" width="1188" height="1188" rx="268" fill="url(#sheen)"/>
+  <rect x="26" y="26" width="1148" height="1148" rx="250" fill="none" stroke="#ffffff" stroke-opacity="0.15" stroke-width="4"/>
+
+  <!-- glyph: collection list, sold-out row pushed down -->
+  <g>
+    <rect x="290" y="377" width="430" height="98" rx="49" fill="#ffffff"/>
+    <rect x="290" y="551" width="430" height="98" rx="49" fill="#ffffff" fill-opacity="0.92"/>
+    <rect x="290" y="725" width="430" height="98" rx="49" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="16"/>
+    <!-- push-down arrow -->
+    <g fill="#ffffff">
+      <rect x="792" y="377" width="76" height="336" rx="38"/>
+      <path d="M748 668 L830 812 L912 668 Z"/>
+    </g>
+  </g>
+</svg>
