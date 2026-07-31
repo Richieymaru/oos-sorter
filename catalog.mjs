@@ -32,6 +32,7 @@ function variantFields(onlineLocIds) {
     .join('\n            ');
   return `
     id
+    title
     inventoryQuantity
     inventoryPolicy
     inventoryItem { tracked ${levels} }`;

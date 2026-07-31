@@ -1,7 +1,25 @@
 import { requireAuth } from './_auth.mjs';
 import { shell, setPageHeaders, esc } from '../ui.mjs';
 import { productsWithWaitlist, notifyOneProduct } from '../restock.mjs';
+import { fetchProductsByIds } from '../catalog.mjs';
+import { isVariantInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
+
+/**
+ * A display-only variant name for entries that recorded no variant (they signed
+ * up before variants were tracked). Uses the product's own variants: if exactly
+ * one real-named variant is sold out, that's almost certainly the one they want;
+ * for a single-option product it's simply that option. Ambiguous cases (several
+ * sold-out options) stay a dash — we don't guess which the shopper meant.
+ */
+function fallbackVariantName(product) {
+  if (!product) return null;
+  const named = product.variants.nodes.filter((v) => v.title && v.title !== 'Default Title');
+  if (!named.length) return null;
+  const soldOut = named.filter((v) => !isVariantInStock(product, String(v.id).replace(/\D/g, '')));
+  const candidates = soldOut.length ? soldOut : named;
+  return candidates.length === 1 ? candidates[0].title : null;
+}
 
 async function readJson(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -37,19 +55,41 @@ export default async function handler(req, res) {
   // GET = the page.
   const items = await productsWithWaitlist().catch(() => []);
   const total = items.reduce((n, w) => n + w.list.length, 0);
+
+  // For any product with an entry that recorded no variant, pull the product's
+  // variants so we can show a real option name instead of a dash. Only fetch the
+  // ones that actually need it, keeping the query small on a big store.
+  const needIds = items
+    .filter((w) => w.list.some((s) => !(s.variantTitle && s.variantTitle !== 'Default Title')))
+    .map((w) => shortId(w.id));
+  let prodById = new Map();
+  if (needIds.length) {
+    try {
+      const prods = await fetchProductsByIds(needIds);
+      prodById = new Map(prods.map((p) => [p.id, p]));
+    } catch { /* leave dashes if the lookup fails — display only, never blocks the page */ }
+  }
   const fmt = (ts) => esc(String(ts || '').replace('T', ' ').slice(0, 16));
   const thumb = (u) =>
     u
       ? `<img src="${esc(u + (u.includes('?') ? '&' : '?') + 'width=96')}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:9px;object-fit:cover;border:1px solid var(--line);flex:none">`
       : `<div style="width:46px;height:46px;border-radius:9px;background:var(--hover);border:1px solid var(--line);flex:none"></div>`;
   // "Default Title" is Shopify's name for the only variant of a single-variant
-  // product — it means nothing to a merchant, so show a dash instead.
-  const variantLabel = (s) =>
-    s.variantTitle && s.variantTitle !== 'Default Title'
-      ? esc(s.variantTitle)
-      : s.variantId
-      ? `<span class="faint">#${esc(s.variantId)}</span>`
-      : '<span class="faint">&mdash;</span>';
+  // product — it means nothing to a merchant. When an entry recorded no variant,
+  // fall back to the product's own sold-out variant name (`prod`); only if that's
+  // ambiguous too do we show a dash.
+  const variantLabel = (s, prod) => {
+    if (s.variantTitle && s.variantTitle !== 'Default Title') return esc(s.variantTitle);
+    // an id was captured but no title — resolve it against the product's variants
+    if (s.variantId && prod) {
+      const want = String(s.variantId).replace(/\D/g, '');
+      const v = prod.variants.nodes.find((x) => String(x.id).replace(/\D/g, '') === want);
+      if (v && v.title && v.title !== 'Default Title') return esc(v.title);
+    }
+    if (s.variantId) return `<span class="faint">#${esc(s.variantId)}</span>`;
+    const fb = fallbackVariantName(prod);
+    return fb ? esc(fb) : '&mdash;';
+  };
 
   /** Group a product's subscribers by variant, so each option can be sent on its own. */
   const byVariant = (list) => {
@@ -73,10 +113,11 @@ export default async function handler(req, res) {
           // sending product-wide would clear shoppers whose variant is still sold out.
           const perVariant = groups.length > 1;
 
+          const prod = prodById.get(w.id) || null;
           const rows = w.list
             .map(
               (s) =>
-                `<tr><td class="mono">${esc(s.email)}</td><td>${variantLabel(s)}</td><td class="num">${fmt(s.ts)}</td></tr>`
+                `<tr><td class="mono">${esc(s.email)}</td><td>${variantLabel(s, prod)}</td><td class="num">${fmt(s.ts)}</td></tr>`
             )
             .join('');
 
