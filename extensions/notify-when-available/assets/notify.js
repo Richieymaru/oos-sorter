@@ -36,10 +36,20 @@
    * is the fallback for the first load, before anything has been switched.
    */
   function currentVariantId(root) {
+    // 1. ?variant= URL param — most themes update it on every switch.
     try {
       var fromUrl = new URLSearchParams(location.search).get('variant');
       if (fromUrl && /^\d+$/.test(fromUrl)) return fromUrl;
     } catch (e) {}
+    // 2. the product form's selected-variant input — the theme keeps this in sync
+    //    with the variant picker even on themes that don't touch the URL.
+    try {
+      var scope = productScope(root);
+      var input = scope.querySelector('form[action*="/cart/add"] [name="id"]');
+      var val = input && String(input.value || '').replace(/\D/g, '');
+      if (val) return val;
+    } catch (e) {}
+    // 3. the block's own attribute (selected/first variant at render time).
     return (root.getAttribute('data-variant-id') || '').replace(/\D/g, '') || null;
   }
 
