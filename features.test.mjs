@@ -12,6 +12,7 @@ import {
   planDrafts,
   planRestores,
   retainBaseOrder,
+  pushSoldOutDown,
 } from './features.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 
@@ -222,6 +223,58 @@ console.log('\n--- draft/restore round-trip preserves position ---');
   const afterRestore = retainBaseOrder(whileHidden, ['a', 'b', 'c', 'd', 'e'], []);
   eq('back in original slot', afterRestore, ['a', 'b', 'c', 'd', 'e']);
   eq('c at index 2 throughout', afterRestore.indexOf('c'), 2);
+}
+
+console.log('\n--- pushSoldOutDown (live-order sort) ---');
+const P = (pinned, sold) => ({ isPinned: (id) => pinned.includes(id), isSoldOut: (id) => sold.includes(id) });
+eq('sold-out moves to the bottom', pushSoldOutDown(['A', 'B', 'C', 'D'], P([], ['B'])), ['A', 'C', 'D', 'B']);
+eq('pinned stays on top even when sold out', pushSoldOutDown(['A', 'B', 'C'], P(['C'], ['C'])), ['C', 'A', 'B']);
+eq('in-stock keep merchant order (moved-up product stays up)', pushSoldOutDown(['X', 'A', 'B', 'C'], P([], [])), ['X', 'A', 'B', 'C']);
+eq('restocked product stays at the bottom (no jump back)', pushSoldOutDown(['A', 'B', 'D', 'C'], P([], [])), ['A', 'B', 'D', 'C']);
+eq('accidentally-moved sold-out goes back down', pushSoldOutDown(['A', 'S', 'B', 'C'], P([], ['S'])), ['A', 'B', 'C', 'S']);
+{
+  const p = P(['P1'], ['S1', 'S2']);
+  const once = pushSoldOutDown(['P1', 'a', 'S1', 'b', 'S2', 'c'], p);
+  const twice = pushSoldOutDown(once, p);
+  eq('idempotent (settled collection -> zero churn)', twice, once);
+}
+
+// Full draft/restock life story, proving the promised behaviour:
+{
+  const p6SoldOut = P([], ['prod6']);
+  const noneSold = P([], []);
+  const start = ['prod1', 'prod2', 'prod3', 'prod4', 'prod5', 'prod6', 'prod7', 'prod8'];
+  const afterSellOut = pushSoldOutDown(start, p6SoldOut);
+  eq('prod6 sells out -> drops to the bottom', afterSellOut, ['prod1', 'prod2', 'prod3', 'prod4', 'prod5', 'prod7', 'prod8', 'prod6']);
+  const afterRestock = pushSoldOutDown(afterSellOut, noneSold);
+  eq('prod6 restocks -> stays at the bottom, NOT back to slot 6', afterRestock, ['prod1', 'prod2', 'prod3', 'prod4', 'prod5', 'prod7', 'prod8', 'prod6']);
+}
+
+// Property: over many random collections, the sort keeps the same set, orders
+// pinned -> in-stock -> sold-out, preserves each group's relative order, and is
+// idempotent (so a settled collection produces zero moves on the next run).
+{
+  let bad = 0;
+  const rnd = (n) => Math.floor(Math.random() * n);
+  for (let t = 0; t < 3000; t++) {
+    const n = 1 + rnd(30);
+    const ids = Array.from({ length: n }, (_, i) => 'p' + i);
+    for (let i = n - 1; i > 0; i--) { const j = rnd(i + 1); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    const pinned = ids.filter(() => rnd(5) === 0);
+    const sold = ids.filter(() => rnd(3) === 0);
+    const p = P(pinned, sold);
+    const r = pushSoldOutDown(ids, p);
+    const groupOf = (id) => (pinned.includes(id) ? 0 : sold.includes(id) ? 2 : 1);
+    let ok = r.length === ids.length && new Set(r).size === n && ids.every((id) => r.includes(id));
+    for (let i = 1; ok && i < r.length; i++) if (groupOf(r[i]) < groupOf(r[i - 1])) ok = false;
+    for (const g of [0, 1, 2]) {
+      if (!ok) break;
+      if (ids.filter((id) => groupOf(id) === g).join(',') !== r.filter((id) => groupOf(id) === g).join(',')) ok = false;
+    }
+    if (ok && pushSoldOutDown(r, p).join(',') !== r.join(',')) ok = false;
+    if (!ok) bad++;
+  }
+  eq('3000 random collections satisfy all invariants', bad, 0);
 }
 
 console.log(

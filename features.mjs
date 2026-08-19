@@ -155,3 +155,28 @@ export function retainBaseOrder(storedBase, presentIds, draftedIds) {
   }
   return kept;
 }
+
+/**
+ * PURE. The "live-order" sort: keep every product in the order it is in RIGHT
+ * NOW, but move sold-out products below the in-stock ones, with pinned products
+ * always on top. Derives the target order from the collection's current live
+ * order — there is no frozen snapshot, so:
+ *   - in-stock products stay exactly where the merchant placed them;
+ *   - a product that sells out drops to the bottom;
+ *   - a product that comes back in stock STAYS where it is (it does not jump
+ *     back to any old position);
+ *   - a sold-out product accidentally dragged up is pushed back to the bottom.
+ * Stable within each group, and idempotent (a settled collection yields the same
+ * order, so the cron emits zero moves).
+ *
+ * @param {string[]} liveIds  ids in the collection's current (manual) order
+ * @param {{ isPinned:(id:string)=>boolean, isSoldOut:(id:string)=>boolean }} p
+ * @returns {string[]} target order
+ */
+export function pushSoldOutDown(liveIds, { isPinned, isSoldOut }) {
+  const pinned = liveIds.filter((id) => isPinned(id));
+  const rest = liveIds.filter((id) => !isPinned(id));
+  const inStock = rest.filter((id) => !isSoldOut(id));
+  const outStock = rest.filter((id) => isSoldOut(id));
+  return [...pinned, ...inStock, ...outStock];
+}

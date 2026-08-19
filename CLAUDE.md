@@ -1,8 +1,18 @@
 # OOS Sorter — project context
 
-Pushes sold-out products to the end of Shopify collections and returns them to
-their exact original position on restock. Single-store internal tool, not an App
-Store product. No framework, no database, no hosting — a Node script on a cron.
+Pushes sold-out products to the end of Shopify collections, keeping the
+merchant's current manual order for everything in stock. Single-store internal
+tool, not an App Store product. No framework, no database, no hosting — a Node
+script on a cron.
+
+**Sort model (changed 2026-08):** the engine no longer keeps a frozen
+`base_order` snapshot and no longer returns a restocked product to its old slot.
+It now sorts the collection's CURRENT live order: in-stock products stay exactly
+where the merchant placed them, sold-out products drop to the bottom, a restocked
+product STAYS where it is, and a sold-out product dragged up is pushed back down.
+The whole thing is one pure, idempotent function — `pushSoldOutDown()` in
+features.mjs — so a settled collection emits 0 moves (no churn). The move math
+(`computeMoves`) and the MANUAL-flip re-read below are unchanged.
 
 Owner: Johny, Shopify developer. Target stores are his own/client stores
 (currently testing on a dev store; GBU and GRI later).
@@ -194,14 +204,18 @@ move math and pure feature logic stay import-only and property-tested offline
 
 ## Decisions already made — don't re-litigate
 
-**State lives in a Shopify metafield**, `oos_sort.base_order` on each collection:
-a JSON array of short numeric product IDs. Deliberate — no external database to
-host or back up. Short IDs keep it under the metafield size limit.
+**~~State lives in a Shopify metafield, `oos_sort.base_order`~~ — REMOVED
+2026-08.** The sort no longer keeps any per-collection order snapshot. Each run
+derives the target order from the collection's current live order via
+`pushSoldOutDown()`, so there is no state to store, capture, or reset. (The
+`oos_sort.state` shop metafield for the Notify/Draft features is unrelated and
+still used.) The old `base_order` metafields on collections are now orphaned and
+harmless; `catalog.mjs` still fetches the field but nothing reads it.
 
 **Reordering requires `sortOrder: MANUAL`.** Shopify rejects
-`collectionReorderProducts` otherwise. This is why the first run must happen
-*before* anyone changes sort order by hand — run one captures the collection's
-current order and freezes it as the base.
+`collectionReorderProducts` otherwise. The engine flips a collection to MANUAL on
+first touch (same as before), then re-reads and sorts against the live manual
+order.
 
 **Move calculation is the subtle part.** `collectionReorderProducts` applies
 moves sequentially, each `newPosition` evaluated against the array state at that
@@ -347,16 +361,13 @@ throwaway dev store; move it outside OneDrive before doing the GBU one.
 - **`inventorySetQuantities` needs `@idempotent(key: "<uuid>")`** (required as
   of 2026-04) and `InventoryQuantityInput.changeFromQuantity` (compare-and-set).
   Only the test scripts write inventory; the engine itself never does.
-- New products are inserted into the base order **at the position the merchant
-  placed them** — `retainBaseOrder()` (features.mjs) anchors each genuinely-new
-  id right after its nearest preceding live-order neighbour. (Before 2026-08 they
-  were appended to the end, which dragged a freshly-placed in-stock product to
-  the bottom on the next sort — the "new product sinks to the last page" bug.)
-  Note this only helps a product the FIRST time it's seen: once an id is in
-  `base_order`, its slot is frozen and manual reorders of it are reverted each
-  run (the base is a one-time snapshot). To re-home an already-recorded product,
-  reset the collection's `base_order` metafield so the next run re-captures the
-  current live order as the new base.
+- New products, moved products, re-homed products: all "just work" now. Because
+  the sort follows the live order (`pushSoldOutDown()`), wherever the merchant
+  drops an in-stock product is where it stays — no first-touch special case, no
+  reset needed. `retainBaseOrder()` still exists in features.mjs (with its tests)
+  but is no longer called by the engine; leave it or delete it in a later cleanup.
+  The earlier "new product sinks to the last page" and "moved product snaps back"
+  bugs are both gone as a consequence.
 - Search & Discovery filtered pages ignore manual collection order. Platform
   limitation; affects every competing app too. Not fixable here.
 - A harmless `Assertion failed: ... src\win\async.c, line 76` appears on Windows

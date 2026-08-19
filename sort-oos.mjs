@@ -49,7 +49,7 @@ import {
   diffNewlySoldOut,
   mergePending,
   planDrafts,
-  retainBaseOrder,
+  pushSoldOutDown,
 } from './features.mjs';
 import { isInStock } from './stock.mjs';
 import { findCollection, fetchCollectionProducts } from './catalog.mjs';
@@ -78,8 +78,6 @@ let FEATURE_DRAFT = false;
 let FEATURE_WAITLIST = false;
 const SEND_DIGEST = process.env.SEND_DIGEST === 'true';
 
-const NAMESPACE = 'oos_sort';
-const KEY = 'base_order';
 const MAX_MOVES = 250; // hard limit per collectionReorderProducts call
 
 function requireEnv(name) {
@@ -116,14 +114,6 @@ const M_REORDER = `
 `;
 
 const Q_JOB = `query J($id: ID!) { job(id: $id) { id done } }`;
-
-const M_METAFIELD = `
-  mutation Save($metafields: [MetafieldsSetInput!]!) {
-    metafieldsSet(metafields: $metafields) {
-      userErrors { field message }
-    }
-  }
-`;
 
 // isInStock lives in stock.mjs (imported above) and is re-exported here so
 // existing importers (inspect-collection.mjs, tests) keep working.
@@ -163,20 +153,6 @@ export function computeMoves(current, desired) {
   const asc = greedyMoves(current, desired, 'asc');
   const desc = greedyMoves(current, desired, 'desc');
   return asc.length <= desc.length ? asc : desc;
-}
-
-/**
- * Constrain a desired order to the ids actually present, appending anything
- * present but unaccounted for. computeMoves assumes both arrays hold the same
- * set; feeding it a desired order containing ids that aren't in the collection
- * makes indexOf return -1 and corrupts the simulation silently.
- */
-function alignDesired(desired, liveIds) {
-  const live = new Set(liveIds);
-  const kept = desired.filter((id) => live.has(id));
-  const known = new Set(kept);
-  for (const id of liveIds) if (!known.has(id)) kept.push(id);
-  return kept;
 }
 
 /* ------------------------------------------------------------------ */
@@ -286,27 +262,25 @@ async function processCollection(handle, ctx) {
   }
 }
 
-/** The push-sold-out-to-bottom reorder for one collection. */
+/**
+ * Push sold-out products to the bottom of one collection, keeping the merchant's
+ * CURRENT live order for everything else (pinned stay on top). No frozen
+ * snapshot: in-stock products stay exactly where they were placed, a product
+ * that restocks stays where it is, and a sold-out product dragged up is pushed
+ * back down. See pushSoldOutDown() for the pure ordering logic.
+ */
 async function sortCollection(col, { products, currentIds, byId, tagsOf }, ctx) {
-  // base order: the merchant's intended sort. Keep drafted products' slots even
-  // if they drop out of the read (retainBaseOrder), so a restored product lands
-  // back where it started.
-  let base;
-  if (col.metafield?.value) {
-    base = retainBaseOrder(JSON.parse(col.metafield.value), currentIds, ctx.draftedSet);
-  } else {
-    base = currentIds.slice();
-    console.log(`  first run — capturing base order from current "${col.sortOrder}" sort`);
-  }
-
-  const pinned = base.filter((id) => tagsOf(id).includes(PIN_TAG));
-  const rest = base.filter((id) => !tagsOf(id).includes(PIN_TAG));
-  const stays = (id) => tagsOf(id).includes(IGNORE_TAG) || isInStock(byId.get(id));
-  const inStock = rest.filter(stays);
-  const outStock = rest.filter((id) => !stays(id));
-  const desired = [...pinned, ...inStock, ...outStock];
+  // The target order for a set of ids, given their stock/tags. Sold-out = not
+  // ignore-tagged AND not in stock (ignore-tagged products always count as in
+  // stock, so they never sink).
+  const computeDesired = (ids, idMap, tagsFn) =>
+    pushSoldOutDown(ids, {
+      isPinned: (id) => tagsFn(id).includes(PIN_TAG),
+      isSoldOut: (id) => !(tagsFn(id).includes(IGNORE_TAG) || isInStock(idMap.get(id))),
+    });
 
   if (DRY_RUN) {
+    const desired = computeDesired(currentIds, byId, tagsOf);
     const moves = computeMoves(currentIds, desired);
     console.log(`  [dry run] sort would apply ${moves.length} move(s)`);
     if (col.sortOrder !== 'MANUAL') {
@@ -321,31 +295,26 @@ async function sortCollection(col, { products, currentIds, byId, tagsOf }, ctx) 
     return;
   }
 
-  // persist base order before mutating anything
-  await gql(M_METAFIELD, {
-    metafields: [
-      { ownerId: col.id, namespace: NAMESPACE, key: KEY, type: 'json', value: JSON.stringify(base) },
-    ],
-  }).then((d) => assertNoUserErrors('metafieldsSet', d.metafieldsSet));
-
-  // collection must be MANUAL to accept reorders
+  // A collection must be MANUAL to accept reorders. Flipping to MANUAL swaps the
+  // live order over to Shopify's separately-stored manual position list — NOT the
+  // order read above — so we re-read and sort against what actually exists now.
   let liveIds = currentIds;
+  let liveById = byId;
+  let liveTagsOf = tagsOf;
   if (col.sortOrder !== 'MANUAL') {
     const d = await gql(M_SORT_MANUAL, { collection: { id: col.id, sortOrder: 'MANUAL' } });
     assertNoUserErrors('collectionUpdate', d.collectionUpdate);
     console.log(`  sortOrder ${col.sortOrder} -> MANUAL`);
 
-    // Flipping to MANUAL swaps the live order over to Shopify's separately-stored
-    // manual position list — NOT the order read above. Re-read, or moves computed
-    // against the old order strand any product that needed no move. Verified live.
-    liveIds = (await fetchCollectionProducts(col.id)).map((p) => shortId(p.id));
+    const fresh = await fetchCollectionProducts(col.id);
+    liveById = new Map(fresh.map((p) => [shortId(p.id), p]));
+    liveTagsOf = (id) => (liveById.get(id)?.tags ?? []).map((t) => t.toLowerCase());
+    liveIds = fresh.map((p) => shortId(p.id));
     console.log(`  re-read order after MANUAL switch`);
   }
 
-  // Membership can drift between reads (automated rules re-evaluate). Keep the
-  // target aligned with what is actually present now.
-  const target = alignDesired(desired, liveIds);
-  const moves = computeMoves(liveIds, target);
+  const desired = computeDesired(liveIds, liveById, liveTagsOf);
+  const moves = computeMoves(liveIds, desired);
   if (!moves.length) {
     console.log('  already correctly ordered');
     return;
