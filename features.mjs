@@ -119,13 +119,19 @@ export function planRestores(appDrafted, isBackInStock) {
  *
  * base_order is normally filtered to the ids currently present in the collection
  * read. But a drafted product may drop out of that read while it is hidden — if
- * we let it fall out of base_order it would come back as a "new" product at the
- * end and lose its original slot. So we keep any stored id that is present now
- * OR is currently one of the app's drafted products; genuinely new present ids
- * are appended (existing behaviour).
+ * we let it fall out of base_order it would come back as a "new" product and
+ * lose its original slot. So we keep any stored id that is present now OR is
+ * currently one of the app's drafted products.
+ *
+ * Genuinely-new products (present but not in the stored base) are inserted where
+ * the merchant actually PLACED them — right after their nearest preceding
+ * neighbour in the live order (or at the front if there is none). Appending them
+ * to the end instead would drag a freshly-placed in-stock product to the bottom
+ * of the collection on the very next sort. `presentIds` must be in live (manual)
+ * order, which is how the caller reads it.
  *
  * @param {string[]} storedBase   base order from the metafield
- * @param {Iterable<string>} presentIds  ids in the current collection read
+ * @param {Iterable<string>} presentIds  ids in the current collection read, in live order
  * @param {Iterable<string>} draftedIds  ids the app currently has drafted
  * @returns {string[]} base order to use and persist
  */
@@ -134,6 +140,18 @@ export function retainBaseOrder(storedBase, presentIds, draftedIds) {
   const drafted = new Set(draftedIds);
   const kept = storedBase.filter((id) => present.has(id) || drafted.has(id));
   const known = new Set(kept);
-  for (const id of present) if (!known.has(id)) kept.push(id); // genuinely new products
+  const live = [...presentIds];
+  for (let i = 0; i < live.length; i++) {
+    const id = live[i];
+    if (known.has(id)) continue; // already placed (stored base or drafted ghost)
+    // Anchor the new product to its nearest preceding live neighbour we already
+    // know, so it keeps the position the merchant dropped it into.
+    let insertAt = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      if (known.has(live[j])) { insertAt = kept.indexOf(live[j]) + 1; break; }
+    }
+    kept.splice(insertAt, 0, id);
+    known.add(id);
+  }
   return kept;
 }

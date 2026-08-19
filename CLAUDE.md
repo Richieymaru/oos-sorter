@@ -347,8 +347,16 @@ throwaway dev store; move it outside OneDrive before doing the GBU one.
 - **`inventorySetQuantities` needs `@idempotent(key: "<uuid>")`** (required as
   of 2026-04) and `InventoryQuantityInput.changeFromQuantity` (compare-and-set).
   Only the test scripts write inventory; the engine itself never does.
-- New products are appended to the base order. Change `base.push` to
-  `base.unshift` in `processCollection()` if new arrivals should lead.
+- New products are inserted into the base order **at the position the merchant
+  placed them** — `retainBaseOrder()` (features.mjs) anchors each genuinely-new
+  id right after its nearest preceding live-order neighbour. (Before 2026-08 they
+  were appended to the end, which dragged a freshly-placed in-stock product to
+  the bottom on the next sort — the "new product sinks to the last page" bug.)
+  Note this only helps a product the FIRST time it's seen: once an id is in
+  `base_order`, its slot is frozen and manual reorders of it are reverted each
+  run (the base is a one-time snapshot). To re-home an already-recorded product,
+  reset the collection's `base_order` metafield so the next run re-captures the
+  current live order as the new base.
 - Search & Discovery filtered pages ignore manual collection order. Platform
   limitation; affects every competing app too. Not fixable here.
 - A harmless `Assertion failed: ... src\win\async.c, line 76` appears on Windows

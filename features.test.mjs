@@ -186,6 +186,29 @@ eq(
   retainBaseOrder(['1', '2', '3'], ['1', '3', '9'], ['2']),
   ['1', '2', '3', '9']
 );
+// A genuinely-new product must land where the merchant PLACED it in the live
+// order, not get appended to the end (which would drag a freshly-placed
+// in-stock product to the bottom on the next sort).
+eq(
+  'new product keeps its manual middle position',
+  retainBaseOrder(['A', 'B', 'C', 'D', 'E'], ['A', 'B', 'C', 'P', 'D', 'E'], []),
+  ['A', 'B', 'C', 'P', 'D', 'E']
+);
+eq(
+  'new product placed first lands first',
+  retainBaseOrder(['A', 'B', 'C'], ['P', 'A', 'B', 'C'], []),
+  ['P', 'A', 'B', 'C']
+);
+eq(
+  'two adjacent new products keep their relative placement',
+  retainBaseOrder(['A', 'B', 'C'], ['A', 'X', 'Y', 'B', 'C'], []),
+  ['A', 'X', 'Y', 'B', 'C']
+);
+eq(
+  'new product anchors to its live neighbour, before a hidden drafted ghost',
+  retainBaseOrder(['1', '2', '3'], ['1', 'P', '3'], ['2']),
+  ['1', 'P', '2', '3']
+);
 
 // Property: a drafted product that later restocks must return to the SAME slot.
 // Model a full draft -> hidden -> restore cycle through retainBaseOrder.
