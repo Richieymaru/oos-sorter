@@ -1,0 +1,68 @@
+# Product Change Monitor — setup
+
+Logs **who** changes a product's status (Draft ↔ Active ↔ Archived ↔ Unlisted)
+to Slack and a Google Sheet, in real time, via the `products/update` webhook.
+Attribution comes from the product's timeline events (`BasicEvent.author`), which
+names the staff member even after the store activity log is purged.
+
+## 1. Turn it on (app Settings)
+
+In the Sorter's **Settings** page:
+- Toggle **Product change monitor** on.
+- (Optional) paste a **Slack Incoming Webhook** URL in *Slack notifications*.
+- (Optional) paste the **Google Apps Script** URL from step 3 in *Product-change log*.
+- Save.
+
+At least one of Slack / Sheet should be set, or the change is only logged to the
+Vercel function logs.
+
+## 2. Slack Incoming Webhook (optional)
+
+Slack → your workspace → **Apps** → search **Incoming Webhooks** → **Add to Slack**
+→ pick a channel (e.g. `#product-changes`) → copy the
+`https://hooks.slack.com/services/…` URL → paste into Settings.
+
+## 3. Google Sheet log (optional)
+
+1. Create a Google Sheet. First row (headers, optional):
+   `Timestamp | Product | URL | From | To | Who | Stock`
+2. **Extensions → Apps Script**, replace the file with the script below, Save.
+3. **Deploy → New deployment → Web app**:
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+   - Deploy, authorize, and copy the **Web app URL** (ends in `/exec`).
+4. Paste that URL into Settings → *Product-change log*.
+
+```javascript
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var d = JSON.parse(e.postData.contents);
+  sheet.appendRow([d.timestamp, d.product, d.url, d.from, d.to, d.who, d.stock]);
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+```
+
+## 4. Register the webhook + seed the baseline (one time, from the repo)
+
+```bash
+# subscribe products/update -> /api/product-webhook (same WEBHOOK_TOKEN as the inventory hook)
+node --env-file=.env register-webhook.mjs create-monitor https://sold-out-sorter.vercel.app
+
+# record every product's CURRENT status, so the NEXT change is caught (not absorbed as a baseline)
+node --env-file=.env seed-monitor.mjs
+```
+
+`register-webhook.mjs list` shows all subscriptions. Seeding is idempotent —
+rerun any time to refresh the snapshot.
+
+## Notes
+
+- `products/update` is noisy (fires on any edit). Non-status edits short-circuit
+  at "status unchanged" with no API calls and no writes — cheap at any volume.
+- Last-known statuses live in their own shop metafield `oos_sort.monitor`, kept
+  separate from `oos_sort.state` so the monitor and the sort/notify engine never
+  clobber each other's writes.
+- Stock in the alert is the sum of variant on-hand units from the webhook payload
+  (free, no extra API call).

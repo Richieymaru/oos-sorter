@@ -163,6 +163,16 @@ automatic sort, for us or Nada).
 - `FEATURE_DRAFT` — draft sold-out products (hidden store-wide), restore on
   restock. Only drafts ACTIVE products and only un-drafts ones it drafted
   itself (tracked in `oos_sort.state.drafted`).
+- `FEATURE_MONITOR` — Product Change Monitor (built 2026-09). On the
+  `products/update` webhook (`/api/product-webhook`), detects a real STATUS
+  change (Draft↔Active↔Archived↔Unlisted) against last-known status and posts
+  WHO did it (staff name via `BasicEvent.author`) to Slack + a Google Sheet
+  (product, old→new, stock, who, time). Last-known status lives in its OWN shop
+  metafield `oos_sort.monitor` (separate from `oos_sort.state` so writes never
+  clobber). Non-status edits short-circuit (no API call, no write). Pure logic
+  in `monitor.mjs` is tested (`monitor.test.mjs`). Setup + Apps Script:
+  `docs/product-monitor-setup.md`. Register with
+  `register-webhook.mjs create-monitor <base>`; seed once with `seed-monitor.mjs`.
 
 **Feature memory lives in one shop metafield, `oos_sort.state`** (separate from
 the per-collection `oos_sort.base_order`): `{ soldOut, drafted, pending,

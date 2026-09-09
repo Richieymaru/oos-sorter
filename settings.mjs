@@ -33,8 +33,15 @@ export function normalizeSlackWebhook(input) {
   return /^https:\/\/hooks\.slack\.com\/services\//.test(v) ? v : '';
 }
 
+/** Pure: accept a Google Apps Script Web App URL (the product-change log sink),
+ *  else ''. Only real script.google.com deploy URLs are stored. */
+export function normalizeSheetWebhook(input) {
+  const v = String(input ?? '').trim();
+  return /^https:\/\/script\.google\.com\/macros\//.test(v) ? v : '';
+}
+
 /** Pure: coerce an arbitrary object to strict toggles (default false) + the
- *  extra digest/report recipients list + the Slack webhook URL. */
+ *  extra digest/report recipients list + the Slack + Google Sheet webhook URLs. */
 export function normalizeSettings(obj) {
   const o = obj || {};
   return {
@@ -42,8 +49,10 @@ export function normalizeSettings(obj) {
     notify: o.notify === true,
     draft: o.draft === true,
     waitlist: o.waitlist === true,
+    monitor: o.monitor === true,
     notifyEmails: normalizeEmails(o.notifyEmails),
     slackWebhook: normalizeSlackWebhook(o.slackWebhook),
+    sheetWebhook: normalizeSheetWebhook(o.sheetWebhook),
   };
 }
 

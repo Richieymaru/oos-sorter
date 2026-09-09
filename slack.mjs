@@ -26,6 +26,29 @@ export async function notifySlackSignup({ email, title, handle, count, webhookUr
   const url = webhookUrl || process.env.SLACK_WEBHOOK_URL;
   if (!url) return { skipped: true };
   const payload = buildSignupMessage({ email, title, handle, count, variantTitle, shop: process.env.SHOP_DOMAIN });
+  return postToSlack(url, payload, 'signup');
+}
+
+/** Pure: build the Slack message for a product STATUS change. */
+export function buildProductChangeMessage({ title, handle, fromLabel, toLabel, who, stock, shop }) {
+  const name = title || 'a product';
+  const link = handle && shop ? `https://${shop}/products/${handle}` : null;
+  const product = link ? `<${link}|${name}>` : `*${name}*`;
+  const actor = who ? `*${who}*` : '_unknown_';
+  const stockTxt = stock == null ? '' : ` · stock: ${stock}`;
+  return { text: `:label: ${product} status changed *${fromLabel} → ${toLabel}* by ${actor}${stockTxt}` };
+}
+
+/** Post a product-change notification to Slack. Never throws. */
+export async function notifySlackProductChange({ title, handle, fromLabel, toLabel, who, stock, webhookUrl }) {
+  const url = webhookUrl || process.env.SLACK_WEBHOOK_URL;
+  if (!url) return { skipped: true };
+  const payload = buildProductChangeMessage({ title, handle, fromLabel, toLabel, who, stock, shop: process.env.SHOP_DOMAIN });
+  return postToSlack(url, payload, 'product-change');
+}
+
+/** Shared fire-and-forget POST to a Slack Incoming Webhook. */
+async function postToSlack(url, payload, label) {
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -35,7 +58,7 @@ export async function notifySlackSignup({ email, title, handle, count, webhookUr
     if (!res.ok) console.error(`  ! Slack webhook returned HTTP ${res.status}`);
     return { ok: res.ok };
   } catch (e) {
-    console.error(`  ! Slack notify failed: ${e.message}`);
+    console.error(`  ! Slack ${label} notify failed: ${e.message}`);
     return { ok: false, error: e.message };
   }
 }

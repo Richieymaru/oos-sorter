@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { normalizeSettings, normalizeEmails, normalizeSlackWebhook } from './settings.mjs';
+import { normalizeSettings, normalizeEmails, normalizeSlackWebhook, normalizeSheetWebhook } from './settings.mjs';
 import { isAuthorized, settingsBody } from './panel.mjs';
 
 let failures = 0, checks = 0;
@@ -12,16 +12,26 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-eq('empty -> all false', normalizeSettings({}), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
-eq('undefined -> all false', normalizeSettings(undefined), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
-eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { sort: true, notify: true, draft: true, waitlist: false, notifyEmails: E, slackWebhook: '' });
-eq('mixed', normalizeSettings({ sort: true, notify: false }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
-eq('string "true" is not true', normalizeSettings({ sort: 'true' }), { sort: false, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
-eq('extra keys ignored', normalizeSettings({ sort: true, evil: true }), { sort: true, notify: false, draft: false, waitlist: false, notifyEmails: E, slackWebhook: '' });
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', sheetWebhook: '' };
+eq('empty -> all false', normalizeSettings({}), base);
+eq('undefined -> all false', normalizeSettings(undefined), base);
+eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });
+eq('mixed', normalizeSettings({ sort: true, notify: false }), { ...base, sort: true });
+eq('string "true" is not true', normalizeSettings({ sort: 'true' }), base);
+eq('extra keys ignored', normalizeSettings({ sort: true, evil: true }), { ...base, sort: true });
 eq('waitlist toggle', normalizeSettings({ waitlist: true }).waitlist, true);
+eq('monitor toggle', normalizeSettings({ monitor: true }).monitor, true);
 eq('recipients parsed inside settings', normalizeSettings({ notifyEmails: 'A@x.com, b@y.com' }).notifyEmails, ['a@x.com', 'b@y.com']);
 
 eq('slack webhook stored inside settings', normalizeSettings({ slackWebhook: 'https://hooks.slack.com/services/A/B/C' }).slackWebhook, 'https://hooks.slack.com/services/A/B/C');
+eq('sheet webhook stored inside settings', normalizeSettings({ sheetWebhook: 'https://script.google.com/macros/s/AAA/exec' }).sheetWebhook, 'https://script.google.com/macros/s/AAA/exec');
+
+console.log('\n--- normalizeSheetWebhook ---');
+eq('valid apps script url kept', normalizeSheetWebhook('https://script.google.com/macros/s/ABC/exec'), 'https://script.google.com/macros/s/ABC/exec');
+eq('trims whitespace', normalizeSheetWebhook('  https://script.google.com/macros/s/ABC/exec '), 'https://script.google.com/macros/s/ABC/exec');
+eq('non-google url rejected', normalizeSheetWebhook('https://evil.com/exec'), '');
+eq('slack url is not a sheet url', normalizeSheetWebhook('https://hooks.slack.com/services/A/B/C'), '');
+eq('empty -> empty', normalizeSheetWebhook(''), '');
 
 console.log('\n--- normalizeSlackWebhook ---');
 eq('valid slack hook kept', normalizeSlackWebhook('https://hooks.slack.com/services/T1/B1/xyz'), 'https://hooks.slack.com/services/T1/B1/xyz');
@@ -56,6 +66,9 @@ eq('notify checkbox unchecked', /id="notify"(?![^>]*checked)/.test(sb), true);
 eq('has save + report calls', sb.includes('/api/settings') && sb.includes('/api/report'), true);
 eq('renders the slack webhook field', /id="slack"/.test(sb) && sb.includes('slackWebhook:'), true);
 eq('prefills existing slack webhook', settingsBody({ slackWebhook: 'https://hooks.slack.com/services/x/y/z' }).includes('https://hooks.slack.com/services/x/y/z'), true);
+eq('renders the monitor toggle', /id="monitor"/.test(sb), true);
+eq('renders the sheet webhook field', /id="sheet"/.test(sb) && sb.includes('sheetWebhook:'), true);
+eq('prefills existing sheet webhook', settingsBody({ sheetWebhook: 'https://script.google.com/macros/s/x/exec' }).includes('https://script.google.com/macros/s/x/exec'), true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
