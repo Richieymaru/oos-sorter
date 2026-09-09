@@ -12,38 +12,22 @@
  * The callback URL is built as <base><path>?token=WEBHOOK_TOKEN so only Shopify
  * can trigger it. Set WEBHOOK_TOKEN in .env AND in Vercel (same value).
  */
-import { gql, assertNoUserErrors } from './shopify.mjs';
+import { listWebhooks, ensureWebhook, deleteWebhook } from './webhooks.mjs';
 
 const [, , cmd, arg] = process.argv;
 
 async function list() {
-  const d = await gql(
-    `{ webhookSubscriptions(first: 50) {
-         nodes { id topic endpoint { __typename ... on WebhookHttpEndpoint { callbackUrl } } }
-       } }`
-  );
-  const nodes = d.webhookSubscriptions.nodes;
+  const nodes = await listWebhooks();
   if (!nodes.length) return console.log('No webhook subscriptions.');
   for (const n of nodes) console.log(`${n.id}  ${n.topic}  ${n.endpoint?.callbackUrl ?? ''}`);
 }
 
-/** Subscribe one topic to <base><path>?token=…. */
+/** Subscribe one topic to <base><path>?token=… (idempotent). */
 async function subscribe(base, topic, path) {
   if (!base) throw new Error(`Usage: register-webhook.mjs ${cmd} https://your-app.vercel.app`);
   if (!process.env.WEBHOOK_TOKEN) throw new Error('Set WEBHOOK_TOKEN in .env first');
-  const uri = `${base.replace(/\/$/, '')}${path}?token=${process.env.WEBHOOK_TOKEN}`;
-  const d = await gql(
-    `mutation Create($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
-       webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) {
-         webhookSubscription { id topic endpoint { ... on WebhookHttpEndpoint { callbackUrl } } }
-         userErrors { field message }
-       }
-     }`,
-    { topic, sub: { uri, format: 'JSON' } }
-  );
-  assertNoUserErrors('webhookSubscriptionCreate', d.webhookSubscriptionCreate);
-  const s = d.webhookSubscriptionCreate.webhookSubscription;
-  console.log(`Created: ${s.id}  ${s.topic}  ${s.endpoint.callbackUrl}`);
+  const r = await ensureWebhook({ base, topic, path, token: process.env.WEBHOOK_TOKEN });
+  console.log(`${r.status === 'exists' ? 'Already present' : 'Created'}: ${r.id}  ${topic}  ${r.uri}`);
 }
 
 const create = (base) => subscribe(base, 'INVENTORY_LEVELS_UPDATE', '/api/webhook');
@@ -51,14 +35,7 @@ const createMonitor = (base) => subscribe(base, 'PRODUCTS_UPDATE', '/api/product
 
 async function del(id) {
   if (!id) throw new Error('Usage: register-webhook.mjs delete <subscriptionId>');
-  const d = await gql(
-    `mutation Del($id: ID!) {
-       webhookSubscriptionDelete(id: $id) { deletedWebhookSubscriptionId userErrors { field message } }
-     }`,
-    { id }
-  );
-  assertNoUserErrors('webhookSubscriptionDelete', d.webhookSubscriptionDelete);
-  console.log('Deleted', d.webhookSubscriptionDelete.deletedWebhookSubscriptionId);
+  console.log('Deleted', await deleteWebhook(id));
 }
 
 const run = {

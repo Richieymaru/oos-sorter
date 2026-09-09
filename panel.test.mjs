@@ -68,6 +68,7 @@ eq('renders the slack webhook field', /id="slack"/.test(sb) && sb.includes('slac
 eq('prefills existing slack webhook', settingsBody({ slackWebhook: 'https://hooks.slack.com/services/x/y/z' }).includes('https://hooks.slack.com/services/x/y/z'), true);
 eq('renders the monitor toggle', /id="monitor"/.test(sb), true);
 eq('renders the sheet webhook field', /id="sheet"/.test(sb) && sb.includes('sheetWebhook:'), true);
+eq('renders the setup button wired to /api/monitor-setup', /id="setupMon"/.test(sb) && sb.includes('/api/monitor-setup'), true);
 eq('prefills existing sheet webhook', settingsBody({ sheetWebhook: 'https://script.google.com/macros/s/x/exec' }).includes('https://script.google.com/macros/s/x/exec'), true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);

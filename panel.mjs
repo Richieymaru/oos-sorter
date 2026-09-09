@@ -92,6 +92,11 @@ export function settingsBody(settings) {
     <label class="rowtitle" for="sheet">Product-change log (Google Sheet)</label>
     <p class="rowdesc" style="margin:3px 0 9px">Paste the Google Apps Script Web App URL to append a row every time a product’s status changes (product, old → new, stock, who, time). Used by the Product change monitor above. Leave blank to skip the sheet.</p>
     <input id="sheet" type="url" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(sheet)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">
+      <button type="button" class="ghost" id="setupMon">Set up monitor on this store</button>
+      <span id="setupMsg" class="faint" style="font-size:12px"></span>
+    </div>
+    <p class="faint" style="margin:8px 2px 0;font-size:11.5px">Run once (and after any URL change): subscribes the product-change webhook and records every product’s current status as the baseline. Safe to click again — it just refreshes.</p>
   </div>
   <div class="actions">
     <button type="submit" form="f" class="primary" id="save">Save changes</button>
@@ -125,6 +130,15 @@ export function settingsBody(settings) {
       var j=await r.json().catch(function(){return{};});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Sent to your email ('+(j.count!=null?j.count:'?')+') \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t send',true);
+      b.disabled=false; b.textContent=old;
+    });
+    document.getElementById('setupMon').addEventListener('click', async function(){
+      if(!needAuth()) return;
+      var sm=document.getElementById('setupMsg'), b=this, old=b.textContent; b.disabled=true; b.textContent='Setting up\\u2026'; sm.textContent='';
+      var r=await fetch('/api/monitor-setup',{method:'POST',headers:await authH(false)});
+      var j=await r.json().catch(function(){return{};});
+      if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } sm.textContent='Monitor active \\u2713 webhook '+(j.webhook||'ready')+', '+(j.seeded!=null?j.seeded:'?')+' products baselined'; }
+      else sm.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Setup failed'));
       b.disabled=false; b.textContent=old;
     });
   </script>`;

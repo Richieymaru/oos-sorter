@@ -109,6 +109,29 @@ export async function whoChangedStatus(numId) {
   return { author: pick?.author || null, message: pick?.message || null, createdAt: pick?.createdAt || null };
 }
 
+/** Fetch every product's CURRENT status as a compact { numericId: code } map.
+ *  Used to seed/refresh the monitor baseline so the next status change reads as
+ *  a real transition instead of a first-sight. Paginates at 250/page. */
+export async function fetchAllStatuses() {
+  const statuses = {};
+  let cursor = null;
+  for (;;) {
+    const d = await gql(
+      `query($cursor: String) {
+         products(first: 250, after: $cursor) {
+           pageInfo { hasNextPage endCursor }
+           nodes { id status }
+         }
+       }`,
+      { cursor }
+    );
+    for (const p of d.products.nodes) statuses[String(p.id).split('/').pop()] = codeOf(p.status);
+    if (!d.products.pageInfo.hasNextPage) break;
+    cursor = d.products.pageInfo.endCursor;
+  }
+  return statuses;
+}
+
 /** POST one row to the Google Sheet Apps Script Web App. Never throws. */
 export async function appendToSheet(sheetUrl, row) {
   if (!sheetUrl) return { skipped: true };
