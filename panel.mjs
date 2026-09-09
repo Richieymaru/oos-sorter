@@ -135,7 +135,7 @@ export function settingsBody(settings) {
     document.getElementById('setupMon').addEventListener('click', async function(){
       if(!needAuth()) return;
       var sm=document.getElementById('setupMsg'), b=this, old=b.textContent; b.disabled=true; b.textContent='Setting up\\u2026'; sm.textContent='';
-      var r=await fetch('/api/monitor-setup',{method:'POST',headers:await authH(false)});
+      var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify({action:'setup-monitor'})});
       var j=await r.json().catch(function(){return{};});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } sm.textContent='Monitor active \\u2713 webhook '+(j.webhook||'ready')+', '+(j.seeded!=null?j.seeded:'?')+' products baselined'; }
       else sm.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Setup failed'));
