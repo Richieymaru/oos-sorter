@@ -18,6 +18,21 @@ import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, partitionByStock } from './waitlist.mjs';
 import { sendBackInStock, sendSoldOutAlert } from './notify.mjs';
+import { loadState, saveState } from './state.mjs';
+
+/** Bump the cumulative "notified so far" counters after a real send. Best-effort:
+ *  a failure here must never break the actual emailing. */
+async function bumpNotified(shoppers) {
+  if (!shoppers) return;
+  try {
+    const st = await loadState();
+    st.waitlistNotified = (st.waitlistNotified || 0) + shoppers;
+    st.waitlistProducts = (st.waitlistProducts || 0) + 1;
+    await saveState(st);
+  } catch (e) {
+    console.error('  ! waitlist counter update failed:', e.message);
+  }
+}
 
 /**
  * Email one product's due subscribers and write back whoever still waits.
@@ -61,6 +76,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
     } else {
       await clearWaitlist(gid);
     }
+    await bumpNotified(sent); // cumulative "notified so far" stat (no-op when sent === 0)
   }
 
   return sent;

@@ -17,7 +17,7 @@ import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
 const NAMESPACE = 'oos_sort';
 const KEY = 'state';
 
-const EMPTY = () => ({ soldOut: [], drafted: [], pending: [], lastDigest: null, lastRun: null, sweepCursor: 0 });
+const EMPTY = () => ({ soldOut: [], drafted: [], pending: [], lastDigest: null, lastRun: null, sweepCursor: 0, waitlistNotified: 0, waitlistProducts: 0 });
 
 export async function loadState() {
   const d = await gql(
@@ -49,6 +49,8 @@ export async function saveState(state) {
     lastDigest: state.lastDigest ?? null,
     lastRun: state.lastRun ?? null,
     sweepCursor: state.sweepCursor ?? 0,
+    waitlistNotified: state.waitlistNotified ?? 0,
+    waitlistProducts: state.waitlistProducts ?? 0,
   };
   // pending (rich {id,title,collections} objects) is the heaviest — trim it first,
   // then soldOut (bare ids), leaving a safety margin under the 128KB cap.

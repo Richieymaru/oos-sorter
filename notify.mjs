@@ -130,6 +130,59 @@ export function buildReport(items) {
   return { subject, text, html };
 }
 
+/** Pure: build the "full waitlist" report email the merchant sends to themselves.
+ *  `items` is productsWithWaitlist() shape: [{title, handle, image, list:[{email,ts,variantId,variantTitle}]}]. */
+export function buildWaitlistReport(items) {
+  const products = items.length;
+  const shoppers = items.reduce((n, w) => n + w.list.length, 0);
+  const vlabel = (s) =>
+    s.variantTitle && s.variantTitle !== 'Default Title' ? s.variantTitle : (s.variantId ? `#${s.variantId}` : 'Any option');
+  const joined = (ts) => String(ts || '').replace('T', ' ').slice(0, 16);
+  const subject = `${APP_NAME}: waitlist report (${shoppers} shopper${shoppers === 1 ? '' : 's'})`;
+
+  const text = products === 0
+    ? `No products have a waitlist right now on ${SHOP}.\n\n— ${APP_NAME}`
+    : `${shoppers} shopper${shoppers === 1 ? '' : 's'} waiting across ${products} product${products === 1 ? '' : 's'} on ${SHOP}:\n\n` +
+      items.map((w) =>
+        `• ${w.title} (${w.list.length})\n` +
+        w.list.map((s) => `    - ${s.email}  [${vlabel(s)}]  ${joined(s.ts)}`).join('\n')
+      ).join('\n\n') +
+      `\n\n— ${APP_NAME}`;
+
+  const block = (w) => {
+    const rows = w.list.map((s) =>
+      `<tr>
+        <td style="padding:6px 10px 6px 0;font-size:13px;color:#161b22">${esc(s.email)}</td>
+        <td style="padding:6px 10px;font-size:12.5px;color:#5f6875">${esc(vlabel(s))}</td>
+        <td style="padding:6px 0 6px 10px;font-size:12px;color:#8b95a3;text-align:right;white-space:nowrap">${esc(joined(s.ts))}</td>
+      </tr>`).join('');
+    return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 18px">
+      <tr><td colspan="3" style="padding:0 0 6px;border-bottom:1px solid #eef1f6">
+        <span style="font-size:14px;font-weight:700;color:#161b22">${esc(w.title)}</span>
+        <span style="font-size:12px;color:#8b95a3">&nbsp;· ${w.list.length} waiting</span>
+      </td></tr>
+      ${rows}
+    </table>`;
+  };
+  const bodyHtml = products === 0
+    ? `<div style="font-size:14px;color:#5f6875">No products have a waitlist right now.</div>`
+    : items.map(block).join('');
+
+  const html = emailHtml({
+    subtitle: 'Waitlist report',
+    lead: products === 0
+      ? `No products have a waitlist right now on <span style="color:${ACCENT}">${esc(SHOP)}</span>.`
+      : `<b>${shoppers}</b> shopper${shoppers === 1 ? '' : 's'} waiting across <b>${products}</b> product${products === 1 ? '' : 's'} on <span style="color:${ACCENT}">${esc(SHOP)}</span>.`,
+    bodyHtml,
+  });
+  return { subject, text, html };
+}
+
+/** Email the full current waitlist to the owner + extra recipients. */
+export function sendWaitlistReport(items, opts) {
+  return send(buildWaitlistReport(items), opts);
+}
+
 /** The storefront product URL for an alert item, or the shop home as a fallback. */
 function productUrl(item) {
   if (item.handle && SHOP) return `https://${SHOP}/products/${item.handle}`;

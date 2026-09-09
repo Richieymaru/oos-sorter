@@ -1,9 +1,14 @@
 import { requireAuth } from './_auth.mjs';
-import { shell, setPageHeaders, esc } from '../ui.mjs';
+import { shell, setPageHeaders, esc, statCard } from '../ui.mjs';
 import { productsWithWaitlist, notifyOneProduct } from '../restock.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isVariantInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
+import { loadState } from '../state.mjs';
+import { loadSettings } from '../settings.mjs';
+import { sendWaitlistReport } from '../notify.mjs';
+
+export const config = { maxDuration: 30 };
 
 /**
  * A display-only variant name for entries that recorded no variant (they signed
@@ -28,17 +33,26 @@ async function readJson(req) {
   try { return JSON.parse(data || '{}'); } catch { return {}; }
 }
 
-function statCard(value, label) {
-  return `<div class="card stat"><div class="statval mono">${value}</div><div class="statlabel">${esc(label)}</div></div>`;
-}
-
 export default async function handler(req, res) {
-  // POST = "Send now" for one product (password / session-token gated).
+  // POST = "Send now" for one product, OR the "email me the full list" report
+  // (password / session-token gated).
   if (req.method === 'POST') {
     if (!requireAuth(req, res)) return;
     res.setHeader('Content-Type', 'application/json');
     try {
-      const { productId, variantId } = await readJson(req);
+      const body = await readJson(req);
+
+      // Email the whole waitlist to the owner + notification recipients.
+      if (body.action === 'emailReport') {
+        const items = await productsWithWaitlist();
+        const shoppers = items.reduce((n, w) => n + w.list.length, 0);
+        const settings = await loadSettings().catch(() => ({}));
+        await sendWaitlistReport(items, { recipients: settings.notifyEmails || [] });
+        res.end(JSON.stringify({ ok: true, products: items.length, shoppers }));
+        return;
+      }
+
+      const { productId, variantId } = body;
       const s = String(productId || '');
       const num = s.replace(/\D/g, '');
       const gid = s.startsWith('gid://') ? s : (num ? longId(num) : null);
@@ -53,8 +67,13 @@ export default async function handler(req, res) {
   }
 
   // GET = the page.
-  const items = await productsWithWaitlist().catch(() => []);
+  const [items, state] = await Promise.all([
+    productsWithWaitlist().catch(() => []),
+    loadState().catch(() => ({})),
+  ]);
   const total = items.reduce((n, w) => n + w.list.length, 0);
+  const notified = state.waitlistNotified || 0;
+  const restocked = state.waitlistProducts || 0;
 
   // For any product with an entry that recorded no variant, pull the product's
   // variants so we can show a real option name instead of a dash. Only fetch the
@@ -159,8 +178,13 @@ export default async function handler(req, res) {
   const body = `
   <div class="pagehead"><h1>Waitlists</h1><p>Shoppers waiting for a sold-out product to return. They're emailed automatically on restock &mdash; or send now.</p></div>
   <div class="grid c3" style="margin-bottom:16px">
-    ${statCard(items.length, 'Products with a waitlist')}
-    ${statCard(total, 'Shoppers waiting')}
+    ${statCard({ value: items.length, label: 'Products with a waitlist' })}
+    ${statCard({ value: total, label: 'Shoppers waiting' })}
+    ${statCard({ value: notified, label: 'Notified so far', sub: `${restocked} product${restocked === 1 ? '' : 's'} restocked`, tone: notified ? 'pos' : '' })}
+  </div>
+  <div class="actions" style="margin:0 0 18px">
+    <button class="ghost" id="emailAll">Email me the full list</button>
+    <span id="msgAll" class="faint" style="font-size:12.5px"></span>
   </div>
   ${cards}
   <div class="pw" style="margin-top:16px">
@@ -174,6 +198,16 @@ export default async function handler(req, res) {
     if(embedded){ var pwd=document.querySelector('.pw'); if(pwd) pwd.style.display='none'; }
     else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
     async function authH(){ var h={'Content-Type':'application/json'}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
+    var emailAll=document.getElementById('emailAll'), msgAll=document.getElementById('msgAll');
+    if(emailAll) emailAll.addEventListener('click', async function(){
+      if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msgAll.textContent='Enter the panel password below'; pw.focus(); return; } }
+      emailAll.disabled=true; var old=emailAll.textContent; emailAll.textContent='Sending\\u2026'; msgAll.textContent='';
+      var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify({action:'emailReport'})});
+      var j=await r.json().catch(function(){return{};});
+      if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } msgAll.textContent='Emailed you the full list \\u2014 '+(j.shoppers||0)+' shopper(s) across '+(j.products||0)+' product(s) \\u2713'; }
+      else msgAll.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send'));
+      emailAll.disabled=false; emailAll.textContent=old;
+    });
     document.querySelectorAll('.send').forEach(function(b){
       b.addEventListener('click', async function(){
         if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
