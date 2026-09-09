@@ -378,6 +378,15 @@ throwaway dev store; move it outside OneDrive before doing the GBU one.
   but is no longer called by the engine; leave it or delete it in a later cleanup.
   The earlier "new product sinks to the last page" and "moved product snaps back"
   bugs are both gone as a consequence.
+- **Vercel Hobby caps a deployment at 12 serverless functions.** `api/*.mjs`
+  (files NOT prefixed `_`) each become one. We are AT 12. Adding a 13th builds
+  fine but fails at "Deploying outputs" (deploy shows ● Error, the site keeps
+  serving the previous deploy — a silent non-deploy). This actually happened
+  2026-09 adding the monitor: the standalone `api/monitor-setup.mjs` was folded
+  into `api/settings.mjs` as `{action:'setup-monitor'}` to stay at 12. To add a
+  new action, hang it off an existing endpoint (an `action` field in a POST
+  body) rather than a new file, or upgrade the plan. Check the errored deploy
+  with `vercel inspect --logs <errored-url>`.
 - Search & Discovery filtered pages ignore manual collection order. Platform
   limitation; affects every competing app too. Not fixable here.
 - A harmless `Assertion failed: ... src\win\async.c, line 76` appears on Windows
