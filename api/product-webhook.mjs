@@ -73,7 +73,13 @@ export default async function handler(req, res) {
     const alert = {
       title: body.title, handle: body.handle, fromLabel, toLabel, who, stock,
     };
-    const slack = await notifySlackProductChange({ ...alert, webhookUrl: settings.slackWebhook });
+    // Monitor posts to its OWN Slack webhook (settings.monitorSlackWebhook), kept
+    // separate from the back-in-stock waitlist channel. No env fallback here, so a
+    // blank field means "no Slack for product changes" — never bleeds into the
+    // waitlist channel (which uses settings.slackWebhook / SLACK_WEBHOOK_URL).
+    const slack = settings.monitorSlackWebhook
+      ? await notifySlackProductChange({ ...alert, webhookUrl: settings.monitorSlackWebhook })
+      : { skipped: true };
     const sheet = await appendToSheet(
       settings.sheetWebhook,
       buildSheetRow({ ...alert, at: new Date().toISOString(), shop: process.env.SHOP_DOMAIN })

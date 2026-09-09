@@ -52,6 +52,7 @@ export function normalizeSettings(obj) {
     monitor: o.monitor === true,
     notifyEmails: normalizeEmails(o.notifyEmails),
     slackWebhook: normalizeSlackWebhook(o.slackWebhook),
+    monitorSlackWebhook: normalizeSlackWebhook(o.monitorSlackWebhook),
     sheetWebhook: normalizeSheetWebhook(o.sheetWebhook),
   };
 }

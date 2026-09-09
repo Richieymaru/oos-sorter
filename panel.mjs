@@ -28,6 +28,7 @@ export function settingsBody(settings) {
   const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const recips = (settings.notifyEmails || []).join('\n');
   const slack = settings.slackWebhook || '';
+  const monitorSlack = settings.monitorSlackWebhook || '';
   const sheet = settings.sheetWebhook || '';
   const rows = [
     {
@@ -84,11 +85,15 @@ export function settingsBody(settings) {
     <textarea id="recips" rows="3" placeholder="teammate@example.com" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc(recips)}</textarea>
   </div>
   <div class="card pad" style="margin-top:14px">
-    <label class="rowtitle" for="slack">Slack notifications</label>
-    <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a shopper joins a back-in-stock waitlist. Change it any time to point at a different channel or Slack workspace. Leave blank to turn Slack off.</p>
+    <label class="rowtitle" for="slack">Slack — back-in-stock waitlist</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a shopper joins a back-in-stock waitlist. This channel is only for waitlist signups — product status changes have their own Slack field below. Leave blank to turn waitlist Slack off.</p>
     <input id="slack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(slack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
   </div>
   <div class="card pad" style="margin-top:14px">
+    <label class="rowtitle" for="monitorSlack">Slack — product changes</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a product’s status changes. Separate from the waitlist Slack above — point it at your product-changes channel. Leave blank to skip Slack for product changes (the Google Sheet still logs them).</p>
+    <input id="monitorSlack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(monitorSlack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <div style="height:14px"></div>
     <label class="rowtitle" for="sheet">Product-change log (Google Sheet)</label>
     <p class="rowdesc" style="margin:3px 0 9px">Paste the Google Apps Script Web App URL to append a row every time a product’s status changes (product, old → new, stock, who, time). Used by the Product change monitor above. Leave blank to skip the sheet.</p>
     <input id="sheet" type="url" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(sheet)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
@@ -118,7 +123,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, sheetWebhook:document.getElementById('sheet').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

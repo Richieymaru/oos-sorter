@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', sheetWebhook: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '' };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('undefined -> all false', normalizeSettings(undefined), base);
 eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });
@@ -25,6 +25,8 @@ eq('recipients parsed inside settings', normalizeSettings({ notifyEmails: 'A@x.c
 
 eq('slack webhook stored inside settings', normalizeSettings({ slackWebhook: 'https://hooks.slack.com/services/A/B/C' }).slackWebhook, 'https://hooks.slack.com/services/A/B/C');
 eq('sheet webhook stored inside settings', normalizeSettings({ sheetWebhook: 'https://script.google.com/macros/s/AAA/exec' }).sheetWebhook, 'https://script.google.com/macros/s/AAA/exec');
+eq('monitor slack webhook stored + validated', normalizeSettings({ monitorSlackWebhook: 'https://hooks.slack.com/services/M/N/O' }).monitorSlackWebhook, 'https://hooks.slack.com/services/M/N/O');
+eq('monitor slack rejects non-slack url', normalizeSettings({ monitorSlackWebhook: 'https://evil.com/x' }).monitorSlackWebhook, '');
 
 console.log('\n--- normalizeSheetWebhook ---');
 eq('valid apps script url kept', normalizeSheetWebhook('https://script.google.com/macros/s/ABC/exec'), 'https://script.google.com/macros/s/ABC/exec');
@@ -69,6 +71,8 @@ eq('prefills existing slack webhook', settingsBody({ slackWebhook: 'https://hook
 eq('renders the monitor toggle', /id="monitor"/.test(sb), true);
 eq('renders the sheet webhook field', /id="sheet"/.test(sb) && sb.includes('sheetWebhook:'), true);
 eq('renders the setup button wired to the setup-monitor action', /id="setupMon"/.test(sb) && sb.includes("action:'setup-monitor'"), true);
+eq('renders a separate product-changes slack field', /id="monitorSlack"/.test(sb) && sb.includes('monitorSlackWebhook:'), true);
+eq('prefills existing monitor slack webhook', settingsBody({ monitorSlackWebhook: 'https://hooks.slack.com/services/p/q/r' }).includes('https://hooks.slack.com/services/p/q/r'), true);
 eq('prefills existing sheet webhook', settingsBody({ sheetWebhook: 'https://script.google.com/macros/s/x/exec' }).includes('https://script.google.com/macros/s/x/exec'), true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
