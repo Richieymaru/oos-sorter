@@ -1,23 +1,30 @@
 /**
- * Product Change Monitor receiver: Shopify calls this on the `products/update`
- * topic the instant any product is edited. We cheaply detect a real STATUS
- * change (Draft ↔ Active ↔ Archived ↔ Unlisted) against the last-known status
- * (oos_sort.monitor metafield), and only then look up WHO did it and alert.
+ * Product Change Monitor receiver — the single endpoint for ALL monitor topics
+ * (kept as one function to stay under Vercel Hobby's 12-function cap). Shopify
+ * tells us which topic fired via the `X-Shopify-Topic` header, and we branch:
  *
- * `products/update` is noisy — it fires for price, tag, title, image edits too.
- * Almost all of those short-circuit at "status unchanged" with no API calls and
- * no writes, so this stays cheap at any edit volume.
+ *   products/update    -> a real STATUS change (Draft/Active/Archived/Unlisted)?
+ *   products/create    -> product added (with author)
+ *   products/delete    -> product deleted (no author available; name from cache)
+ *   collections/create -> collection added (with author)
+ *   collections/delete -> collection deleted (no author available; name from cache)
  *
- * Auth: the registered callback carries ?token=WEBHOOK_TOKEN, same as the
- * inventory webhook, so only Shopify (which we told that exact URL) can reach it.
+ * products/update is noisy (fires on any edit); non-status edits short-circuit
+ * with no alert. "Who" comes from the resource's timeline (BasicEvent.author),
+ * which survives an activity-log purge. Deletes carry no author in Shopify, so
+ * those rows say "unknown".
+ *
+ * Auth: the registered callback carries ?token=WEBHOOK_TOKEN. Slack goes to the
+ * monitor's OWN webhook (settings.monitorSlackWebhook); the Sheet to
+ * settings.sheetWebhook. Both optional — a blank one is simply skipped.
  */
 import { loadSettings } from '../settings.mjs';
 import { loadMonitorState, saveMonitorState } from '../monitor-state.mjs';
 import {
-  detectStatusChange, labelOf, totalStockFromPayload, buildSheetRow,
-  whoChangedStatus, appendToSheet,
+  detectStatusChange, labelOf, codeOf, totalStockFromPayload, buildSheetRow,
+  whoFromProductEvents, whoFromCollectionEvents, appendToSheet,
 } from '../monitor.mjs';
-import { notifySlackProductChange } from '../slack.mjs';
+import { notifySlackMonitorEvent } from '../slack.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -35,58 +42,105 @@ async function readJson(req) {
   try { return JSON.parse(data || '{}'); } catch { return {}; }
 }
 
+const numIdOf = (body) => (body.id != null ? String(body.id) : (body.admin_graphql_api_id?.split('/').pop() || null));
+
 export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json');
   if (!process.env.WEBHOOK_TOKEN || param(req, 'token') !== process.env.WEBHOOK_TOKEN) {
     res.statusCode = 401; res.end(JSON.stringify({ ok: false, error: 'unauthorized' })); return;
   }
 
+  const topic = String(req.headers['x-shopify-topic'] || 'products/update').toLowerCase();
   const body = await readJson(req);
-  // products/update payload: { id, handle, title, status, variants:[{inventory_quantity}], ... }
-  const numId = body.id != null ? String(body.id) : (body.admin_graphql_api_id?.split('/').pop() || null);
-  const status = body.status; // "active" | "draft" | "archived"
+  const numId = numIdOf(body);
 
   try {
-    if (!numId || !status) { res.end(JSON.stringify({ ok: true, skipped: 'no id/status' })); return; }
+    if (!numId) { res.end(JSON.stringify({ ok: true, skipped: 'no id' })); return; }
 
     const settings = await loadSettings().catch(() => ({}));
-    const monitorOn = resolveFlag(process.env.FEATURE_MONITOR, settings.monitor);
-    if (!monitorOn) { res.end(JSON.stringify({ ok: true, monitor: 'off' })); return; }
+    if (!resolveFlag(process.env.FEATURE_MONITOR, settings.monitor)) {
+      res.end(JSON.stringify({ ok: true, monitor: 'off' })); return;
+    }
 
+    // Fan-out helper: post to the monitor's Slack + the Sheet (each optional).
+    const emit = async ({ title, handle, path, fromLabel, toLabel, action, who, stock }) => {
+      const slack = await notifySlackMonitorEvent({
+        webhookUrl: settings.monitorSlackWebhook, title, handle, path, action, who, stock,
+      });
+      const sheet = await appendToSheet(
+        settings.sheetWebhook,
+        buildSheetRow({ at: new Date().toISOString(), title, handle, path, fromLabel, toLabel, who, stock, shop: process.env.SHOP_DOMAIN })
+      );
+      return { slack, sheet };
+    };
+
+    // ---- COLLECTIONS ----
+    if (topic === 'collections/create' || topic === 'collections/delete') {
+      const state = await loadMonitorState();
+      const cacheKey = 'c' + numId;
+      const title = body.title || state.titles[cacheKey] || `#${numId}`;
+      const handle = body.handle || null;
+
+      if (topic === 'collections/create') {
+        state.titles[cacheKey] = body.title || title;
+        await saveMonitorState(state);
+        const who = (await whoFromCollectionEvents(numId)).author;
+        const r = await emit({ title, handle, path: 'collections', fromLabel: '—', toLabel: 'Collection added', action: 'collection was added', who, stock: '' });
+        console.log(`monitor: collection added "${title}" by ${who || 'unknown'}`);
+        res.end(JSON.stringify({ ok: true, topic, who, ...r })); return;
+      }
+      // collections/delete — no author available from Shopify
+      delete state.titles[cacheKey];
+      await saveMonitorState(state);
+      const r = await emit({ title, handle: null, path: 'collections', fromLabel: 'existed', toLabel: 'Collection deleted', action: 'collection was deleted', who: null, stock: '' });
+      console.log(`monitor: collection deleted "${title}" (who: unknown)`);
+      res.end(JSON.stringify({ ok: true, topic, who: null, ...r })); return;
+    }
+
+    // ---- PRODUCTS ----
     const state = await loadMonitorState();
-    const det = detectStatusChange(state.statuses, numId, status);
+    const cacheKey = 'p' + numId;
 
-    // First time we've seen this product, or status unchanged: just record the
-    // baseline (nothing to alert). Only write when the stored code actually moves.
+    if (topic === 'products/delete') {
+      // Payload is id-only; name from cache (miss -> #id). No author available.
+      const title = body.title || state.titles[cacheKey] || `#${numId}`;
+      delete state.statuses[numId];
+      delete state.titles[cacheKey];
+      await saveMonitorState(state);
+      const r = await emit({ title, handle: null, path: 'products', fromLabel: 'existed', toLabel: 'Deleted', action: 'was deleted', who: null, stock: '' });
+      console.log(`monitor: product deleted "${title}" (who: unknown)`);
+      res.end(JSON.stringify({ ok: true, topic, who: null, ...r })); return;
+    }
+
+    const status = body.status;
+    if (!status) { res.end(JSON.stringify({ ok: true, skipped: 'no status' })); return; }
+    if (body.title) state.titles[cacheKey] = body.title;
+
+    if (topic === 'products/create') {
+      state.statuses[numId] = codeOf(status);
+      await saveMonitorState(state);
+      const who = (await whoFromProductEvents(numId, /creat|add/i)).author;
+      const stock = totalStockFromPayload(body);
+      const r = await emit({ title: body.title, handle: body.handle, path: 'products', fromLabel: '—', toLabel: 'Added (' + labelOf(codeOf(status)) + ')', action: 'was added', who, stock });
+      console.log(`monitor: product added "${body.title}" by ${who || 'unknown'}`);
+      res.end(JSON.stringify({ ok: true, topic, who, ...r })); return;
+    }
+
+    // ---- products/update: STATUS change only ----
+    const det = detectStatusChange(state.statuses, numId, status);
     if (det.firstSight || det.changed) {
       state.statuses[numId] = det.toCode;
       await saveMonitorState(state);
     }
-    if (!det.changed) { res.end(JSON.stringify({ ok: true, firstSight: det.firstSight, changed: false })); return; }
+    if (!det.changed) { res.end(JSON.stringify({ ok: true, topic, firstSight: det.firstSight, changed: false })); return; }
 
-    // A genuine status change. Attribute it and fan out to Slack + the Sheet.
     const fromLabel = labelOf(det.fromCode);
     const toLabel = labelOf(det.toCode);
     const stock = totalStockFromPayload(body);
-    const who = (await whoChangedStatus(numId)).author;
-
-    const alert = {
-      title: body.title, handle: body.handle, fromLabel, toLabel, who, stock,
-    };
-    // Monitor posts to its OWN Slack webhook (settings.monitorSlackWebhook), kept
-    // separate from the back-in-stock waitlist channel. No env fallback here, so a
-    // blank field means "no Slack for product changes" — never bleeds into the
-    // waitlist channel (which uses settings.slackWebhook / SLACK_WEBHOOK_URL).
-    const slack = settings.monitorSlackWebhook
-      ? await notifySlackProductChange({ ...alert, webhookUrl: settings.monitorSlackWebhook })
-      : { skipped: true };
-    const sheet = await appendToSheet(
-      settings.sheetWebhook,
-      buildSheetRow({ ...alert, at: new Date().toISOString(), shop: process.env.SHOP_DOMAIN })
-    );
-
+    const who = (await whoFromProductEvents(numId)).author;
+    const r = await emit({ title: body.title, handle: body.handle, path: 'products', fromLabel, toLabel, action: `status changed ${fromLabel} → ${toLabel}`, who, stock });
     console.log(`monitor: ${body.title} ${fromLabel}→${toLabel} by ${who || 'unknown'} (stock ${stock ?? '?'})`);
-    res.end(JSON.stringify({ ok: true, changed: true, from: fromLabel, to: toLabel, who, stock, slack, sheet }));
+    res.end(JSON.stringify({ ok: true, topic, changed: true, from: fromLabel, to: toLabel, who, stock, ...r }));
   } catch (err) {
     // 500 lets Shopify retry a transient failure (rate limit, cold start).
     console.error('product-webhook error:', err.message);

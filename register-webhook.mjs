@@ -12,7 +12,7 @@
  * The callback URL is built as <base><path>?token=WEBHOOK_TOKEN so only Shopify
  * can trigger it. Set WEBHOOK_TOKEN in .env AND in Vercel (same value).
  */
-import { listWebhooks, ensureWebhook, deleteWebhook } from './webhooks.mjs';
+import { listWebhooks, ensureWebhook, ensureMonitorWebhooks, deleteWebhook } from './webhooks.mjs';
 
 const [, , cmd, arg] = process.argv;
 
@@ -31,7 +31,14 @@ async function subscribe(base, topic, path) {
 }
 
 const create = (base) => subscribe(base, 'INVENTORY_LEVELS_UPDATE', '/api/webhook');
-const createMonitor = (base) => subscribe(base, 'PRODUCTS_UPDATE', '/api/product-webhook');
+
+/** Register ALL monitor topics (status/create/delete for products + collections). */
+async function createMonitor(base) {
+  if (!base) throw new Error('Usage: register-webhook.mjs create-monitor https://your-app.vercel.app');
+  if (!process.env.WEBHOOK_TOKEN) throw new Error('Set WEBHOOK_TOKEN in .env first');
+  const results = await ensureMonitorWebhooks({ base, token: process.env.WEBHOOK_TOKEN });
+  for (const r of results) console.log(`${r.status === 'exists' ? 'Already present' : 'Created'}: ${r.topic}`);
+}
 
 async function del(id) {
   if (!id) throw new Error('Usage: register-webhook.mjs delete <subscriptionId>');

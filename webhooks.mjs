@@ -40,6 +40,28 @@ export async function ensureWebhook({ base, topic, path, token }) {
   return { status: 'created', id: d.webhookSubscriptionCreate.webhookSubscription.id, uri };
 }
 
+/** Every topic the Product Change Monitor listens to — all routed to the single
+ *  /api/product-webhook endpoint (which branches on the X-Shopify-Topic header).
+ *  Kept as one endpoint to stay under Vercel Hobby's 12-function cap. */
+export const MONITOR_TOPICS = [
+  'PRODUCTS_UPDATE',   // status changes (Draft/Active/Archived/Unlisted)
+  'PRODUCTS_CREATE',   // product added
+  'PRODUCTS_DELETE',   // product deleted (no author available)
+  'COLLECTIONS_CREATE', // collection added
+  'COLLECTIONS_DELETE', // collection deleted (no author available)
+];
+
+/** Ensure every monitor topic is subscribed to /api/product-webhook (idempotent).
+ *  Returns [{topic, status:'created'|'exists'}]. */
+export async function ensureMonitorWebhooks({ base, token }) {
+  const out = [];
+  for (const topic of MONITOR_TOPICS) {
+    const r = await ensureWebhook({ base, topic, path: '/api/product-webhook', token });
+    out.push({ topic, status: r.status });
+  }
+  return out;
+}
+
 export async function deleteWebhook(id) {
   const d = await gql(
     `mutation Del($id: ID!) {

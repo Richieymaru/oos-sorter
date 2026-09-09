@@ -66,12 +66,13 @@ export function totalStockFromPayload(payload) {
 }
 
 /** Pure: the row object POSTed to the Google Sheet Apps Script. Column order is
- *  fixed so the sheet stays readable; the script appends these left-to-right. */
-export function buildSheetRow({ at, title, handle, fromLabel, toLabel, who, stock, shop }) {
+ *  fixed so the sheet stays readable; the script appends these left-to-right.
+ *  `path` is the storefront path segment ('products' | 'collections'). */
+export function buildSheetRow({ at, title, handle, fromLabel, toLabel, who, stock, shop, path }) {
   return {
     timestamp: at || new Date().toISOString(),
     product: title || '',
-    url: handle && shop ? `https://${shop}/products/${handle}` : '',
+    url: handle && shop ? `https://${shop}/${path || 'products'}/${handle}` : '',
     from: fromLabel || '',
     to: toLabel || '',
     who: who || 'unknown',
@@ -80,13 +81,14 @@ export function buildSheetRow({ at, title, handle, fromLabel, toLabel, who, stoc
 }
 
 /**
- * Look up who changed the product, from its timeline events. The webhook that
- * triggered us fired because of the status change, so the most recent event is
- * that change — we prefer the newest event whose message mentions a status word,
- * and fall back to the newest event. Needs read_products.
+ * Look up who last acted on a product, from its timeline events. The webhook
+ * that triggered us just fired, so the most recent event is that action — we
+ * prefer the newest event whose message matches `prefer` (a regex), and fall
+ * back to the newest event. Needs read_products. Used for both status changes
+ * and creations.
  * @returns {Promise<{author:(string|null), message:(string|null), createdAt:(string|null)}>}
  */
-export async function whoChangedStatus(numId) {
+export async function whoFromProductEvents(numId, prefer = /active|draft|archiv|unlist|publish|creat|hidden/i) {
   let nodes = [];
   try {
     const d = await gql(
@@ -101,12 +103,36 @@ export async function whoChangedStatus(numId) {
     );
     nodes = (d?.product?.events?.nodes || []).filter(Boolean);
   } catch (e) {
-    console.error(`  ! whoChangedStatus lookup failed: ${e.message}`);
+    console.error(`  ! whoFromProductEvents lookup failed: ${e.message}`);
     return { author: null, message: null, createdAt: null };
   }
-  const statusish = nodes.find((n) => /active|draft|archiv|unlist|published|hidden/i.test(n.message || ''));
-  const pick = statusish || nodes[0] || null;
+  const preferred = nodes.find((n) => prefer.test(n.message || ''));
+  const pick = preferred || nodes[0] || null;
   return { author: pick?.author || null, message: pick?.message || null, createdAt: pick?.createdAt || null };
+}
+
+/** Look up who created/last-acted on a COLLECTION, from its timeline events.
+ *  Collections have a timeline in 2026-07 (creations carry an author). Needs
+ *  read_products. Returns {author, message} — author is null if unavailable. */
+export async function whoFromCollectionEvents(numId) {
+  try {
+    const d = await gql(
+      `query($id: ID!) {
+         collection(id: $id) {
+           events(first: 10, sortKey: CREATED_AT, reverse: true) {
+             nodes { ... on BasicEvent { message author createdAt } }
+           }
+         }
+       }`,
+      { id: `gid://shopify/Collection/${numId}` }
+    );
+    const nodes = (d?.collection?.events?.nodes || []).filter(Boolean);
+    const pick = nodes.find((n) => /creat|add|publish/i.test(n.message || '')) || nodes[0] || null;
+    return { author: pick?.author || null, message: pick?.message || null };
+  } catch (e) {
+    console.error(`  ! whoFromCollectionEvents lookup failed: ${e.message}`);
+    return { author: null, message: null };
+  }
 }
 
 /** Fetch every product's CURRENT status as a compact { numericId: code } map.

@@ -2,9 +2,9 @@ import { loadSettings, saveSettings, normalizeSettings } from '../settings.mjs';
 import { shell, setPageHeaders, notConnectedBody, shopOf } from '../ui.mjs';
 import { settingsBody } from '../panel.mjs';
 import { requireAuth } from './_auth.mjs';
-import { ensureWebhook } from '../webhooks.mjs';
+import { ensureMonitorWebhooks } from '../webhooks.mjs';
 import { fetchAllStatuses } from '../monitor.mjs';
-import { saveMonitorState } from '../monitor-state.mjs';
+import { loadMonitorState, saveMonitorState } from '../monitor-state.mjs';
 
 async function readJson(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -28,10 +28,13 @@ async function setupMonitor(req, res) {
     return;
   }
   const host = req.headers['x-forwarded-host'] || req.headers['host'];
-  const hook = await ensureWebhook({ base: `https://${host}`, topic: 'PRODUCTS_UPDATE', path: '/api/product-webhook', token });
+  const hooks = await ensureMonitorWebhooks({ base: `https://${host}`, token });
+  // Seed the status baseline but PRESERVE any existing title cache.
+  const prev = await loadMonitorState().catch(() => ({ titles: {} }));
   const statuses = await fetchAllStatuses();
-  await saveMonitorState({ statuses });
-  res.end(JSON.stringify({ ok: true, webhook: hook.status, seeded: Object.keys(statuses).length }));
+  await saveMonitorState({ statuses, titles: prev.titles || {} });
+  const created = hooks.filter((h) => h.status === 'created').length;
+  res.end(JSON.stringify({ ok: true, webhook: created ? 'created' : 'ready', webhooks: hooks.length, seeded: Object.keys(statuses).length }));
 }
 
 export const config = { maxDuration: 60 };

@@ -47,6 +47,26 @@ export async function notifySlackProductChange({ title, handle, fromLabel, toLab
   return postToSlack(url, payload, 'product-change');
 }
 
+/** Pure: build a generic monitor Slack message. `action` is the human phrase
+ *  ("was added", "was deleted", "status changed Draft → Active"); `path` is the
+ *  storefront path ('products' | 'collections'); `stock` optional. */
+export function buildMonitorMessage({ title, handle, action, who, stock, shop, path }) {
+  const name = title || (path === 'collections' ? 'a collection' : 'a product');
+  const link = handle && shop ? `https://${shop}/${path || 'products'}/${handle}` : null;
+  const subject = link ? `<${link}|${name}>` : `*${name}*`;
+  const actor = who ? `*${who}*` : '_unknown_';
+  const stockTxt = stock == null || stock === '' ? '' : ` · stock: ${stock}`;
+  return { text: `:label: ${subject} ${action} by ${actor}${stockTxt}` };
+}
+
+/** Post a generic monitor event to Slack. No env fallback — the caller passes
+ *  the monitor's own webhook, so this never bleeds into other channels. */
+export async function notifySlackMonitorEvent({ webhookUrl, title, handle, action, who, stock, path }) {
+  if (!webhookUrl) return { skipped: true };
+  const payload = buildMonitorMessage({ title, handle, action, who, stock, path, shop: process.env.SHOP_DOMAIN });
+  return postToSlack(webhookUrl, payload, 'monitor');
+}
+
 /** Shared fire-and-forget POST to a Slack Incoming Webhook. */
 async function postToSlack(url, payload, label) {
   try {
