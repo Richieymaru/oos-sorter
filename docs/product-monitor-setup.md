@@ -44,18 +44,28 @@ function doPost(e) {
 }
 ```
 
-## 4. Register the webhook + seed the baseline (one time, from the repo)
+## 4. Register the webhook + seed the baseline (one time)
+
+**Primary path — the button.** In Settings, click **Set up monitor on this
+store**. Using the app's own credentials, it subscribes the `products/update`
+webhook and records every product's current status as the baseline (so the NEXT
+change is caught, not absorbed). It reports e.g. *"Monitor active ✓ webhook
+created, 342 products baselined"*. Safe to click again — it's idempotent (an
+existing webhook is reused, the baseline just refreshes). Re-run it after
+changing the Sheet/Slack URL or the app's domain.
+
+**Fallback — the CLI** (needs a local `.env` for that store):
 
 ```bash
-# subscribe products/update -> /api/product-webhook (same WEBHOOK_TOKEN as the inventory hook)
 node --env-file=.env register-webhook.mjs create-monitor https://sold-out-sorter.vercel.app
-
-# record every product's CURRENT status, so the NEXT change is caught (not absorbed as a baseline)
 node --env-file=.env seed-monitor.mjs
 ```
 
-`register-webhook.mjs list` shows all subscriptions. Seeding is idempotent —
-rerun any time to refresh the snapshot.
+`register-webhook.mjs list` shows all subscriptions.
+
+> Note: Vercel Hobby caps a deployment at 12 serverless functions, so the setup
+> action lives inside `/api/settings` (`{action:'setup-monitor'}`), not its own
+> endpoint.
 
 ## Notes
 
