@@ -192,6 +192,45 @@ export async function whoDeleted(numId, subjectType, { attempts = 3, delayMs = 7
   return { author: null, createdAt: null };
 }
 
+/**
+ * Recent product/collection activity for the in-app dashboard feed, straight
+ * from Shopify's shop-level event log (always accurate, no storage). Returns a
+ * normalized, newest-first list. `titlesCache` (from monitor-state) names items
+ * that have since been deleted (their `subject` is null). Never throws.
+ * @returns {Promise<Array<{type,action,who,iso,title,href}>>}
+ */
+export async function recentActivity(limit = 20, titlesCache = {}) {
+  let nodes = [];
+  try {
+    const d = await gql(
+      `query($q: String!, $n: Int!) {
+         events(first: $n, sortKey: CREATED_AT, reverse: true, query: $q) {
+           nodes { ... on BasicEvent {
+             action author createdAt subjectType subjectId
+             subject { __typename ... on Product { title handle } ... on Collection { title handle } }
+           } }
+         }
+       }`,
+      { q: 'subject_type:PRODUCT OR subject_type:COLLECTION', n: limit }
+    );
+    nodes = (d.events?.nodes || []).filter(Boolean);
+  } catch (e) {
+    console.error(`  ! recentActivity failed: ${e.message}`);
+    return [];
+  }
+  const shop = process.env.SHOP_DOMAIN;
+  return nodes.map((n) => {
+    const type = n.subjectType === 'COLLECTION' ? 'Collection' : 'Product';
+    const numId = String(n.subjectId || '').split('/').pop();
+    const path = type === 'Collection' ? 'collections' : 'products';
+    const cacheKey = (type === 'Collection' ? 'c' : 'p') + numId;
+    const title = n.subject?.title || titlesCache[cacheKey] || `${type} #${numId}`;
+    const handle = n.subject?.handle;
+    const href = handle && shop ? `https://${shop}/${path}/${handle}` : null; // live items only
+    return { type, action: n.action, who: n.author, iso: n.createdAt, title, href };
+  });
+}
+
 /** POST one row to the Google Sheet Apps Script Web App. Never throws. */
 export async function appendToSheet(sheetUrl, row) {
   if (!sheetUrl) return { skipped: true };
