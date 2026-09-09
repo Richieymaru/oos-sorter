@@ -67,6 +67,18 @@ node --env-file=.env seed-monitor.mjs
 > action lives inside `/api/settings` (`{action:'setup-monitor'}`), not its own
 > endpoint.
 
+## What it logs
+
+- **Product status change** (Draft↔Active↔Archived↔Unlisted) — with who.
+- **Product added / deleted** — with who.
+- **Collection added / deleted** — with who.
+
+All five carry the staff name. Deletes are attributed via the **shop-level event
+log** (`events` filtered by `subject_id … action:destroy`), which keeps the
+destroy event with its author even after the item and its own timeline are gone.
+Collection *sort-order* changes are intentionally not tracked (Shopify records no
+timeline event for them, and our own sorter flips collections to MANUAL).
+
 ## Notes
 
 - `products/update` is noisy (fires on any edit). Non-status edits short-circuit

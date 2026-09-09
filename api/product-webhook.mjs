@@ -22,7 +22,7 @@ import { loadSettings } from '../settings.mjs';
 import { loadMonitorState, saveMonitorState } from '../monitor-state.mjs';
 import {
   detectStatusChange, labelOf, codeOf, totalStockFromPayload, buildSheetRow,
-  whoFromProductEvents, whoFromCollectionEvents, appendToSheet,
+  whoFromProductEvents, whoFromCollectionEvents, whoDeleted, appendToSheet,
 } from '../monitor.mjs';
 import { notifySlackMonitorEvent } from '../slack.mjs';
 
@@ -89,12 +89,13 @@ export default async function handler(req, res) {
         console.log(`monitor: collection added "${title}" by ${who || 'unknown'}`);
         res.end(JSON.stringify({ ok: true, topic, who, ...r })); return;
       }
-      // collections/delete — no author available from Shopify
+      // collections/delete — author from the shop-level destroy event
       delete state.titles[cacheKey];
       await saveMonitorState(state);
-      const r = await emit({ title, handle: null, path: 'collections', fromLabel: 'existed', toLabel: 'Collection deleted', action: 'collection was deleted', who: null, stock: '' });
-      console.log(`monitor: collection deleted "${title}" (who: unknown)`);
-      res.end(JSON.stringify({ ok: true, topic, who: null, ...r })); return;
+      const who = (await whoDeleted(numId, 'COLLECTION')).author;
+      const r = await emit({ title, handle: null, path: 'collections', fromLabel: 'existed', toLabel: 'Collection deleted', action: 'collection was deleted', who, stock: '' });
+      console.log(`monitor: collection deleted "${title}" by ${who || 'unknown'}`);
+      res.end(JSON.stringify({ ok: true, topic, who, ...r })); return;
     }
 
     // ---- PRODUCTS ----
@@ -107,9 +108,10 @@ export default async function handler(req, res) {
       delete state.statuses[numId];
       delete state.titles[cacheKey];
       await saveMonitorState(state);
-      const r = await emit({ title, handle: null, path: 'products', fromLabel: 'existed', toLabel: 'Deleted', action: 'was deleted', who: null, stock: '' });
-      console.log(`monitor: product deleted "${title}" (who: unknown)`);
-      res.end(JSON.stringify({ ok: true, topic, who: null, ...r })); return;
+      const who = (await whoDeleted(numId, 'PRODUCT')).author;
+      const r = await emit({ title, handle: null, path: 'products', fromLabel: 'existed', toLabel: 'Deleted', action: 'was deleted', who, stock: '' });
+      console.log(`monitor: product deleted "${title}" by ${who || 'unknown'}`);
+      res.end(JSON.stringify({ ok: true, topic, who, ...r })); return;
     }
 
     const status = body.status;

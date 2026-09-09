@@ -4,7 +4,7 @@
  */
 import assert from 'node:assert';
 import {
-  codeOf, labelOf, detectStatusChange, totalStockFromPayload, buildSheetRow, STATUS_CODE,
+  codeOf, labelOf, detectStatusChange, totalStockFromPayload, buildSheetRow, deletionEventQuery, STATUS_CODE,
 } from './monitor.mjs';
 import { buildProductChangeMessage, buildMonitorMessage } from './slack.mjs';
 
@@ -69,6 +69,10 @@ ok('product added links to product path', buildMonitorMessage({ title: 'Pistol',
 ok('collection added links to collection path', buildMonitorMessage({ title: 'Sale', handle: 'sale', action: 'collection was added', who: 'Jane', path: 'collections', shop: 's.myshopify.com' }).text.includes('/collections/sale'));
 ok('delete with no who is graceful', /unknown/i.test(buildMonitorMessage({ title: 'Old', action: 'was deleted', who: null }).text));
 ok('empty stock omitted', !buildMonitorMessage({ title: 'X', action: 'was added', who: 'J', stock: '' }).text.includes('stock'));
+
+console.log('\n--- deletionEventQuery (shop-level destroy attribution) ---');
+eq('product destroy filter', deletionEventQuery('123', 'PRODUCT'), 'subject_id:123 AND action:destroy AND subject_type:PRODUCT');
+eq('collection destroy filter', deletionEventQuery('456', 'COLLECTION'), 'subject_id:456 AND action:destroy AND subject_type:COLLECTION');
 
 console.log('\n--- STATUS_CODE coverage ---');
 ok('four statuses mapped', Object.keys(STATUS_CODE).length === 4);

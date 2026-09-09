@@ -17,7 +17,7 @@
  * buildSheetRow) have no I/O and are unit-tested in monitor.test.mjs.
  */
 
-import { gql, longId } from './shopify.mjs';
+import { gql, longId, sleep } from './shopify.mjs';
 
 // Compact single-char codes so the last-known-status map stays tiny in the
 // metafield (a store with thousands of products still fits well under the cap).
@@ -156,6 +156,40 @@ export async function fetchAllStatuses() {
     cursor = d.products.pageInfo.endCursor;
   }
   return statuses;
+}
+
+/** Pure: the SHOP-LEVEL events filter that pinpoints one resource's destroy
+ *  event. `subjectType` is 'PRODUCT' | 'COLLECTION'. */
+export function deletionEventQuery(numId, subjectType) {
+  return `subject_id:${numId} AND action:destroy AND subject_type:${subjectType}`;
+}
+
+/**
+ * Who deleted a resource. The per-resource timeline dies with the resource, but
+ * the SHOP-LEVEL event log retains the `destroy` event WITH its author — so we
+ * look it up there, matched by subject_id. Retries briefly because the event can
+ * lag the delete webhook by a moment. Needs read_products.
+ * @returns {Promise<{author:(string|null), createdAt:(string|null)}>}
+ */
+export async function whoDeleted(numId, subjectType, { attempts = 3, delayMs = 700 } = {}) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const d = await gql(
+        `query($q: String!) {
+           events(first: 5, sortKey: CREATED_AT, reverse: true, query: $q) {
+             nodes { ... on BasicEvent { action author createdAt } }
+           }
+         }`,
+        { q: deletionEventQuery(numId, subjectType) }
+      );
+      const ev = (d.events?.nodes || []).find((n) => n.action === 'destroy');
+      if (ev) return { author: ev.author || null, createdAt: ev.createdAt || null };
+    } catch (e) {
+      console.error(`  ! whoDeleted lookup failed (attempt ${i}): ${e.message}`);
+    }
+    if (i < attempts) await sleep(delayMs);
+  }
+  return { author: null, createdAt: null };
 }
 
 /** POST one row to the Google Sheet Apps Script Web App. Never throws. */

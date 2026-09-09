@@ -163,16 +163,27 @@ automatic sort, for us or Nada).
 - `FEATURE_DRAFT` — draft sold-out products (hidden store-wide), restore on
   restock. Only drafts ACTIVE products and only un-drafts ones it drafted
   itself (tracked in `oos_sort.state.drafted`).
-- `FEATURE_MONITOR` — Product Change Monitor (built 2026-09). On the
-  `products/update` webhook (`/api/product-webhook`), detects a real STATUS
-  change (Draft↔Active↔Archived↔Unlisted) against last-known status and posts
-  WHO did it (staff name via `BasicEvent.author`) to Slack + a Google Sheet
-  (product, old→new, stock, who, time). Last-known status lives in its OWN shop
-  metafield `oos_sort.monitor` (separate from `oos_sort.state` so writes never
-  clobber). Non-status edits short-circuit (no API call, no write). Pure logic
-  in `monitor.mjs` is tested (`monitor.test.mjs`). Setup + Apps Script:
-  `docs/product-monitor-setup.md`. Register with
-  `register-webhook.mjs create-monitor <base>`; seed once with `seed-monitor.mjs`.
+- `FEATURE_MONITOR` — Product Change Monitor (built 2026-09). One endpoint
+  `/api/product-webhook` handles FIVE topics, branching on the `X-Shopify-Topic`
+  header (kept as one function for the 12-fn cap): `products/update` (real STATUS
+  change Draft↔Active↔Archived↔Unlisted, diffed against last-known),
+  `products/create`, `products/delete`, `collections/create`,
+  `collections/delete`. Posts WHO did it + the change to Slack (its OWN webhook
+  `settings.monitorSlackWebhook`, separate from the waitlist Slack) + a Google
+  Sheet (`settings.sheetWebhook`). "Who" for live items = `product.events` /
+  `collection.events` `BasicEvent.author`. **Delete attribution DOES work**
+  (contrary to first assumption): the per-resource timeline dies with the
+  resource, but the SHOP-LEVEL `events(query:"subject_id:<id> AND action:destroy
+  AND subject_type:PRODUCT|COLLECTION")` retains the destroy event WITH its
+  author — see `whoDeleted()` (brief retry for event lag). Last-known status +
+  a bounded `titles` cache (to name deletes, whose payload is id-only) live in
+  shop metafield `oos_sort.monitor` (separate from `oos_sort.state`). Non-status
+  product edits short-circuit (no API call/write). Collection SORT-order changes
+  are deliberately NOT monitored (Shopify logs no timeline event for them, and
+  our own engine flips collections to MANUAL constantly → self-noise). Pure logic
+  tested (`monitor.test.mjs`). Setup + Apps Script: `docs/product-monitor-setup.md`.
+  Register all topics with `register-webhook.mjs create-monitor <base>` (or the
+  in-app "Set up monitor" button, which also seeds); seed via `seed-monitor.mjs`.
 
 **Feature memory lives in one shop metafield, `oos_sort.state`** (separate from
 the per-collection `oos_sort.base_order`): `{ soldOut, drafted, pending,
