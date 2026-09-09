@@ -149,6 +149,11 @@ export function buildWaitlistReport(items) {
       ).join('\n\n') +
       `\n\n— ${APP_NAME}`;
 
+  const thumb = (url) => {
+    if (!url) return `<div style="width:40px;height:40px;border-radius:8px;background:#eef1f6;border:1px solid #e4e8ef"></div>`;
+    const src = url + (url.includes('?') ? '&' : '?') + 'width=96';
+    return `<img src="${esc(src)}" width="40" height="40" alt="" style="width:40px;height:40px;border-radius:8px;object-fit:cover;border:1px solid #eef1f6;display:block">`;
+  };
   const block = (w) => {
     const rows = w.list.map((s) =>
       `<tr>
@@ -157,9 +162,14 @@ export function buildWaitlistReport(items) {
         <td style="padding:6px 0 6px 10px;font-size:12px;color:#8b95a3;text-align:right;white-space:nowrap">${esc(joined(s.ts))}</td>
       </tr>`).join('');
     return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 18px">
-      <tr><td colspan="3" style="padding:0 0 6px;border-bottom:1px solid #eef1f6">
-        <span style="font-size:14px;font-weight:700;color:#161b22">${esc(w.title)}</span>
-        <span style="font-size:12px;color:#8b95a3">&nbsp;· ${w.list.length} waiting</span>
+      <tr><td colspan="3" style="padding:0 0 8px;border-bottom:1px solid #eef1f6">
+        <table cellpadding="0" cellspacing="0" role="presentation"><tr>
+          <td width="52" style="padding-right:12px;vertical-align:middle">${thumb(w.image)}</td>
+          <td style="vertical-align:middle">
+            <span style="font-size:14px;font-weight:700;color:#161b22">${esc(w.title)}</span>
+            <span style="font-size:12px;color:#8b95a3">&nbsp;· ${w.list.length} waiting</span>
+          </td>
+        </tr></table>
       </td></tr>
       ${rows}
     </table>`;
