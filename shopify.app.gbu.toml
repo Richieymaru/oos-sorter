@@ -1,9 +1,9 @@
-# GBU "GBU Soldout Sorter" app config (the NEW single-store, managed-install app).
+# GBU "GBU Store Ops" app config (formerly GBU Soldout Sorter) (the NEW single-store, managed-install app).
 # Deploy the notify extension to GBU with: shopify app deploy --config gbu --allow-updates
 client_id = "c65e0cfd391decaeb61702cc7df311a3"
 application_url = "https://sold-out-sorter.vercel.app"
 embedded = true
-name = "GBU Soldout Sorter"
+name = "GBU Store Ops"
 
 [webhooks]
 api_version = "2026-07"
