@@ -165,10 +165,15 @@ fallback; dashboard stats prefer the log.
 ### 4. Resend (manual) + auto-nudge
 
 **Manual** — `api/waitlists.mjs` POST `{ action:'resend', email, productId, variantId? }`,
-auth-gated like the other actions. Re-sends the **same** back-in-stock email
-(tracked links regenerated) to that one shopper. It does **not** touch the
-waitlist (they're already off it). It calls `applyNudged(email, productId, now)`
-so the auto-nudge won't also fire for them. Returns `{ ok, sent }`.
+auth-gated like the other actions. **Guarded on current stock:** it fetches the
+product (`fetchProductsByIds` → `isInStock` / `isVariantInStock` for the row's
+variant) and only sends if it's **in stock right now**; if sold out again it sends
+nothing and returns `{ ok:false, error:'sold-out', soldOut:true }` so the UI can
+say "sold out again — nothing sent." When in stock, it re-sends the **same**
+back-in-stock email (tracked links regenerated) to that one shopper. It does
+**not** touch the waitlist (they're already off it). It calls
+`applyNudged(email, productId, now)` so the auto-nudge won't also fire for them.
+Returns `{ ok:true, sent }`.
 
 **Auto-nudge** — `nudgeUnengaged({ dryRun, base })` in `restock.mjs`, called from
 `runEngine`'s **full** pass only (not the targeted webhook, not chunked sweeps):
@@ -207,11 +212,17 @@ hence this flag.) Best-effort; unsubscribe still succeeds if the flag write fail
   email · product · variant · when notified · **status chip** · Resend button.
   Status chip precedence: **Ordered** (Phase 2) > **Clicked** > **Nudged** >
   **Notified**. Unsubscribed rows show a muted "Unsubscribed" chip and no Resend.
+- **Current stock is fetched for the distinct products shown** (one
+  `fetchProductsByIds` over the recent-notified list) so the row can show whether
+  the product is in stock now. **Resend is only enabled when the product is in
+  stock**; sold-out-again rows show a muted "Sold out again" state and a disabled
+  button, matching the server guard (the POST is still authoritative).
 - Chip styles live in `ui.mjs` (reuse existing chip/`faint`/tone classes; add only
   what's missing).
 - **Resend button** → POST `{action:'resend', email, productId, variantId}` using
   the page's existing auth plumbing (session token when embedded, panel password
-  otherwise); on success, refresh the row/section.
+  otherwise). On `soldOut` it shows "sold out again — nothing sent"; on success it
+  refreshes the row/section.
 
 ## Data flow
 
