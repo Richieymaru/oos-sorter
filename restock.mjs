@@ -17,8 +17,8 @@ import { gql, shortId } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
-import { sendBackInStock, sendSoldOutAlert } from './notify.mjs';
-import { notifiedRow, recordNotified, applyNudged } from './notified.mjs';
+import { sendBackInStock, sendSoldOutAlert, sendNudge } from './notify.mjs';
+import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
@@ -332,4 +332,50 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
     try { await applyNudged(email, short); } catch (e) { console.error('resend nudge-flag failed:', e.message); }
   }
   return { sent: 1, soldOut: false };
+}
+
+/**
+ * One-shot follow-up: nudge shoppers who were notified >= `days` ago but haven't
+ * clicked/ordered and haven't already been nudged, for products still in stock.
+ * Full runs only (scans the whole log). Idempotent — once a row's nudge slot is
+ * set it never re-qualifies. @returns {{nudged:number}}
+ */
+export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } = {}) {
+  const log = await loadNotified();
+  const now = new Date().toISOString();
+  // Cheap pre-filter (state + window) before spending a stock fetch.
+  const windowed = selectNudges(log, now, days, () => true);
+  if (!windowed.length) return { nudged: 0 };
+
+  const ids = [...new Set(windowed.map((x) => x.p))];
+  const stock = await fetchProductsByIds(ids);
+  const spById = new Map(stock.map((p) => [shortId(p.id), p]));
+  const due = selectNudges(log, now, days, (p) => {
+    const sp = spById.get(p);
+    return sp ? isInStock(sp) : false;
+  });
+
+  let nudged = 0;
+  for (const row of due) {
+    const sp = spById.get(row.p);
+    const relCart = row.v ? `/cart/${row.v}:1` : (sp?.handle ? `/products/${sp.handle}` : '/');
+    const relProduct = sp?.handle ? `/products/${sp.handle}` : '/';
+    const payload = {
+      title: row.t,
+      handle: sp?.handle,
+      image: sp?.featuredImage?.url || null,
+      variantId: row.v,
+      variantTitle: row.vt,
+      clickCartUrl: trackUrl(base, row.p, row.e, relCart),
+      clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
+    };
+    try {
+      await sendNudge(row.e, payload, unsubUrl(base, row.p, row.e), { dryRun });
+      if (!dryRun) await applyNudged(row.e, row.p, now);
+      nudged++;
+    } catch (e) {
+      console.error(`  ! nudge email to ${row.e} failed: ${e.message}`);
+    }
+  }
+  return { nudged };
 }
