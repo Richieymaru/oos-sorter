@@ -18,7 +18,7 @@ import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
 import { sendBackInStock, sendSoldOutAlert } from './notify.mjs';
-import { notifiedRow, recordNotified } from './notified.mjs';
+import { notifiedRow, recordNotified, applyNudged } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
@@ -295,4 +295,41 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
   });
 
   return { sent, title: p.title, total: list.length };
+}
+
+/**
+ * Manually re-send the back-in-stock email to ONE shopper (dashboard "Resend").
+ * Guarded on current stock: if the product (or the shopper's variant) is sold out
+ * again it sends nothing and reports soldOut, so we never tell a shopper "it's
+ * back" when it isn't. Consumes the row's one nudge slot so the auto-nudge won't
+ * also fire. @returns {{sent:number, soldOut:boolean}}
+ */
+export async function resendOne(productGid, email, { variantId = null, base = null, dryRun = false } = {}) {
+  const short = shortId(productGid);
+  const [sp] = await fetchProductsByIds([short]);
+  if (!sp) return { sent: 0, soldOut: true };
+
+  const vWant = variantId ? String(variantId).replace(/\D/g, '') : null;
+  const inStock = vWant ? isVariantInStock(sp, vWant) : isInStock(sp);
+  if (!inStock) return { sent: 0, soldOut: true };
+
+  const first = sp.variants?.nodes?.[0];
+  const vId = vWant || (first?.id ? shortId(first.id) : null);
+  const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
+  const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
+  const payload = {
+    title: sp.title,
+    handle: sp.handle,
+    image: sp.featuredImage?.url || null,
+    variantId: vId,
+    variantTitle: null,
+    clickCartUrl: trackUrl(base, short, email, relCart),
+    clickProductUrl: trackUrl(base, short, email, relProduct),
+  };
+
+  if (!dryRun) {
+    await sendBackInStock(email, payload, unsubUrl(base, short, email), { dryRun: false });
+    try { await applyNudged(email, short); } catch (e) { console.error('resend nudge-flag failed:', e.message); }
+  }
+  return { sent: 1, soldOut: false };
 }

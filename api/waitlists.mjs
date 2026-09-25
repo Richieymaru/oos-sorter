@@ -1,6 +1,6 @@
 import { requireAuth } from './_auth.mjs';
 import { shell, setPageHeaders, esc, statCard } from '../ui.mjs';
-import { productsWithWaitlist, notifyOneProduct } from '../restock.mjs';
+import { productsWithWaitlist, notifyOneProduct, resendOne } from '../restock.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isVariantInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
@@ -49,6 +49,19 @@ export default async function handler(req, res) {
         const settings = await loadSettings().catch(() => ({}));
         await sendWaitlistReport(items, { recipients: settings.notifyEmails || [] });
         res.end(JSON.stringify({ ok: true, products: items.length, shoppers }));
+        return;
+      }
+
+      // Re-send the back-in-stock email to one shopper (dashboard "Resend"),
+      // only if the product is in stock right now.
+      if (body.action === 'resend') {
+        const rs = String(body.productId || '');
+        const rn = rs.replace(/\D/g, '');
+        const rgid = rs.startsWith('gid://') ? rs : (rn ? longId(rn) : null);
+        if (!rgid || !body.email) { res.end(JSON.stringify({ ok: false, error: 'Missing product or email.' })); return; }
+        const rr = await resendOne(rgid, String(body.email), { variantId: body.variantId || null });
+        if (rr.soldOut) { res.end(JSON.stringify({ ok: false, soldOut: true, error: 'Sold out again — nothing sent.' })); return; }
+        res.end(JSON.stringify({ ok: true, sent: rr.sent }));
         return;
       }
 
