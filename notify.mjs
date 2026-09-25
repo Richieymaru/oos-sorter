@@ -246,20 +246,23 @@ export function sendSoldOutAlert(items, opts) {
   return send(buildSoldOutAlert(items), opts);
 }
 
-/** Pure: build a single-product "back in stock" email for one shopper.
- *  product: { title, handle, image, variantId } — image + variantId are optional.
- *  When variantId is present the "Add to Cart" button deep-links to the cart. */
-export function buildBackInStock(product, unsub) {
+/** Shared builder for the two single-product restock emails (back-in-stock and
+ *  the follow-up nudge). `opts` supplies the only differences: eyebrow label,
+ *  subject text, the HTML lead sentence, and the plain-text intro line.
+ *  product: { title, handle, image, variantId, clickCartUrl?, clickProductUrl? }.
+ *  When the tracked click URLs are present they replace the raw storefront links
+ *  (so we can record click-through); otherwise it falls back to direct links. */
+function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introText }) {
   const title = product.title ?? 'Your item';
   // Single-variant products are literally titled "Default Title" — never show that.
   const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
-  const named = variant ? `${title} — ${variant}` : title;
-  const productUrl = product.handle && SHOP ? `https://${SHOP}/products/${product.handle}` : (SHOP ? `https://${SHOP}` : '#');
+  const productUrl = product.clickProductUrl
+    || (product.handle && SHOP ? `https://${SHOP}/products/${product.handle}` : (SHOP ? `https://${SHOP}` : '#'));
   // A /cart/<variantId>:1 permalink adds the item and lands the shopper on the cart.
-  const cartUrl = product.variantId && SHOP ? `https://${SHOP}/cart/${product.variantId}:1` : productUrl;
-  const subject = `${named} is back in stock`;
+  const cartUrl = product.clickCartUrl
+    || (product.variantId && SHOP ? `https://${SHOP}/cart/${product.variantId}:1` : productUrl);
   const text =
-    `Good news! "${named}" is available again on ${SHOP}.\n\n` +
+    `${introText}\n\n` +
     `Add it to your cart: ${cartUrl}\n` +
     `Or view the product: ${productUrl}\n\n— ${APP_NAME}\n\n` +
     `Don't want these emails? Unsubscribe: ${unsub}`;
@@ -273,10 +276,10 @@ export function buildBackInStock(product, unsub) {
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
       <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;width:100%;background:#fff;border:1px solid #e4e8ef;border-radius:16px;overflow:hidden">
         <tr><td style="padding:24px 24px 12px">
-          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:${ACCENT};text-transform:uppercase">Back in stock</div>
+          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:${ACCENT};text-transform:uppercase">${esc(eyebrow)}</div>
           <div style="font-size:20px;font-weight:700;color:#161b22;margin:8px 0 6px">${esc(title)}</div>
           ${variant ? `<div style="font-size:13px;color:#5f6875;margin:-2px 0 6px">Option: <strong style="color:#161b22">${esc(variant)}</strong></div>` : ''}
-          <div style="font-size:14px;color:#5f6875;line-height:1.5">It's available again on ${esc(SHOP)}. Grab it before it sells out.</div>
+          <div style="font-size:14px;color:#5f6875;line-height:1.5">${leadHtml}</div>
         </td></tr>
         ${imageBlock}
         <tr><td style="padding:16px 24px 24px">
@@ -290,6 +293,32 @@ export function buildBackInStock(product, unsub) {
     </td></tr></table>
   </div></body></html>`;
   return { subject, text, html };
+}
+
+/** Pure: build a single-product "back in stock" email for one shopper. */
+export function buildBackInStock(product, unsub) {
+  const title = product.title ?? 'Your item';
+  const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
+  const named = variant ? `${title} — ${variant}` : title;
+  return buildRestockEmail(product, unsub, {
+    eyebrow: 'Back in stock',
+    subject: `${named} is back in stock`,
+    leadHtml: `It's available again on ${esc(SHOP)}. Grab it before it sells out.`,
+    introText: `Good news! "${named}" is available again on ${SHOP}.`,
+  });
+}
+
+/** Pure: build the one-shot follow-up "still available" nudge for one shopper. */
+export function buildNudge(product, unsub) {
+  const title = product.title ?? 'Your item';
+  const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
+  const named = variant ? `${title} — ${variant}` : title;
+  return buildRestockEmail(product, unsub, {
+    eyebrow: 'Still available',
+    subject: `Still available: ${named}`,
+    leadHtml: `Still in stock on ${esc(SHOP)} — don't miss it before it's gone again.`,
+    introText: `Still in stock: "${named}" is available on ${SHOP}.`,
+  });
 }
 
 let transportCache = null;
@@ -359,5 +388,20 @@ export async function sendBackInStock(email, product, unsub, { dryRun } = {}) {
   if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for back-in-stock emails');
   const info = await transport(user, pass).sendMail({ from: `${APP_NAME} <${user}>`, to: email, subject, text, html });
   console.log(`  emailed ${email}: "${subject}" (${info.messageId})`);
+  return info;
+}
+
+/** Send a one-shot "still available" nudge to a single shopper. */
+export async function sendNudge(email, product, unsub, { dryRun } = {}) {
+  const { subject, text, html } = buildNudge(product, unsub);
+  if (dryRun) {
+    console.log(`  [dry run] would nudge ${email}: "${subject}"`);
+    return { dryRun: true };
+  }
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for nudge emails');
+  const info = await transport(user, pass).sendMail({ from: `${APP_NAME} <${user}>`, to: email, subject, text, html });
+  console.log(`  nudged ${email}: "${subject}" (${info.messageId})`);
   return info;
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // buildBackInStock reads SHOP_DOMAIN at module load, so set it before importing.
 process.env.SHOP_DOMAIN = 'demo.myshopify.com';
-const { buildBackInStock, buildSoldOutAlert } = await import('./notify.mjs');
+const { buildBackInStock, buildSoldOutAlert, buildNudge } = await import('./notify.mjs');
 
 let failures = 0, checks = 0;
 function ok(label, cond) {
@@ -49,6 +49,22 @@ const multi = buildSoldOutAlert([
 ok('subject counts products', multi.subject.includes('2 products just sold out'));
 ok('no <img> for the item without an image', (multi.html.match(/<img/g) || []).length === 1);
 ok('links both products', multi.html.includes('/products/alpha') && multi.html.includes('/products/beta'));
+
+console.log('--- buildBackInStock: tracked links ---');
+const tracked = buildBackInStock(
+  { title: 'Chef Knife', handle: 'chef-knife', variantId: '999', clickCartUrl: 'https://app.test/t?to=cart', clickProductUrl: 'https://app.test/t?to=prod' },
+  unsub
+);
+ok('uses the tracked cart url', tracked.html.includes('href="https://app.test/t?to=cart"'));
+ok('drops the raw cart permalink when tracked', !tracked.html.includes('/cart/999:1'));
+ok('uses the tracked product url', tracked.html.includes('https://app.test/t?to=prod'));
+
+console.log('--- buildNudge ---');
+const nudge = buildNudge({ title: 'Widget', handle: 'widget' }, unsub);
+ok('nudge subject', nudge.subject === 'Still available: Widget');
+ok('nudge eyebrow', nudge.html.includes('Still available'));
+ok('nudge keeps the unsubscribe link', nudge.text.includes(unsub));
+ok('nudge falls back to product url', nudge.html.includes('https://demo.myshopify.com/products/widget'));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
