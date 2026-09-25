@@ -16,8 +16,9 @@
 import { gql, shortId } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
-import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, partitionByStock } from './waitlist.mjs';
-import { sendBackInStock, sendSoldOutAlert } from './notify.mjs';
+import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
+import { sendBackInStock, sendSoldOutAlert, sendNudge } from './notify.mjs';
+import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
@@ -50,17 +51,26 @@ async function bumpNotified(shoppers) {
 async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, dryRun, base }) {
   let sent = 0;
   const failed = [];
+  const rows = [];
+  const short = shortId(gid);
 
   for (const sub of due) {
-    // Deep-link the email to the variant the shopper actually asked about.
+    const variantId = sub.variantId || fallbackVariantId;
+    // Deep-link the email to the variant the shopper asked about, through the
+    // tracked redirect so a click-through is recorded on the log row.
+    const relCart = variantId ? `/cart/${variantId}:1` : (product.handle ? `/products/${product.handle}` : '/');
+    const relProduct = product.handle ? `/products/${product.handle}` : '/';
     const payload = {
       ...product,
-      variantId: sub.variantId || fallbackVariantId,
+      variantId,
       variantTitle: sub.variantTitle || null,
+      clickCartUrl: trackUrl(base, short, sub.email, relCart),
+      clickProductUrl: trackUrl(base, short, sub.email, relProduct),
     };
     try {
-      await sendBackInStock(sub.email, payload, unsubUrl(base, shortId(gid), sub.email), { dryRun });
+      await sendBackInStock(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun });
       sent++;
+      rows.push(notifiedRow({ email: sub.email, productId: short, title: product.title, variantId, variantTitle: sub.variantTitle || null }));
     } catch (e) {
       console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
       failed.push(sub); // keep them so they retry next run
@@ -77,6 +87,11 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
       await clearWaitlist(gid);
     }
     await bumpNotified(sent); // cumulative "notified so far" stat (no-op when sent === 0)
+    try {
+      await recordNotified(rows); // detailed log; best-effort, never breaks the send/prune
+    } catch (e) {
+      console.error(`  ! notified-log write failed: ${e.message}`);
+    }
   }
 
   return sent;
@@ -280,4 +295,87 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
   });
 
   return { sent, title: p.title, total: list.length };
+}
+
+/**
+ * Manually re-send the back-in-stock email to ONE shopper (dashboard "Resend").
+ * Guarded on current stock: if the product (or the shopper's variant) is sold out
+ * again it sends nothing and reports soldOut, so we never tell a shopper "it's
+ * back" when it isn't. Consumes the row's one nudge slot so the auto-nudge won't
+ * also fire. @returns {{sent:number, soldOut:boolean}}
+ */
+export async function resendOne(productGid, email, { variantId = null, base = null, dryRun = false } = {}) {
+  const short = shortId(productGid);
+  const [sp] = await fetchProductsByIds([short]);
+  if (!sp) return { sent: 0, soldOut: true };
+
+  const vWant = variantId ? String(variantId).replace(/\D/g, '') : null;
+  const inStock = vWant ? isVariantInStock(sp, vWant) : isInStock(sp);
+  if (!inStock) return { sent: 0, soldOut: true };
+
+  const first = sp.variants?.nodes?.[0];
+  const vId = vWant || (first?.id ? shortId(first.id) : null);
+  const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
+  const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
+  const payload = {
+    title: sp.title,
+    handle: sp.handle,
+    image: sp.featuredImage?.url || null,
+    variantId: vId,
+    variantTitle: null,
+    clickCartUrl: trackUrl(base, short, email, relCart),
+    clickProductUrl: trackUrl(base, short, email, relProduct),
+  };
+
+  if (!dryRun) {
+    await sendBackInStock(email, payload, unsubUrl(base, short, email), { dryRun: false });
+    try { await applyNudged(email, short); } catch (e) { console.error('resend nudge-flag failed:', e.message); }
+  }
+  return { sent: 1, soldOut: false };
+}
+
+/**
+ * One-shot follow-up: nudge shoppers who were notified >= `days` ago but haven't
+ * clicked/ordered and haven't already been nudged, for products still in stock.
+ * Full runs only (scans the whole log). Idempotent — once a row's nudge slot is
+ * set it never re-qualifies. @returns {{nudged:number}}
+ */
+export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } = {}) {
+  const log = await loadNotified();
+  const now = new Date().toISOString();
+  // Cheap pre-filter (state + window) before spending a stock fetch.
+  const windowed = selectNudges(log, now, days, () => true);
+  if (!windowed.length) return { nudged: 0 };
+
+  const ids = [...new Set(windowed.map((x) => x.p))];
+  const stock = await fetchProductsByIds(ids);
+  const spById = new Map(stock.map((p) => [shortId(p.id), p]));
+  const due = selectNudges(log, now, days, (p) => {
+    const sp = spById.get(p);
+    return sp ? isInStock(sp) : false;
+  });
+
+  let nudged = 0;
+  for (const row of due) {
+    const sp = spById.get(row.p);
+    const relCart = row.v ? `/cart/${row.v}:1` : (sp?.handle ? `/products/${sp.handle}` : '/');
+    const relProduct = sp?.handle ? `/products/${sp.handle}` : '/';
+    const payload = {
+      title: row.t,
+      handle: sp?.handle,
+      image: sp?.featuredImage?.url || null,
+      variantId: row.v,
+      variantTitle: row.vt,
+      clickCartUrl: trackUrl(base, row.p, row.e, relCart),
+      clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
+    };
+    try {
+      await sendNudge(row.e, payload, unsubUrl(base, row.p, row.e), { dryRun });
+      if (!dryRun) await applyNudged(row.e, row.p, now);
+      nudged++;
+    } catch (e) {
+      console.error(`  ! nudge email to ${row.e} failed: ${e.message}`);
+    }
+  }
+  return { nudged };
 }

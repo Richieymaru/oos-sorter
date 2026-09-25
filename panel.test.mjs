@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2 };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('undefined -> all false', normalizeSettings(undefined), base);
 eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });
@@ -74,6 +74,13 @@ eq('renders the setup button wired to the setup-monitor action', /id="setupMon"/
 eq('renders a separate product-changes slack field', /id="monitorSlack"/.test(sb) && sb.includes('monitorSlackWebhook:'), true);
 eq('prefills existing monitor slack webhook', settingsBody({ monitorSlackWebhook: 'https://hooks.slack.com/services/p/q/r' }).includes('https://hooks.slack.com/services/p/q/r'), true);
 eq('prefills existing sheet webhook', settingsBody({ sheetWebhook: 'https://script.google.com/macros/s/x/exec' }).includes('https://script.google.com/macros/s/x/exec'), true);
+
+console.log('\n--- nudgeDays ---');
+eq('clamps + defaults nudgeDays', normalizeSettings({ nudgeDays: 99 }).nudgeDays, 14);
+eq('defaults missing nudgeDays to 2', normalizeSettings({}).nudgeDays, 2);
+const withNudge = settingsBody({ waitlist: true, nudgeDays: 3 });
+eq('renders the nudge-days input', withNudge.includes('id="nudgeDays"'), true);
+eq('shows the saved value', withNudge.includes('value="3"'), true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

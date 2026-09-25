@@ -119,6 +119,20 @@ export function unsubUrl(base, productShortId, email) {
   return u.toString();
 }
 
+/** A signed, tracked redirect URL for the back-in-stock email links. Reuses the
+ *  unsubscribe HMAC (product:email); `relPath` is a storefront-relative path
+ *  ("/cart/<vid>:1" or "/products/<handle>") the redirect validates before use. */
+export function trackUrl(base, productShortId, email, relPath) {
+  const root = base || process.env.PUBLIC_URL || 'https://oos-sorter.vercel.app';
+  const u = new URL('/api/unsubscribe', root);
+  u.searchParams.set('click', '1');
+  u.searchParams.set('product', String(productShortId));
+  u.searchParams.set('email', email);
+  u.searchParams.set('sig', signUnsub(productShortId, email, unsubSecret()));
+  u.searchParams.set('to', relPath);
+  return u.toString();
+}
+
 /* ---- metafield I/O ---- */
 
 /** Read a product's waitlist (empty array if unset/unparsable). */

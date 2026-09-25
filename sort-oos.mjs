@@ -57,7 +57,7 @@ import { loadState, saveState } from './state.mjs';
 import { loadSettings } from './settings.mjs';
 import { restoreRestocked, applyDrafts } from './draft.mjs';
 import { sendDigest } from './notify.mjs';
-import { notifyRestocks } from './restock.mjs';
+import { notifyRestocks, nudgeUnengaged } from './restock.mjs';
 
 /** True only when this file is the process entry point, not an import. */
 const IS_MAIN =
@@ -451,6 +451,14 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: onlyParam =
         `\nBack-in-stock: ${rr.waitlisted} product(s) with a waitlist | ` +
           `${DRY_RUN ? 'would email' : 'emailed'} ${rr.emailsSent} shopper(s) across ${rr.productsNotified} restocked product(s)`
       );
+    }
+
+    // One-shot follow-up nudge to shoppers who didn't click/order and whose
+    // product is still in stock. Full runs only.
+    const nudgeDays = Number.isFinite(settings.nudgeDays) ? settings.nudgeDays : Number(process.env.NUDGE_DAYS) || 2;
+    const nu = await nudgeUnengaged({ dryRun: DRY_RUN, days: nudgeDays });
+    if (nu.nudged) {
+      console.log(`Nudge: ${DRY_RUN ? 'would nudge' : 'nudged'} ${nu.nudged} un-engaged shopper(s)`);
     }
   }
 

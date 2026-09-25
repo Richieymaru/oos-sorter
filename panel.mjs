@@ -30,6 +30,7 @@ export function settingsBody(settings) {
   const slack = settings.slackWebhook || '';
   const monitorSlack = settings.monitorSlackWebhook || '';
   const sheet = settings.sheetWebhook || '';
+  const nudgeDays = Number.isFinite(settings.nudgeDays) ? settings.nudgeDays : 2;
   const rows = [
     {
       id: 'sort',
@@ -90,6 +91,11 @@ export function settingsBody(settings) {
     <input id="slack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(slack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
   </div>
   <div class="card pad" style="margin-top:14px">
+    <label class="rowtitle" for="nudgeDays">Back-in-stock nudge delay</label>
+    <p class="rowdesc" style="margin:3px 0 9px">If a notified shopper hasn’t clicked or ordered after this many days and the product is still in stock, send one automatic follow-up. Range 1–14 days.</p>
+    <input id="nudgeDays" type="number" min="1" max="14" value="${nudgeDays}" style="width:90px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+  </div>
+  <div class="card pad" style="margin-top:14px">
     <label class="rowtitle" for="monitorSlack">Slack — product changes</label>
     <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a product’s status changes. Separate from the waitlist Slack above — point it at your product-changes channel. Leave blank to skip Slack for product changes (the Google Sheet still logs them).</p>
     <input id="monitorSlack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(monitorSlack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
@@ -123,7 +129,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

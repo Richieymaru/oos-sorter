@@ -1,12 +1,13 @@
 import { requireAuth } from './_auth.mjs';
 import { shell, setPageHeaders, esc, statCard } from '../ui.mjs';
-import { productsWithWaitlist, notifyOneProduct } from '../restock.mjs';
+import { productsWithWaitlist, notifyOneProduct, resendOne } from '../restock.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
-import { isVariantInStock } from '../stock.mjs';
+import { isVariantInStock, isInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
 import { loadState } from '../state.mjs';
 import { loadSettings } from '../settings.mjs';
 import { sendWaitlistReport } from '../notify.mjs';
+import { loadNotified, deriveStats } from '../notified.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -52,6 +53,19 @@ export default async function handler(req, res) {
         return;
       }
 
+      // Re-send the back-in-stock email to one shopper (dashboard "Resend"),
+      // only if the product is in stock right now.
+      if (body.action === 'resend') {
+        const rs = String(body.productId || '');
+        const rn = rs.replace(/\D/g, '');
+        const rgid = rs.startsWith('gid://') ? rs : (rn ? longId(rn) : null);
+        if (!rgid || !body.email) { res.end(JSON.stringify({ ok: false, error: 'Missing product or email.' })); return; }
+        const rr = await resendOne(rgid, String(body.email), { variantId: body.variantId || null });
+        if (rr.soldOut) { res.end(JSON.stringify({ ok: false, soldOut: true, error: 'Sold out again — nothing sent.' })); return; }
+        res.end(JSON.stringify({ ok: true, sent: rr.sent }));
+        return;
+      }
+
       const { productId, variantId } = body;
       const s = String(productId || '');
       const num = s.replace(/\D/g, '');
@@ -67,13 +81,26 @@ export default async function handler(req, res) {
   }
 
   // GET = the page.
-  const [items, state] = await Promise.all([
+  const [items, state, notifiedLog] = await Promise.all([
     productsWithWaitlist().catch(() => []),
     loadState().catch(() => ({})),
+    loadNotified().catch(() => []),
   ]);
+  void state;
   const total = items.reduce((n, w) => n + w.list.length, 0);
-  const notified = state.waitlistNotified || 0;
-  const restocked = state.waitlistProducts || 0;
+  const recent = notifiedLog.slice(0, 100);
+  const stats = deriveStats(notifiedLog);
+
+  // Current stock for the distinct products shown, so Resend is only offered when
+  // the product is actually available now (mirrors the server-side guard).
+  const recentIds = [...new Set(recent.map((r) => r.p))];
+  let stockById = new Map();
+  if (recentIds.length) {
+    try {
+      const prods = await fetchProductsByIds(recentIds);
+      stockById = new Map(prods.map((p) => [shortId(p.id), p]));
+    } catch { /* leave stock unknown -> Resend disabled, never blocks the page */ }
+  }
 
   // For any product with an entry that recorded no variant, pull the product's
   // variants so we can show a real option name instead of a dash. Only fetch the
@@ -123,6 +150,37 @@ export default async function handler(req, res) {
 
   const sendButton = (w, variantId, label, count) =>
     `<button class="ghost send" data-id="${esc(shortId(w.id))}" data-variant="${esc(variantId || '')}" data-title="${esc(label)}" data-count="${count}">Send now</button>`;
+
+  const chip = (bg, fg, label) =>
+    `<span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap">${label}</span>`;
+  const statusChip = (r) => {
+    if (r.o) return chip('#e7f6ee', '#0e7a4b', 'Ordered');
+    if (r.u) return chip('#eef1f6', '#8b95a3', 'Unsubscribed');
+    if (r.c) return chip('#e7f6ee', '#0e7a4b', 'Clicked');
+    if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged');
+    return chip('#eef1f6', '#5f6875', 'Notified');
+  };
+  const inStockNow = (r) => {
+    const sp = stockById.get(r.p);
+    if (!sp) return false;
+    return r.v ? isVariantInStock(sp, r.v) : isInStock(sp);
+  };
+  const resendCell = (r) => {
+    if (r.u) return `<span class="faint" style="font-size:12px">&mdash;</span>`;
+    if (!inStockNow(r)) return `<span class="faint" style="font-size:12px">Sold out again</span>`;
+    return `<button class="ghost resend" data-id="${esc(r.p)}" data-email="${esc(r.e)}" data-variant="${esc(r.v || '')}">Resend</button>`;
+  };
+  const vName = (r) => (r.vt && r.vt !== 'Default Title') ? esc(r.vt) : (r.v ? `#${esc(r.v)}` : '&mdash;');
+  const recentRows = recent.length
+    ? recent.map((r) => `<tr>
+        <td class="mono">${esc(r.e)}</td>
+        <td>${esc(r.t)}</td>
+        <td>${vName(r)}</td>
+        <td class="num">${fmt(r.ts)}</td>
+        <td>${statusChip(r)}</td>
+        <td>${resendCell(r)}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="6" class="faint">No one has been notified yet.</td></tr>`;
 
   const cards = items.length
     ? items
@@ -180,13 +238,20 @@ export default async function handler(req, res) {
   <div class="grid c3" style="margin-bottom:16px">
     ${statCard({ value: items.length, label: 'Products with a waitlist' })}
     ${statCard({ value: total, label: 'Shoppers waiting' })}
-    ${statCard({ value: notified, label: 'Notified so far', sub: `${restocked} product${restocked === 1 ? '' : 's'} restocked`, tone: notified ? 'pos' : '' })}
+    ${statCard({ value: stats.notified, label: 'Notified (recent)', sub: `${stats.clicked} clicked · ${stats.clickRate}% · ${stats.nudged} nudged`, tone: stats.clicked ? 'pos' : '' })}
   </div>
   <div class="actions" style="margin:0 0 18px">
     <button class="ghost" id="emailAll">Email me the full list</button>
     <span id="msgAll" class="faint" style="font-size:12.5px"></span>
   </div>
   ${cards}
+  <div class="pagehead" style="margin-top:26px"><h2 style="font-size:16px;margin:0 0 2px">Recently notified</h2><p style="margin:0">Who we emailed when a product came back &mdash; whether they clicked through, and resend if they missed it.</p></div>
+  <div class="card pad">
+    <table>
+      <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="num">Notified</th><th>Status</th><th></th></tr></thead>
+      <tbody>${recentRows}</tbody>
+    </table>
+  </div>
   <div class="pw" style="margin-top:16px">
     <label for="pw">Panel password</label>
     <input type="password" id="pw" placeholder="to send" autocomplete="current-password">
@@ -226,6 +291,18 @@ export default async function handler(req, res) {
           setTimeout(function(){ location.reload(); }, 700);
         }
         else { msg.textContent=r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send'); b.disabled=false; b.textContent=old; }
+      });
+    });
+    document.querySelectorAll('.resend').forEach(function(b){
+      b.addEventListener('click', async function(){
+        if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
+        b.disabled=true; var old=b.textContent; b.textContent='Sending\\u2026';
+        var body={action:'resend',productId:b.dataset.id,email:b.dataset.email};
+        if(b.dataset.variant) body.variantId=b.dataset.variant;
+        var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(body)});
+        var j=await r.json().catch(function(){return{};});
+        if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } b.textContent='Sent \\u2713'; }
+        else { b.textContent=old; b.disabled=false; msg.textContent=(j.soldOut?'Sold out again \\u2014 nothing sent':(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not resend'))); }
       });
     });
   </script>`;

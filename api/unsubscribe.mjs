@@ -5,6 +5,7 @@
  */
 import { verifyUnsub, unsubscribe, unsubSecret } from '../waitlist.mjs';
 import { longId } from '../shopify.mjs';
+import { safeRelPath, applyClicked, applyUnsubscribed } from '../notified.mjs';
 
 function query(req) {
   if (req.query && typeof req.query === 'object') return req.query;
@@ -28,6 +29,22 @@ export default async function handler(req, res) {
   const product = String(q.product || '');
   const email = String(q.email || '');
   const sig = String(q.sig || '');
+
+  // Tracked click redirect: mark the click, then 302 to the storefront. Never
+  // errors — a bad/forged link just lands on the shop home and records nothing.
+  if (String(q.click || '') === '1') {
+    const shop = process.env.SHOP_DOMAIN;
+    const rel = safeRelPath(q.to);
+    const dest = rel && shop ? `https://${shop}${rel}` : (shop ? `https://${shop}` : '/');
+    if (product && email && sig && verifyUnsub(product, email, sig, unsubSecret())) {
+      try { await applyClicked(email, product); } catch (e) { console.error('click log failed:', e.message); }
+    }
+    res.statusCode = 302;
+    res.setHeader('Location', dest);
+    res.end();
+    return;
+  }
+
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
   if (!product || !email || !sig || !verifyUnsub(product, email, sig, unsubSecret())) {
@@ -37,6 +54,7 @@ export default async function handler(req, res) {
   }
   try {
     await unsubscribe(longId(product.replace(/\D/g, '')), email);
+    try { await applyUnsubscribed(email, product); } catch (e) { console.error('unsub log flag failed:', e.message); }
     res.end(page('Unsubscribed', `You won&rsquo;t get back-in-stock emails for this product anymore.`));
   } catch (e) {
     res.statusCode = 500;

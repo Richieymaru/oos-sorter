@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Pure tests for the waitlist helpers. node waitlist.test.mjs */
-import { addEmail, removeEmail, signUnsub, verifyUnsub, partitionByStock } from './waitlist.mjs';
+import { addEmail, removeEmail, signUnsub, verifyUnsub, partitionByStock, trackUrl, unsubSecret } from './waitlist.mjs';
 
 let failures = 0, checks = 0;
 function ok(label, cond) {
@@ -67,6 +67,15 @@ ok('wrong product -> false', verifyUnsub('999', 'a@x.com', sig, SEC) === false);
 ok('wrong email -> false', verifyUnsub('123', 'b@y.com', sig, SEC) === false);
 ok('wrong secret -> false', verifyUnsub('123', 'a@x.com', sig, 'other') === false);
 ok('garbage sig -> false', verifyUnsub('123', 'a@x.com', 'nope', SEC) === false);
+
+console.log('\n--- trackUrl ---');
+const tu = new URL(trackUrl('https://app.test', '123', 'a@x.com', '/cart/999:1'));
+ok('targets the unsubscribe endpoint', tu.pathname === '/api/unsubscribe');
+ok('sets the click flag', tu.searchParams.get('click') === '1');
+ok('carries the product id', tu.searchParams.get('product') === '123');
+ok('carries the email', tu.searchParams.get('email') === 'a@x.com');
+ok('carries the relative destination', tu.searchParams.get('to') === '/cart/999:1');
+ok('signs with the unsubscribe HMAC', tu.searchParams.get('sig') === signUnsub('123', 'a@x.com', unsubSecret()));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
