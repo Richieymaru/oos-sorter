@@ -33,7 +33,9 @@ export default async function handler(req, res) {
   // Tracked click redirect: mark the click, then 302 to the storefront. Never
   // errors — a bad/forged link just lands on the shop home and records nothing.
   if (String(q.click || '') === '1') {
-    const shop = process.env.SHOP_DOMAIN;
+    // Prefer the storefront domain (STORE_DOMAIN) so the click lands on the
+    // custom domain; the myshopify fallback 301s to it anyway.
+    const shop = process.env.STORE_DOMAIN || process.env.SHOP_DOMAIN;
     const rel = safeRelPath(q.to);
     const dest = rel && shop ? `https://${shop}${rel}` : (shop ? `https://${shop}` : '/');
     if (product && email && sig && verifyUnsub(product, email, sig, unsubSecret())) {

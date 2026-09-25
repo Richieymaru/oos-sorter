@@ -33,6 +33,8 @@ function variantFields(onlineLocIds) {
   return `
     id
     title
+    price
+    compareAtPrice
     inventoryQuantity
     inventoryPolicy
     inventoryItem { tracked ${levels} }`;
