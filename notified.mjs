@@ -10,6 +10,8 @@
  * numeric short id. Rows are newest-first.
  */
 
+import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
+
 const CAP = 1000;           // max rows kept (also trimmed by byte size below)
 const LIMIT = 131072;       // Shopify metafield JSON value cap, in bytes
 const DAY = 86400000;
@@ -106,3 +108,54 @@ export function safeRelPath(to) {
   if (s.includes('://')) return null;
   return s;
 }
+
+/* ---- metafield I/O (shop-level oos_sort.notified) ---- */
+
+const NAMESPACE = 'oos_sort';
+const KEY = 'notified';
+
+/** Read the notified log (empty array if unset/unparsable). */
+export async function loadNotified() {
+  const d = await gql(`{ shop { metafield(namespace: "${NAMESPACE}", key: "${KEY}") { value } } }`);
+  const raw = d.shop?.metafield?.value;
+  if (!raw) return [];
+  try {
+    const a = JSON.parse(raw);
+    return Array.isArray(a) ? a : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Persist the log, trimmed to fit the metafield byte cap (oldest dropped). */
+export async function saveNotified(log) {
+  const shopId = await getShopId();
+  const fitted = trimToFit(log, LIMIT - 2048);
+  const d = await gql(
+    `mutation Save($m: [MetafieldsSetInput!]!) { metafieldsSet(metafields: $m) { userErrors { field message } } }`,
+    { m: [{ ownerId: shopId, namespace: NAMESPACE, key: KEY, type: 'json', value: JSON.stringify(fitted) }] }
+  );
+  assertNoUserErrors('metafieldsSet(notified)', d.metafieldsSet);
+  return fitted;
+}
+
+/** Append one row per email we sent, in a single load+save. */
+export async function recordNotified(rows) {
+  if (!rows || !rows.length) return;
+  let log = await loadNotified();
+  for (const r of rows) log = appendNotified(log, r);
+  await saveNotified(log);
+}
+
+async function applyMark(fn) {
+  const log = await loadNotified();
+  const next = fn(log);
+  if (next !== log) await saveNotified(next);
+}
+
+export const applyClicked = (email, productId, whenISO = new Date().toISOString()) =>
+  applyMark((log) => markClicked(log, email, productId, whenISO));
+export const applyNudged = (email, productId, whenISO = new Date().toISOString()) =>
+  applyMark((log) => markNudged(log, email, productId, whenISO));
+export const applyUnsubscribed = (email, productId) =>
+  applyMark((log) => markUnsubscribed(log, email, productId));
