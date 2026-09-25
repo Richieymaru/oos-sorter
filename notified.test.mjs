@@ -47,7 +47,8 @@ ok('marks the newest matching row', clicked[0].c === 'now' && clicked[1].c === n
 ok('no-op if already clicked', markClicked(clicked, 'a@x.com', '55', 'later')[0].c === 'now');
 ok('no-op when no match', markClicked(base, 'z@x.com', '55', 'now') === base);
 let nudged = markNudged(base, 'a@x.com', '55', 'now');
-ok('marks newest row nudged', nudged[0].n === 'now' && nudged[1].n === null);
+ok('flags ALL matching rows nudged (no re-fire on older rows)', nudged[0].n === 'now' && nudged[1].n === 'now');
+ok('markNudged no-op when none match', markNudged(base, 'z@x.com', '55', 'now') === base);
 
 console.log('\n--- markUnsubscribed ---');
 const uns = markUnsubscribed(base, 'a@x.com', '55');
@@ -69,6 +70,12 @@ const due = selectNudges(pool, NOW, 2, (p) => p === '7');
 ok('exactly the one due row', due.length === 1 && due[0].ts === '2026-09-20T00:00:00Z' && due[0].p === '7');
 ok('respects the wait window', selectNudges([mk({ ts: '2026-09-24T18:00:00Z' })], NOW, 2, () => true).length === 0);
 ok('non-array is safe', selectNudges(null, NOW, 2, () => true).length === 0);
+const twoVariants = [
+  mk({ ts: '2026-09-20T00:00:00Z', v: '1' }),
+  mk({ ts: '2026-09-19T00:00:00Z', v: '2' }),
+];
+const dueDedup = selectNudges(twoVariants, NOW, 2, () => true);
+ok('dedupes to one nudge per (email,product)', dueDedup.length === 1 && dueDedup[0].v === '1');
 
 console.log('\n--- deriveStats ---');
 const stats = deriveStats([mk({}), mk({ c: 'x' }), mk({ c: 'x', n: 'y' }), mk({ o: 'z' })]);

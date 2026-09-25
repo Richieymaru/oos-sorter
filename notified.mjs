@@ -63,7 +63,20 @@ function setNewest(log, email, productId, field, value) {
 }
 
 export const markClicked = (log, email, productId, whenISO) => setNewest(log, email, productId, 'c', whenISO);
-export const markNudged = (log, email, productId, whenISO) => setNewest(log, email, productId, 'n', whenISO);
+
+/** Flag EVERY un-nudged row for (email, product) — the nudge is one-per-shopper-
+ *  per-product, so all rows (e.g. two variants) are consumed together; otherwise
+ *  an older row keeps n==null and re-qualifies on every run (indefinite re-send). */
+export function markNudged(log, email, productId, whenISO) {
+  const e = lc(email), p = nid(productId);
+  const list = Array.isArray(log) ? log : [];
+  let changed = false;
+  const next = list.map((x) => {
+    if (x.e === e && x.p === p && !x.n) { changed = true; return { ...x, n: whenISO }; }
+    return x;
+  });
+  return changed ? next : list;
+}
 
 /** Flag every row for (email, product) unsubscribed (nudge suppression). */
 export function markUnsubscribed(log, email, productId) {
@@ -77,15 +90,25 @@ export function markUnsubscribed(log, email, productId) {
   return changed ? next : list;
 }
 
-/** Rows due for the one nudge. `isInStockByProduct(numericId) -> boolean`. */
+/** Rows due for the one nudge, at most ONE per (email, product) — the newest
+ *  qualifying row wins (list is newest-first). Deduping here guarantees a shopper
+ *  waiting on several variants of one product gets a single nudge per run.
+ *  `isInStockByProduct(numericId) -> boolean`. */
 export function selectNudges(log, nowISO, days, isInStockByProduct) {
   const cutoff = new Date(nowISO).getTime() - days * DAY;
   const list = Array.isArray(log) ? log : [];
-  return list.filter((x) =>
-    x.c == null && x.o == null && x.n == null && x.u !== true &&
-    new Date(x.ts).getTime() <= cutoff &&
-    isInStockByProduct(x.p) === true
-  );
+  const seen = new Set();
+  const out = [];
+  for (const x of list) {
+    if (!(x.c == null && x.o == null && x.n == null && x.u !== true)) continue;
+    if (new Date(x.ts).getTime() > cutoff) continue;
+    if (isInStockByProduct(x.p) !== true) continue;
+    const key = `${x.e}\u0000${x.p}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(x);
+  }
+  return out;
 }
 
 /** Dashboard counters over the retained window. */
