@@ -132,6 +132,14 @@ export function safeRelPath(to) {
   return s;
 }
 
+/** The numeric variant id from an Add-to-Cart permalink path ("/cart/123:1"),
+ *  or null for anything else (a product-page link, a malformed path). Lets the
+ *  click redirect tell "add to cart" clicks apart so it can check stock first. */
+export function cartVariantId(relPath) {
+  const m = /^\/cart\/(\d+):\d+$/.exec(String(relPath || ''));
+  return m ? m[1] : null;
+}
+
 /* ---- metafield I/O (shop-level oos_sort.notified) ---- */
 
 const NAMESPACE = 'oos_sort';

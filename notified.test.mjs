@@ -2,7 +2,7 @@
 /** Pure tests for the notified-log helpers. node notified.test.mjs */
 import {
   notifiedRow, appendNotified, trimToFit, markClicked, markNudged,
-  markUnsubscribed, selectNudges, deriveStats, safeRelPath,
+  markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId,
 } from './notified.mjs';
 
 let failures = 0, checks = 0;
@@ -90,6 +90,12 @@ ok('rejects absolute url', safeRelPath('https://evil.com') === null);
 ok('rejects backslash', safeRelPath('/\\evil') === null);
 ok('rejects non-rooted', safeRelPath('evil') === null);
 ok('rejects empty', safeRelPath('') === null);
+
+console.log('\n--- cartVariantId ---');
+ok('parses an add-to-cart permalink', cartVariantId('/cart/5965419872411:1') === '5965419872411');
+ok('null for a product-page path', cartVariantId('/products/solid-m4') === null);
+ok('null for a malformed cart path', cartVariantId('/cart/abc:1') === null);
+ok('null for empty', cartVariantId('') === null);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

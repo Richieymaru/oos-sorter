@@ -3,9 +3,11 @@
  * signed (HMAC of product+email), so no login is needed and it can't be forged.
  *   /api/unsubscribe?product=<shortId>&email=<email>&sig=<hmac>
  */
-import { verifyUnsub, unsubscribe, unsubSecret } from '../waitlist.mjs';
-import { longId } from '../shopify.mjs';
-import { safeRelPath, applyClicked, applyUnsubscribed } from '../notified.mjs';
+import { verifyUnsub, unsubscribe, unsubSecret, subscribe } from '../waitlist.mjs';
+import { longId, shortId } from '../shopify.mjs';
+import { safeRelPath, cartVariantId, applyClicked, applyUnsubscribed } from '../notified.mjs';
+import { fetchProductsByIds } from '../catalog.mjs';
+import { isVariantInStock } from '../stock.mjs';
 
 function query(req) {
   if (req.query && typeof req.query === 'object') return req.query;
@@ -37,10 +39,32 @@ export default async function handler(req, res) {
     // custom domain; the myshopify fallback 301s to it anyway.
     const shop = process.env.STORE_DOMAIN || process.env.SHOP_DOMAIN;
     const rel = safeRelPath(q.to);
-    const dest = rel && shop ? `https://${shop}${rel}` : (shop ? `https://${shop}` : '/');
-    if (product && email && sig && verifyUnsub(product, email, sig, unsubSecret())) {
+    let dest = rel && shop ? `https://${shop}${rel}` : (shop ? `https://${shop}` : '/');
+    const valid = product && email && sig && verifyUnsub(product, email, sig, unsubSecret());
+    if (valid) {
       try { await applyClicked(email, product); } catch (e) { console.error('click log failed:', e.message); }
     }
+
+    // Stock-aware Add-to-Cart: if this is a "/cart/<variant>:1" click but the item
+    // sold out again (someone else bought it), don't dump the shopper into a broken
+    // cart — send them to the product page and put them back on the waitlist so they
+    // get the next restock. Best-effort: any lookup error falls back to the cart.
+    const vId = valid ? cartVariantId(rel) : null;
+    if (vId) {
+      try {
+        const [sp] = await fetchProductsByIds([product]);
+        if (sp && !isVariantInStock(sp, vId)) {
+          const vNode = (sp.variants?.nodes || []).find((v) => shortId(v.id) === vId);
+          try {
+            await subscribe(longId(product), email, new Date().toISOString(), { variantId: vId, variantTitle: vNode?.title || null });
+          } catch (e) { console.error('re-subscribe failed:', e.message); }
+          if (sp.handle && shop) dest = `https://${shop}/products/${sp.handle}`;
+        }
+      } catch (e) {
+        console.error('stock-aware redirect check failed:', e.message); // fall back to the cart link
+      }
+    }
+
     res.statusCode = 302;
     res.setHeader('Location', dest);
     res.end();
