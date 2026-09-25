@@ -55,6 +55,19 @@ function creds() {
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+/** Format a Shopify Money amount (a bare decimal string like "129.00") in the
+ *  shop currency, e.g. formatMoney("129", "AUD") -> "A$129.00". Empty/non-numeric
+ *  amounts return '' so the caller can omit the price entirely. */
+export function formatMoney(amount, currency) {
+  const n = Number(amount);
+  if (amount === '' || amount == null || !Number.isFinite(n)) return '';
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency || 'USD' }).format(n);
+  } catch {
+    return `${n.toFixed(2)} ${currency || ''}`.trim();
+  }
+}
+
 /** Plain-text line: "  • Title  (collection-a, collection-b)". */
 function textLine(item) {
   const cols = item.collections?.length ? `  (${item.collections.join(', ')})` : '';
@@ -272,16 +285,30 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   const title = product.title ?? 'Your item';
   // Single-variant products are literally titled "Default Title" — never show that.
   const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
+  // Shopper-facing host: the store's primary/custom domain (gelballundercover.com.au),
+  // falling back to the myshopify domain when not supplied.
+  const host = product.storeHost || SHOP;
   const productUrl = product.clickProductUrl
-    || (product.handle && SHOP ? `https://${SHOP}/products/${product.handle}` : (SHOP ? `https://${SHOP}` : '#'));
+    || (product.handle && host ? `https://${host}/products/${product.handle}` : (host ? `https://${host}` : '#'));
   // A /cart/<variantId>:1 permalink adds the item and lands the shopper on the cart.
   const cartUrl = product.clickCartUrl
-    || (product.variantId && SHOP ? `https://${SHOP}/cart/${product.variantId}:1` : productUrl);
+    || (product.variantId && host ? `https://${host}/cart/${product.variantId}:1` : productUrl);
+  const priceLine = product.priceText
+    ? `${product.priceText}${product.compareAtText ? `  (was ${product.compareAtText})` : ''}\n`
+    : '';
   const text =
     `${introText}\n\n` +
+    priceLine +
     `Add it to your cart: ${cartUrl}\n` +
     `Or view the product: ${productUrl}\n\n— ${FROM_NAME}\n\n` +
     `Don't want these emails? Unsubscribe: ${unsub}`;
+  const priceBlock = product.priceText
+    ? `<div style="font-size:18px;font-weight:700;color:#161b22;margin:10px 0 2px">${esc(product.priceText)}${
+        product.compareAtText
+          ? `<span style="font-size:14px;font-weight:500;color:#8b95a3;text-decoration:line-through;margin-left:8px">${esc(product.compareAtText)}</span>`
+          : ''
+      }</div>`
+    : '';
   const imageBlock = product.image
     ? `<tr><td style="padding:0 24px 4px" align="center">
          <a href="${esc(cartUrl)}"><img src="${esc(product.image)}" alt="${esc(title)}" width="512" style="width:100%;max-width:512px;height:auto;border-radius:12px;border:1px solid #eef1f6;display:block"></a>
@@ -295,6 +322,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
           <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:${ACCENT};text-transform:uppercase">${esc(eyebrow)}</div>
           <div style="font-size:20px;font-weight:700;color:#161b22;margin:8px 0 6px">${esc(title)}</div>
           ${variant ? `<div style="font-size:13px;color:#5f6875;margin:-2px 0 6px">Option: <strong style="color:#161b22">${esc(variant)}</strong></div>` : ''}
+          ${priceBlock}
           <div style="font-size:14px;color:#5f6875;line-height:1.5">${leadHtml}</div>
         </td></tr>
         ${imageBlock}
@@ -316,11 +344,12 @@ export function buildBackInStock(product, unsub) {
   const title = product.title ?? 'Your item';
   const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
   const named = variant ? `${title} — ${variant}` : title;
+  const host = product.storeHost || SHOP;
   return buildRestockEmail(product, unsub, {
     eyebrow: 'Back in stock',
     subject: `${named} is back in stock`,
-    leadHtml: `It's available again on ${esc(SHOP)}. Grab it before it sells out.`,
-    introText: `Good news! "${named}" is available again on ${SHOP}.`,
+    leadHtml: `It's available again on ${esc(host)}. Grab it before it sells out.`,
+    introText: `Good news! "${named}" is available again on ${host}.`,
   });
 }
 
@@ -329,11 +358,12 @@ export function buildNudge(product, unsub) {
   const title = product.title ?? 'Your item';
   const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
   const named = variant ? `${title} — ${variant}` : title;
+  const host = product.storeHost || SHOP;
   return buildRestockEmail(product, unsub, {
     eyebrow: 'Still available',
     subject: `Still available: ${named}`,
-    leadHtml: `Still in stock on ${esc(SHOP)} — don't miss it before it's gone again.`,
-    introText: `Still in stock: "${named}" is available on ${SHOP}.`,
+    leadHtml: `Still in stock on ${esc(host)} — don't miss it before it's gone again.`,
+    introText: `Still in stock: "${named}" is available on ${host}.`,
   });
 }
 

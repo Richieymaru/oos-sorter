@@ -13,16 +13,32 @@
  * recorded variant (signed up before variants were tracked) keep the old
  * product-level behaviour.
  */
-import { gql, shortId } from './shopify.mjs';
+import { gql, shortId, getShopContext } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
-import { sendBackInStock, sendSoldOutAlert, sendNudge } from './notify.mjs';
+import { sendBackInStock, sendSoldOutAlert, sendNudge, formatMoney } from './notify.mjs';
 import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
  *  a failure here must never break the actual emailing. */
+/** Map numeric variant id -> the fetched variant node (has price/compareAtPrice). */
+function variantsById(sp) {
+  return new Map((sp?.variants?.nodes || []).map((v) => [shortId(v.id), v]));
+}
+
+/** Formatted price + (sale) compare-at text for one variant, in the shop
+ *  currency. Compare-at only shows when it's higher than price (a real sale). */
+function priceTextFor(variant, currency) {
+  const v = variant || {};
+  const onSale = v.compareAtPrice != null && Number(v.compareAtPrice) > Number(v.price);
+  return {
+    priceText: formatMoney(v.price, currency) || null,
+    compareAtText: onSale ? (formatMoney(v.compareAtPrice, currency) || null) : null,
+  };
+}
+
 async function bumpNotified(shoppers) {
   if (!shoppers) return;
   try {
@@ -48,7 +64,7 @@ async function bumpNotified(shoppers) {
  * @param {string|null} args.fallbackVariantId - variant to link when an entry has none
  * @returns {Promise<number>} how many emails actually sent
  */
-async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, dryRun, base }) {
+async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base }) {
   let sent = 0;
   const failed = [];
   const rows = [];
@@ -60,10 +76,14 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
     // tracked redirect so a click-through is recorded on the log row.
     const relCart = variantId ? `/cart/${variantId}:1` : (product.handle ? `/products/${product.handle}` : '/');
     const relProduct = product.handle ? `/products/${product.handle}` : '/';
+    const { priceText, compareAtText } = priceTextFor(variants.get(String(variantId)), ctx.currency);
     const payload = {
       ...product,
       variantId,
       variantTitle: sub.variantTitle || null,
+      storeHost: ctx.host,
+      priceText,
+      compareAtText,
       clickCartUrl: trackUrl(base, short, sub.email, relCart),
       clickProductUrl: trackUrl(base, short, sub.email, relProduct),
     };
@@ -130,6 +150,7 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
 
   const stock = await fetchProductsByIds(waited.map((w) => shortId(w.id)));
   const byId = new Map(stock.map((p) => [p.id, p]));
+  const ctx = await getShopContext();
 
   let productsNotified = 0;
   let emailsSent = 0;
@@ -148,6 +169,8 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
       waiting,
       product: { title: w.title, handle: w.handle, image: sp.featuredImage?.url || null },
       fallbackVariantId: first?.id ? shortId(first.id) : null,
+      variants: variantsById(sp),
+      ctx,
       dryRun,
       base,
     });
@@ -174,6 +197,7 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
 
   const stock = await fetchProductsByIds(withLists.map((w) => shortId(w.gid)));
   const byId = new Map(stock.map((p) => [p.id, p]));
+  const ctx = await getShopContext();
 
   let productsNotified = 0;
   let emailsSent = 0;
@@ -192,6 +216,8 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
       waiting,
       product: { title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null },
       fallbackVariantId: first?.id ? shortId(first.id) : null,
+      variants: variantsById(sp),
+      ctx,
       dryRun,
       base,
     });
@@ -270,13 +296,15 @@ export async function alertNewlySoldOut(productGids, { recipients = [], dryRun =
 export async function notifyOneProduct(productGid, { dryRun = false, base = null, variantId = null } = {}) {
   const d = await gql(
     `query($id: ID!) { product(id: $id) {
-       title handle featuredImage { url } variants(first: 1) { nodes { id } }
+       title handle featuredImage { url }
+       variants(first: 100) { nodes { id price compareAtPrice } }
      } }`,
     { id: productGid }
   );
   const p = d.product || {};
   const first = p.variants?.nodes?.[0];
   const list = await readWaitlist(productGid);
+  const ctx = await getShopContext();
 
   const want = variantId == null ? null : String(variantId).replace(/\D/g, '');
   const { notify, waiting } = partitionByStock(list, (entryVariant) =>
@@ -290,6 +318,8 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
     waiting,
     product: { title: p.title, handle: p.handle, image: p.featuredImage?.url || null },
     fallbackVariantId: first?.id ? shortId(first.id) : null,
+    variants: variantsById(p),
+    ctx,
     dryRun,
     base,
   });
@@ -315,6 +345,8 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
 
   const first = sp.variants?.nodes?.[0];
   const vId = vWant || (first?.id ? shortId(first.id) : null);
+  const ctx = await getShopContext();
+  const { priceText, compareAtText } = priceTextFor(variantsById(sp).get(String(vId)), ctx.currency);
   const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
   const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
   const payload = {
@@ -323,6 +355,9 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
     image: sp.featuredImage?.url || null,
     variantId: vId,
     variantTitle: null,
+    storeHost: ctx.host,
+    priceText,
+    compareAtText,
     clickCartUrl: trackUrl(base, short, email, relCart),
     clickProductUrl: trackUrl(base, short, email, relProduct),
   };
@@ -350,6 +385,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
   const ids = [...new Set(windowed.map((x) => x.p))];
   const stock = await fetchProductsByIds(ids);
   const spById = new Map(stock.map((p) => [shortId(p.id), p]));
+  const ctx = await getShopContext();
   const due = selectNudges(log, now, days, (p) => {
     const sp = spById.get(p);
     return sp ? isInStock(sp) : false;
@@ -358,6 +394,9 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
   let nudged = 0;
   for (const row of due) {
     const sp = spById.get(row.p);
+    // Price for the shopper's variant, or the first variant for a product-level signup.
+    const vNode = row.v ? variantsById(sp).get(String(row.v)) : sp?.variants?.nodes?.[0];
+    const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
     const relCart = row.v ? `/cart/${row.v}:1` : (sp?.handle ? `/products/${sp.handle}` : '/');
     const relProduct = sp?.handle ? `/products/${sp.handle}` : '/';
     const payload = {
@@ -366,6 +405,9 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
       image: sp?.featuredImage?.url || null,
       variantId: row.v,
       variantTitle: row.vt,
+      storeHost: ctx.host,
+      priceText,
+      compareAtText,
       clickCartUrl: trackUrl(base, row.p, row.e, relCart),
       clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
     };

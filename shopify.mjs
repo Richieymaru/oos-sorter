@@ -69,3 +69,25 @@ export async function getShopId() {
   shopIdCache = d.shop.id;
   return shopIdCache;
 }
+
+let shopCtxCache = null;
+/**
+ * Shopper-facing store context, cached per process: the storefront host and the
+ * shop currency, for building customer emails. `host` prefers the STORE_DOMAIN
+ * env override, then the shop's primary domain (the custom domain when one is
+ * set, e.g. gelballundercover.com.au), then the myshopify domain. On any error it
+ * degrades to SHOP_DOMAIN so emails never break over a missing shop lookup.
+ */
+export async function getShopContext() {
+  if (shopCtxCache) return shopCtxCache;
+  try {
+    const d = await gql(`{ shop { currencyCode primaryDomain { host } } }`);
+    shopCtxCache = {
+      host: process.env.STORE_DOMAIN || d.shop?.primaryDomain?.host || SHOP,
+      currency: d.shop?.currencyCode || 'USD',
+    };
+  } catch {
+    shopCtxCache = { host: process.env.STORE_DOMAIN || SHOP, currency: 'USD' };
+  }
+  return shopCtxCache;
+}

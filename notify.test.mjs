@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // buildBackInStock reads SHOP_DOMAIN at module load, so set it before importing.
 process.env.SHOP_DOMAIN = 'demo.myshopify.com';
-const { buildBackInStock, buildSoldOutAlert, buildNudge, fromName } = await import('./notify.mjs');
+const { buildBackInStock, buildSoldOutAlert, buildNudge, fromName, formatMoney } = await import('./notify.mjs');
 
 let failures = 0, checks = 0;
 function ok(label, cond) {
@@ -74,6 +74,26 @@ ok('falls back to the app name on an empty domain', fromName('') === 'OOS Sorter
 ok('back-in-stock email is signed with the store name, not the app name', full.text.includes('— Demo'));
 ok('back-in-stock footer credits the store name', full.html.includes('You asked Demo to notify you'));
 ok('nudge email is branded with the store name', buildNudge({ title: 'Widget', handle: 'widget' }, unsub).html.includes('You asked Demo to notify you'));
+
+console.log('--- formatMoney ---');
+ok('formats a USD amount', formatMoney('129.00', 'USD') === '$129.00');
+ok('formats an AUD amount', formatMoney('129', 'AUD') === 'A$129.00');
+ok('empty amount -> empty string', formatMoney('', 'AUD') === '');
+ok('non-numeric -> empty string', formatMoney(null, 'USD') === '');
+
+console.log('--- buildBackInStock: price + compare-at ---');
+const priced = buildBackInStock(
+  { title: 'Chef Knife', handle: 'chef-knife', variantId: '999', storeHost: 'gelballundercover.com.au', priceText: 'A$129.00', compareAtText: 'A$159.00' },
+  unsub
+);
+ok('renders the price', priced.html.includes('A$129.00'));
+ok('renders the compare-at price struck through', priced.html.includes('line-through') && priced.html.includes('A$159.00'));
+ok('lead + storefront links use the store host, not myshopify', priced.html.includes('available again on gelballundercover.com.au') && priced.html.includes('https://gelballundercover.com.au/products/chef-knife') && !priced.html.includes('myshopify.com/products'));
+ok('price also appears in the plain text', priced.text.includes('A$129.00'));
+const noSale = buildBackInStock({ title: 'X', handle: 'x', priceText: '$50.00' }, unsub);
+ok('no strike-through when there is no compare-at', !noSale.html.includes('line-through') && noSale.html.includes('$50.00'));
+const noPrice = buildBackInStock({ title: 'Y', handle: 'y' }, unsub);
+ok('omits the price block when no priceText', !noPrice.html.includes('font-size:18px;font-weight:700'));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
