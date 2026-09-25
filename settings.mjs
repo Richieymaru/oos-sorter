@@ -9,6 +9,13 @@ const KEY = 'settings';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+/** Pure: coerce to an integer within [min,max], falling back to `def`. */
+export function clampInt(v, def, min, max) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, n));
+}
+
 /** Pure: parse recipients (array, or a string split on comma/space/semicolon/
  *  newline) into clean, lowercased, valid, deduped emails (max 20). */
 export function normalizeEmails(input) {
@@ -54,6 +61,7 @@ export function normalizeSettings(obj) {
     slackWebhook: normalizeSlackWebhook(o.slackWebhook),
     monitorSlackWebhook: normalizeSlackWebhook(o.monitorSlackWebhook),
     sheetWebhook: normalizeSheetWebhook(o.sheetWebhook),
+    nudgeDays: clampInt(o.nudgeDays, 2, 1, 14),
   };
 }
 
