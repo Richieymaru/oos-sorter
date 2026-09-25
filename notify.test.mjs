@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // buildBackInStock reads SHOP_DOMAIN at module load, so set it before importing.
 process.env.SHOP_DOMAIN = 'demo.myshopify.com';
-const { buildBackInStock, buildSoldOutAlert, buildNudge } = await import('./notify.mjs');
+const { buildBackInStock, buildSoldOutAlert, buildNudge, fromName } = await import('./notify.mjs');
 
 let failures = 0, checks = 0;
 function ok(label, cond) {
@@ -65,6 +65,15 @@ ok('nudge subject', nudge.subject === 'Still available: Widget');
 ok('nudge eyebrow', nudge.html.includes('Still available'));
 ok('nudge keeps the unsubscribe link', nudge.text.includes(unsub));
 ok('nudge falls back to product url', nudge.html.includes('https://demo.myshopify.com/products/widget'));
+
+console.log('--- fromName (shopper-facing sender/brand) ---');
+ok('derives a store name from the shop domain', fromName('gel-ball-undercover.myshopify.com') === 'Gel Ball Undercover');
+ok('honors the EMAIL_FROM_NAME override', fromName('x.myshopify.com', 'My Brand') === 'My Brand');
+ok('falls back to the app name on an empty domain', fromName('') === 'OOS Sorter');
+// SHOP_DOMAIN is demo.myshopify.com in this test, so FROM_NAME derives to "Demo".
+ok('back-in-stock email is signed with the store name, not the app name', full.text.includes('— Demo'));
+ok('back-in-stock footer credits the store name', full.html.includes('You asked Demo to notify you'));
+ok('nudge email is branded with the store name', buildNudge({ title: 'Widget', handle: 'widget' }, unsub).html.includes('You asked Demo to notify you'));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

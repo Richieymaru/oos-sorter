@@ -14,6 +14,22 @@ import nodemailer from 'nodemailer';
 
 const SHOP = process.env.SHOP_DOMAIN;
 const APP_NAME = process.env.APP_NAME || 'OOS Sorter';
+
+/**
+ * The name shoppers see as the sender/brand on back-in-stock + nudge emails.
+ * They know the STORE, not the internal ops app — so this defaults to the store
+ * name derived from the shop domain (gel-ball-undercover -> "Gel Ball Undercover")
+ * and can be overridden per store with EMAIL_FROM_NAME. Owner-facing emails
+ * (digest/report/alert) keep APP_NAME.
+ */
+export function fromName(shopDomain, override) {
+  if (override) return override;
+  const sub = String(shopDomain || '').split('.')[0];
+  if (!sub) return APP_NAME;
+  const titled = sub.split('-').filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  return titled || APP_NAME;
+}
+const FROM_NAME = fromName(SHOP, process.env.EMAIL_FROM_NAME);
 // Brand accent for emails (buttons, labels, links). Per-store via EMAIL_ACCENT;
 // defaults to the OOS Sorter emerald.
 const ACCENT = process.env.EMAIL_ACCENT || '#0e9c6b';
@@ -264,7 +280,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   const text =
     `${introText}\n\n` +
     `Add it to your cart: ${cartUrl}\n` +
-    `Or view the product: ${productUrl}\n\n— ${APP_NAME}\n\n` +
+    `Or view the product: ${productUrl}\n\n— ${FROM_NAME}\n\n` +
     `Don't want these emails? Unsubscribe: ${unsub}`;
   const imageBlock = product.image
     ? `<tr><td style="padding:0 24px 4px" align="center">
@@ -287,7 +303,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
           <a href="${esc(productUrl)}" style="display:inline-block;margin-left:6px;color:${ACCENT};text-decoration:none;font-size:14px;font-weight:600;padding:12px 10px">View product</a>
         </td></tr>
         <tr><td style="padding:16px 24px;border-top:1px solid #eef1f6;font-size:11px;color:#8b95a3;line-height:1.5">
-          You asked ${esc(APP_NAME)} to notify you when this came back. <a href="${esc(unsub)}" style="color:#8b95a3">Unsubscribe</a>.
+          You asked ${esc(FROM_NAME)} to notify you when this came back. <a href="${esc(unsub)}" style="color:#8b95a3">Unsubscribe</a>.
         </td></tr>
       </table>
     </td></tr></table>
@@ -386,7 +402,7 @@ export async function sendBackInStock(email, product, unsub, { dryRun } = {}) {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for back-in-stock emails');
-  const info = await transport(user, pass).sendMail({ from: `${APP_NAME} <${user}>`, to: email, subject, text, html });
+  const info = await transport(user, pass).sendMail({ from: `${FROM_NAME} <${user}>`, to: email, subject, text, html });
   console.log(`  emailed ${email}: "${subject}" (${info.messageId})`);
   return info;
 }
@@ -401,7 +417,7 @@ export async function sendNudge(email, product, unsub, { dryRun } = {}) {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for nudge emails');
-  const info = await transport(user, pass).sendMail({ from: `${APP_NAME} <${user}>`, to: email, subject, text, html });
+  const info = await transport(user, pass).sendMail({ from: `${FROM_NAME} <${user}>`, to: email, subject, text, html });
   console.log(`  nudged ${email}: "${subject}" (${info.messageId})`);
   return info;
 }
