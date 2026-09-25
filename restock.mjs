@@ -16,8 +16,9 @@
 import { gql, shortId } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
-import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, partitionByStock } from './waitlist.mjs';
+import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
 import { sendBackInStock, sendSoldOutAlert } from './notify.mjs';
+import { notifiedRow, recordNotified } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
@@ -50,17 +51,26 @@ async function bumpNotified(shoppers) {
 async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, dryRun, base }) {
   let sent = 0;
   const failed = [];
+  const rows = [];
+  const short = shortId(gid);
 
   for (const sub of due) {
-    // Deep-link the email to the variant the shopper actually asked about.
+    const variantId = sub.variantId || fallbackVariantId;
+    // Deep-link the email to the variant the shopper asked about, through the
+    // tracked redirect so a click-through is recorded on the log row.
+    const relCart = variantId ? `/cart/${variantId}:1` : (product.handle ? `/products/${product.handle}` : '/');
+    const relProduct = product.handle ? `/products/${product.handle}` : '/';
     const payload = {
       ...product,
-      variantId: sub.variantId || fallbackVariantId,
+      variantId,
       variantTitle: sub.variantTitle || null,
+      clickCartUrl: trackUrl(base, short, sub.email, relCart),
+      clickProductUrl: trackUrl(base, short, sub.email, relProduct),
     };
     try {
-      await sendBackInStock(sub.email, payload, unsubUrl(base, shortId(gid), sub.email), { dryRun });
+      await sendBackInStock(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun });
       sent++;
+      rows.push(notifiedRow({ email: sub.email, productId: short, title: product.title, variantId, variantTitle: sub.variantTitle || null }));
     } catch (e) {
       console.error(`  ! back-in-stock email to ${sub.email} failed: ${e.message}`);
       failed.push(sub); // keep them so they retry next run
@@ -77,6 +87,11 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
       await clearWaitlist(gid);
     }
     await bumpNotified(sent); // cumulative "notified so far" stat (no-op when sent === 0)
+    try {
+      await recordNotified(rows); // detailed log; best-effort, never breaks the send/prune
+    } catch (e) {
+      console.error(`  ! notified-log write failed: ${e.message}`);
+    }
   }
 
   return sent;
