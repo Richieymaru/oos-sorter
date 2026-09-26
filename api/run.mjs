@@ -40,6 +40,8 @@ export default async function handler(req, res) {
   const sendDigest = ['1', 'true'].includes(param(req, 'digest'));
   // ?chunk=N => rotating mini-sweep: sort the next N collections (for big stores
   // where a full sweep would exceed the 60s limit).
+  // Explicit ?chunk forces a rotating sweep of N collections; otherwise the
+  // engine auto-enables one on large stores (see runEngine).
   const chunkN = parseInt(param(req, 'chunk') || '', 10);
   const chunk = Number.isFinite(chunkN) && chunkN > 0 ? chunkN : null;
   try {

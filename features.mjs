@@ -19,6 +19,27 @@ export function isAllHandles(explicit) {
 }
 
 /**
+ * The next rotating batch of collection handles to sweep, plus the cursor to
+ * resume from next time. Pure. Lets a big store (where a full sweep would exceed
+ * Vercel's 60s limit) re-sort a bounded slice per cron run and rotate through all
+ * collections over several runs. `cursor` is normalised into range; `chunk` is
+ * clamped to at least 1 and at most the total.
+ * @param {string[]} allHandles  every collection handle, in a stable order
+ * @param {number} cursor        where the last sweep stopped
+ * @param {number} chunk         how many collections to sweep this run
+ * @returns {{ batch: string[], nextCursor: number }}
+ */
+export function sweepBatch(allHandles, cursor, chunk) {
+  const len = allHandles.length;
+  if (!len) return { batch: [], nextCursor: 0 };
+  const start = Number.isInteger(cursor) ? ((cursor % len) + len) % len : 0;
+  const n = Math.min(Math.max(1, chunk | 0), len);
+  const batch = [];
+  for (let i = 0; i < n; i++) batch.push(allHandles[(start + i) % len]);
+  return { batch, nextCursor: (start + n) % len };
+}
+
+/**
  * Resolve a feature flag: the env var wins ONLY when it's actually set to
  * something. An UNDEFINED or EMPTY-STRING env var falls through to the metafield
  * value (the settings-page toggle). This matters because CI passes
