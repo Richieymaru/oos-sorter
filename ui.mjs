@@ -198,6 +198,7 @@ const CSS = `
   .feed-link{text-decoration:none;color:var(--ink)} .feed-link:hover{color:var(--accent-ink);text-decoration:underline}
   .feed-meta{font-size:12px;color:var(--faint);display:flex;align-items:center}
   .feed-meta .mwho{margin-left:8px;padding-left:8px;border-left:1px solid var(--line);color:var(--muted)}
+  .feed-meta .mstock{margin-left:8px;padding-left:8px;border-left:1px solid var(--line)}
   .tag{font-size:10.5px;font-weight:650;padding:2px 7px;border-radius:6px;letter-spacing:.01em;background:var(--neutral-wash);color:var(--neutral)}
   .tag.t-pos{background:var(--pos-wash);color:var(--accent-ink)} .tag.t-danger{background:var(--danger-wash);color:var(--danger)} .tag.t-warn{background:var(--warn-wash);color:var(--warn)}
   .feed-side{flex:none;display:flex;align-items:center;gap:10px}

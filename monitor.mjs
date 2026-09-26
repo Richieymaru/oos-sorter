@@ -135,27 +135,33 @@ export async function whoFromCollectionEvents(numId) {
   }
 }
 
-/** Fetch every product's CURRENT status as a compact { numericId: code } map.
- *  Used to seed/refresh the monitor baseline so the next status change reads as
- *  a real transition instead of a first-sight. Paginates at 250/page. */
+/** Fetch every product's CURRENT status AND title, for the monitor baseline:
+ *  `statuses` ({ numericId: code }) so the next status change reads as a real
+ *  transition, and `titles` ({ "p<numericId>": title }) so a later DELETE can be
+ *  named (its webhook payload is id-only). Paginates at 250/page. */
 export async function fetchAllStatuses() {
   const statuses = {};
+  const titles = {};
   let cursor = null;
   for (;;) {
     const d = await gql(
       `query($cursor: String) {
          products(first: 250, after: $cursor) {
            pageInfo { hasNextPage endCursor }
-           nodes { id status }
+           nodes { id status title }
          }
        }`,
       { cursor }
     );
-    for (const p of d.products.nodes) statuses[String(p.id).split('/').pop()] = codeOf(p.status);
+    for (const p of d.products.nodes) {
+      const numId = String(p.id).split('/').pop();
+      statuses[numId] = codeOf(p.status);
+      if (p.title) titles['p' + numId] = p.title;
+    }
     if (!d.products.pageInfo.hasNextPage) break;
     cursor = d.products.pageInfo.endCursor;
   }
-  return statuses;
+  return { statuses, titles };
 }
 
 /** Pure: the SHOP-LEVEL events filter that pinpoints one resource's destroy
