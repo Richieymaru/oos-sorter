@@ -6,11 +6,13 @@ import { loadMonitorLog, monitorTag, fetchSheetActivity } from '../monitor-log.m
 import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
-  shell, setPageHeaders, statCard, badge, activityFeed,
+  shell, setPageHeaders, statCard, badge, activityFeed, funnelsBody,
   relTime, esc, notConnectedBody, shopOf, APP_NAME,
 } from '../ui.mjs';
 import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
+import { fetchOrders } from '../orders.mjs';
+import { analyzeFunnels } from '../funnels.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -62,6 +64,24 @@ export default async function handler(req, res) {
     res.statusCode = 302;
     res.setHeader('Location', q ? `/?chat=${encodeURIComponent(q)}` : '/');
     res.end();
+    return;
+  }
+
+  // --- Funnels page (GET /funnels) — reads recent orders (read_orders) and
+  //     shows channels, traffic sources, best sellers, and where to focus.
+  //     Degrades gracefully when order access isn't granted yet. ---
+  if (param(req, 'view') === 'funnels') {
+    let body;
+    try {
+      const { orders, tier } = await fetchOrders({ limit: 250 });
+      const analysis = analyzeFunnels(orders, { tier });
+      body = funnelsBody({ analysis });
+    } catch (e) {
+      console.error('funnels: order fetch failed —', e.message);
+      body = funnelsBody({ error: 'Order data is temporarily unavailable. If this persists, check that read_orders is granted on the store.' });
+    }
+    setPageHeaders(res);
+    res.end(shell({ title: 'Funnels', active: 'funnels', body }));
     return;
   }
 
