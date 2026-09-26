@@ -59,6 +59,7 @@ import { loadSettings } from './settings.mjs';
 import { restoreRestocked, applyDrafts } from './draft.mjs';
 import { sendDigest } from './notify.mjs';
 import { notifyRestocks, nudgeUnengaged } from './restock.mjs';
+import { runMonitorPoll } from './monitor-poll.mjs';
 
 /** True only when this file is the process entry point, not an import. */
 const IS_MAIN =
@@ -473,6 +474,22 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: onlyParam =
     const nu = await nudgeUnengaged({ dryRun: DRY_RUN, days: nudgeDays });
     if (nu.nudged) {
       console.log(`Nudge: ${DRY_RUN ? 'would nudge' : 'nudged'} ${nu.nudged} un-engaged shopper(s)`);
+    }
+  }
+
+  // Phase 3.6: product-change monitor — poll Shopify's event log for status AND
+  // publication (channel/market) changes, consolidate each burst, and post who
+  // did what to Slack / the Sheet / the dashboard. Full runs only.
+  // Gate on the ORIGINAL trigger (onlyParam), not `only` — on a big store the sort
+  // auto-chunks and sets `only`, but the event-log poll is independent of the
+  // collection sweep and must still run on every cron pass.
+  const FEATURE_MONITOR = resolveFlag(process.env.FEATURE_MONITOR, settings.monitor);
+  if (FEATURE_MONITOR && (!onlyParam || !onlyParam.length)) {
+    try {
+      const mp = await runMonitorPoll(settings, { dryRun: DRY_RUN });
+      if (mp.emitted) console.log(`Monitor: ${DRY_RUN ? 'would log' : 'logged'} ${mp.emitted} change(s)`);
+    } catch (e) {
+      console.error('monitor poll failed:', e.message);
     }
   }
 

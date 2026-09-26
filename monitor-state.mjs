@@ -28,16 +28,18 @@ export async function loadMonitorState() {
     return {
       statuses: p.statuses && typeof p.statuses === 'object' ? p.statuses : {},
       titles: p.titles && typeof p.titles === 'object' ? p.titles : {},
+      lastEventAt: typeof p.lastEventAt === 'string' ? p.lastEventAt : null,
     };
   } catch {
     console.warn('  ! oos_sort.monitor metafield was unparseable — starting fresh');
-    return { statuses: {}, titles: {} };
+    return { statuses: {}, titles: {}, lastEventAt: null };
   }
 }
 
 export async function saveMonitorState(state) {
   const shopId = await getShopId();
   const s = { statuses: { ...(state.statuses || {}) }, titles: { ...(state.titles || {}) } };
+  if (state.lastEventAt) s.lastEventAt = state.lastEventAt; // the event-log poll cursor
   let value = JSON.stringify(s);
   // Trim titles first (nice-to-have), then statuses (needed), leaving a margin.
   if (value.length > METAFIELD_LIMIT - 2048) {
