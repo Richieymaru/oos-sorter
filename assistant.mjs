@@ -9,6 +9,8 @@ import { productsWithWaitlist } from './restock.mjs';
 import { loadNotified, deriveStats } from './notified.mjs';
 import { loadMonitorLog, monitorTag } from './monitor-log.mjs';
 import { fetchAllCollectionHandles } from './sort-oos.mjs';
+import { fetchOrders } from './orders.mjs';
+import { analyzeFunnels } from './funnels.mjs';
 import { askGemini } from './gemini.mjs';
 
 const SHOP = process.env.SHOP_DOMAIN;
@@ -20,18 +22,20 @@ What the app does:
 - Back-in-stock waitlist: on a sold-out product page, shoppers can ask to be notified. When it restocks they get an email (with price, compare-at, image, add-to-cart). The app tracks who was notified, who clicked through, offers a manual Resend and one automatic nudge, and gracefully handles a product selling out again.
 - Sold-out email alerts + a daily digest to the owner.
 - Draft sold-out products (optional): hides them from the storefront until they're back in stock.
-- Product change monitor: logs WHO changes a product's status (Active / Draft / Unlisted / Archived) and who adds or deletes products and collections — to Slack, a Google Sheet, and the dashboard.`;
+- Product change monitor: logs WHO changes a product's status (Active / Draft / Unlisted / Archived) and who adds or deletes products and collections — to Slack, a Google Sheet, and the dashboard.
+- Funnels: reads recent orders to show which sales channels and traffic sources drive revenue, best-selling products, an order trend, and "where to focus" insights. (Traffic-source data needs protected customer data access enabled.)`;
 
 /** A compact, live snapshot of the store the assistant can reason over.
  *  Best-effort: any single lookup that fails is simply left out. */
 export async function gatherContext() {
-  const [settings, state, collections, waitlist, notified, monitor] = await Promise.all([
+  const [settings, state, collections, waitlist, notified, monitor, funnels] = await Promise.all([
     loadSettings().catch(() => ({})),
     loadState().catch(() => ({})),
     fetchAllCollectionHandles().catch(() => []),
     productsWithWaitlist().catch(() => []),
     loadNotified().catch(() => []),
     loadMonitorLog().catch(() => []),
+    fetchOrders({ limit: 250 }).then((r) => analyzeFunnels(r.orders, { tier: r.tier })).catch(() => null),
   ]);
   const on = (b) => (b ? 'ON' : 'off');
   const stats = deriveStats(notified);
@@ -50,7 +54,27 @@ export async function gatherContext() {
     `Engine last run: ${state.lastRun || 'unknown'}.`,
     `Waitlist: ${waitlist.length} product(s) have a waitlist, ${shoppersWaiting} shopper(s) waiting. Notified recently: ${stats.notified}; clicked through: ${stats.clicked} (${stats.clickRate}%); nudged: ${stats.nudged}.`,
     recentChanges ? `Recent product/collection changes (who did what):\n${recentChanges}` : `No recent product/collection changes recorded yet.`,
-  ].join('\n');
+    funnelSummary(funnels),
+  ].filter(Boolean).join('\n');
+}
+
+/** A compact funnel summary for the assistant, or null if order access is off. */
+function funnelSummary(f) {
+  if (!f || f.tier === 'none' || !f.totalOrders) return null;
+  const top = (arr, n = 3) => arr.slice(0, n).map((r) => `${r.label} (${r.share}% rev, ${r.orders} ord)`).join(', ');
+  const lines = [
+    `Funnels (last ${f.trend.length} days): ${f.totalOrders} orders, ${f.currency} ${f.totalRevenue} revenue, AOV ${f.currency} ${f.aov}.`,
+    `Sales channels: ${top(f.channels) || 'none'}.`,
+  ];
+  if (f.tier === 'full') {
+    if (f.trafficSources.length) lines.push(`Traffic sources: ${top(f.trafficSources)}.`);
+    if (f.referrers.length) lines.push(`Top referrers: ${f.referrers.slice(0, 3).map((r) => r.label).join(', ')}.`);
+    if (f.avgDaysToConvert != null) lines.push(`Avg days from first visit to purchase: ${f.avgDaysToConvert}.`);
+  } else {
+    lines.push(`(Traffic-source data is off — protected customer data access not enabled yet.)`);
+  }
+  if (f.products.length) lines.push(`Best sellers: ${f.products.slice(0, 3).map((p) => `${p.title} (${p.units}u)`).join(', ')}.`);
+  return lines.join('\n');
 }
 
 /** Answer the conversation (an array of { role:'user'|'assistant', text }). */

@@ -270,6 +270,7 @@ ${fontHead()}
     ${tab('/', 'home', 'Dashboard')}
     ${tab('/collections', 'collections', 'Collections')}
     ${tab('/waitlists', 'waitlists', 'Waitlists')}
+    ${tab('/funnels', 'funnels', 'Funnels')}
     ${tab('/settings', 'settings', 'Settings')}
   </nav>
 </div></header>
@@ -510,6 +511,128 @@ export function chatWidget() {
     try{ var _q=new URLSearchParams(location.search).get('chat'); if(_q){ setTimeout(function(){ openPanel(_q); }, 120); } }catch(e){}
   })();
   </script>`;
+}
+
+/** Money as "AUD 1,234.50". */
+function money(currency, amount) {
+  const n = Number(amount || 0);
+  return `${currency ? currency + ' ' : ''}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** A horizontal bar breakdown: rows of {label, revenue, orders, share}. */
+function barRows(rows, currency, { max = 6 } = {}) {
+  if (!rows || !rows.length) return `<div class="empty">No data yet.</div>`;
+  const top = rows.slice(0, max);
+  const peak = Math.max(...top.map((r) => r.revenue), 1);
+  return `<div class="fn-bars">${top.map((r) => `
+    <div class="fn-bar">
+      <div class="fn-bar-top"><span class="fn-bar-label">${esc(r.label)}</span><span class="fn-bar-val">${esc(money(currency, r.revenue))} · ${r.orders} order${r.orders === 1 ? '' : 's'}</span></div>
+      <div class="fn-bar-track"><span class="fn-bar-fill" style="width:${Math.max(3, Math.round((r.revenue / peak) * 100))}%"></span></div>
+    </div>`).join('')}</div>`;
+}
+
+/** A tiny inline bar sparkline for the daily order trend. */
+function trendSpark(trend) {
+  if (!trend || !trend.length) return '';
+  const peak = Math.max(...trend.map((d) => d.orders), 1);
+  return `<div class="fn-spark" role="img" aria-label="Orders per day, last ${trend.length} days">${trend.map((d) => `
+    <span class="fn-spark-col" title="${esc(d.day)}: ${d.orders} order${d.orders === 1 ? '' : 's'}">
+      <span class="fn-spark-bar" style="height:${Math.max(4, Math.round((d.orders / peak) * 100))}%"></span>
+    </span>`).join('')}</div>`;
+}
+
+/**
+ * The Funnels page. `view` = { analysis, error }.
+ * analysis.tier drives what's shown: 'none' (no order access yet), 'base'
+ * (revenue/channels/products), 'full' (+ traffic sources & funnel insights).
+ */
+export function funnelsBody(view) {
+  const { analysis: a, error } = view || {};
+  const head = `<div class="pagehead"><h1>Funnels</h1><p>Where your sales actually come from — channels, traffic sources, best sellers, and where to focus. Based on your recent orders.</p></div>`;
+
+  if (error) {
+    return head + `<div class="card pad"><b>Couldn't load orders.</b><p class="muted" style="margin-top:6px">${esc(error)}</p></div>` + '';
+  }
+  if (!a || a.tier === 'none') {
+    return head + `<div class="callout"><div class="ct">
+      <b>Order access is being set up.</b> Funnels reads your recent orders to show what's working. The <code>read_orders</code> permission was deployed (version gbu-store-ops-10); it just needs the store to grant it.
+      <div style="margin-top:10px;font-size:13px" class="muted">
+        1. Open <b>GBU Store Ops</b> from your Shopify admin and approve the orders permission if prompted.<br>
+        2. In the Dev Dashboard, turn on <b>protected customer data</b> (Level 1) so traffic-source data is included.
+      </div>
+      <a href="/settings" style="color:var(--accent-ink);font-weight:600;display:inline-block;margin-top:10px">Back to Settings →</a>
+    </div></div>`;
+  }
+
+  const cur = a.currency;
+  const cards = `<div class="grid c4">
+    ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `last ${a.trend.length} days · ${a.totalOrders} orders`, tone: a.totalRevenue ? 'pos' : '' })}
+    ${statCard({ value: a.totalOrders, label: 'Orders', sub: 'recent window' })}
+    ${statCard({ value: money(cur, a.aov), label: 'Avg order value', sub: 'per order' })}
+    ${statCard({ value: a.avgDaysToConvert == null ? '—' : a.avgDaysToConvert, label: 'Days to convert', sub: a.tier === 'full' ? 'first visit → purchase' : 'needs customer-data access' })}
+  </div>`;
+
+  const insights = a.insights && a.insights.length ? `<div class="card">
+    <div class="card-h"><h2>Where to focus</h2><span class="faint">from your recent orders</span></div>
+    <div class="pad" style="padding-top:12px;display:flex;flex-direction:column;gap:10px">
+      ${a.insights.map((i) => `<div class="fn-insight t-${esc(i.tone)}"><span class="fn-dot"></span><span>${esc(i.text)}</span></div>`).join('')}
+    </div></div>` : '';
+
+  const trendCard = `<div class="card">
+    <div class="card-h"><h2>Order trend</h2><span class="faint">orders / day</span></div>
+    <div class="pad" style="padding-top:16px">${trendSpark(a.trend)}</div></div>`;
+
+  const channelsCard = `<div class="card">
+    <div class="card-h"><h2>Sales channels</h2><span class="faint">by revenue</span></div>
+    <div class="pad" style="padding-top:16px">${barRows(a.channels, cur)}</div></div>`;
+
+  const productsCard = `<div class="card">
+    <div class="card-h"><h2>Top products</h2><span class="faint">units sold</span></div>
+    <div class="pad" style="padding-top:8px">
+      ${a.products && a.products.length ? a.products.map((p, i) => `
+        <div class="fn-prow"><span class="fn-rank">${i + 1}</span><span class="fn-pname">${esc(p.title)}</span><span class="fn-punits">${p.units} unit${p.units === 1 ? '' : 's'}</span></div>`).join('') : '<div class="empty">No line items yet.</div>'}
+    </div></div>`;
+
+  // Full-tier only: traffic sources, referrers, landing pages.
+  const trafficCard = a.tier === 'full' ? `<div class="card">
+    <div class="card-h"><h2>Traffic sources</h2><span class="faint">where buyers came from</span></div>
+    <div class="pad" style="padding-top:16px">${barRows(a.trafficSources, cur)}</div></div>` : '';
+
+  const referrersCard = a.tier === 'full' && a.referrers.length ? `<div class="card">
+    <div class="card-h"><h2>Top referrers</h2><span class="faint">external sites</span></div>
+    <div class="pad" style="padding-top:16px">${barRows(a.referrers, cur)}</div></div>` : '';
+
+  const landingCard = a.tier === 'full' && a.landings.length ? `<div class="card">
+    <div class="card-h"><h2>Landing pages</h2><span class="faint">first page that converted</span></div>
+    <div class="pad" style="padding-top:16px">${barRows(a.landings, cur)}</div></div>` : '';
+
+  const baseNote = a.tier === 'base' ? `<div class="callout" style="margin-bottom:18px"><div class="ct">
+    <b>Traffic-source insights are off.</b> Revenue, channels and products work with <code>read_orders</code>. To see <i>where buyers come from</i> (Facebook, Instagram, search, direct) and days-to-convert, turn on <b>protected customer data</b> (Level 1) in the Dev Dashboard.
+  </div></div>` : '';
+
+  return head + baseNote + cards + `
+    <div class="layout" style="margin-top:18px">
+      <div class="grid" style="gap:16px">${insights}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
+      <div class="grid" style="gap:16px">${trendCard}${productsCard}</div>
+    </div>
+    <style>
+      .fn-bars{display:flex;flex-direction:column;gap:13px}
+      .fn-bar-top{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:5px}
+      .fn-bar-label{font-weight:560;color:var(--ink)}.fn-bar-val{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+      .fn-bar-track{height:8px;border-radius:6px;background:var(--line-2);overflow:hidden}
+      .fn-bar-fill{display:block;height:100%;border-radius:6px;background:var(--accent)}
+      .fn-spark{display:flex;align-items:flex-end;gap:3px;height:80px}
+      .fn-spark-col{flex:1;display:flex;align-items:flex-end;justify-content:center;height:100%}
+      .fn-spark-bar{display:block;width:100%;max-width:16px;border-radius:3px 3px 0 0;background:var(--accent);opacity:.85}
+      .fn-insight{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.5;color:var(--ink)}
+      .fn-dot{flex:none;width:8px;height:8px;border-radius:50%;margin-top:6px;background:var(--muted)}
+      .fn-insight.t-pos .fn-dot{background:var(--accent)}.fn-insight.t-warn .fn-dot{background:var(--warn,#c2851b)}.fn-insight.t-danger .fn-dot{background:var(--danger)}
+      .fn-prow{display:flex;align-items:center;gap:12px;padding:9px 0;font-size:13.5px}
+      .fn-prow+.fn-prow{border-top:1px solid var(--line-2)}
+      .fn-rank{flex:none;width:20px;height:20px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+      .fn-pname{flex:1;font-weight:500}.fn-punits{color:var(--muted);font-variant-numeric:tabular-nums}
+      code{font-family:var(--mono);font-size:.9em;background:var(--hover);padding:1px 5px;border-radius:5px}
+    </style>`;
 }
 
 /** Standard CSP + content-type headers so pages embed in the Shopify admin. */
