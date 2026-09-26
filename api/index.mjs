@@ -5,9 +5,11 @@ import { recentActivity } from '../monitor.mjs';
 import { loadMonitorLog, monitorTag, fetchSheetActivity } from '../monitor-log.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
-  shell, setPageHeaders, statCard, badge, activityFeed,
+  shell, setPageHeaders, statCard, badge, activityFeed, assistantBody,
   relTime, esc, notConnectedBody, shopOf, APP_NAME,
 } from '../ui.mjs';
+import { requireAuth } from './_auth.mjs';
+import { assistantReply } from '../assistant.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -21,7 +23,44 @@ const isToday = (iso) => {
   return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
 };
 
+function param(req, name) {
+  if (req.query && req.query[name] != null) return String(req.query[name]);
+  try { return new URL(req.url, 'http://x').searchParams.get(name); } catch { return null; }
+}
+async function readJson(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  let d = ''; for await (const c of req) d += c;
+  try { return JSON.parse(d || '{}'); } catch { return {}; }
+}
+
 export default async function handler(req, res) {
+  // --- Assistant chat (POST /assistant, folded here to stay under the 12-fn cap) ---
+  if (req.method === 'POST') {
+    if (!requireAuth(req, res)) return;
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const body = await readJson(req);
+      const messages = Array.isArray(body.messages) ? body.messages.slice(-16) : [];
+      const reply = await assistantReply(messages);
+      res.end(JSON.stringify({ ok: true, reply }));
+    } catch (e) {
+      if (e.message === 'NO_KEY') {
+        res.end(JSON.stringify({ ok: false, setup: true, error: 'The assistant isn’t set up yet. Add a free Gemini API key (GEMINI_API_KEY) in the app’s Vercel environment, then redeploy.' }));
+      } else {
+        res.statusCode = 500;
+        res.end(JSON.stringify({ ok: false, error: String(e.message || 'Assistant error') }));
+      }
+    }
+    return;
+  }
+
+  // --- Assistant page (GET /assistant) ---
+  if (param(req, 'view') === 'assistant') {
+    setPageHeaders(res);
+    res.end(shell({ title: 'Assistant', active: 'assistant', body: assistantBody() }));
+    return;
+  }
+
   let settings, state, handles, monitor, activity;
   try {
     [settings, state, handles, monitor] = await Promise.all([
