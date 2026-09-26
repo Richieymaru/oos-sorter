@@ -2,6 +2,7 @@ import { loadSettings } from '../settings.mjs';
 import { loadState } from '../state.mjs';
 import { loadMonitorState } from '../monitor-state.mjs';
 import { recentActivity } from '../monitor.mjs';
+import { loadMonitorLog, monitorTag } from '../monitor-log.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
   shell, setPageHeaders, statCard, badge, activityFeed,
@@ -29,7 +30,32 @@ export default async function handler(req, res) {
       fetchAllCollectionHandles().catch(() => []),
       loadMonitorState().catch(() => ({ titles: {} })),
     ]);
-    activity = settings.monitor ? await recentActivity(18, monitor.titles || {}).catch(() => []) : [];
+    if (settings.monitor) {
+      // Prefer our persisted monitor log — it carries the same rich info as the
+      // Slack/Sheet notify (from → to status, stock, who). Fall back to Shopify's
+      // live event log until the persisted log has filled with new events.
+      const logged = await loadMonitorLog().catch(() => []);
+      if (logged.length) {
+        const shop = process.env.SHOP_DOMAIN;
+        activity = logged.slice(0, 18).map((r) => {
+          const { label, tone } = monitorTag(r.f, r.to);
+          return {
+            type: r.ty,
+            title: r.t,
+            href: r.h && shop ? `https://${shop}/${r.p || 'products'}/${r.h}` : null,
+            who: r.w,
+            iso: r.ts,
+            label,
+            tone,
+            stock: r.s,
+          };
+        });
+      } else {
+        activity = await recentActivity(18, monitor.titles || {}).catch(() => []);
+      }
+    } else {
+      activity = [];
+    }
   } catch (e) {
     console.error('index: not connected —', e.message);
     setPageHeaders(res);

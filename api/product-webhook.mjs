@@ -25,6 +25,7 @@ import {
   whoFromProductEvents, whoFromCollectionEvents, whoDeleted, appendToSheet,
 } from '../monitor.mjs';
 import { notifySlackMonitorEvent } from '../slack.mjs';
+import { recordMonitorEvent } from '../monitor-log.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -64,13 +65,24 @@ export default async function handler(req, res) {
 
     // Fan-out helper: post to the monitor's Slack + the Sheet (each optional).
     const emit = async ({ title, handle, path, fromLabel, toLabel, action, who, stock }) => {
+      const at = new Date().toISOString();
       const slack = await notifySlackMonitorEvent({
         webhookUrl: settings.monitorSlackWebhook, title, handle, path, action, who, stock,
       });
       const sheet = await appendToSheet(
         settings.sheetWebhook,
-        buildSheetRow({ at: new Date().toISOString(), title, handle, path, fromLabel, toLabel, who, stock, shop: process.env.SHOP_DOMAIN })
+        buildSheetRow({ at, title, handle, path, fromLabel, toLabel, who, stock, shop: process.env.SHOP_DOMAIN })
       );
+      // Persist the same rich event for the in-app dashboard feed. Best-effort —
+      // never let a log write break the Slack/Sheet notify or the webhook reply.
+      try {
+        await recordMonitorEvent({
+          at, type: path === 'collections' ? 'Collection' : 'Product',
+          title, handle, path, fromLabel, toLabel, who, stock,
+        });
+      } catch (e) {
+        console.error('monitor log write failed:', e.message);
+      }
       return { slack, sheet };
     };
 
