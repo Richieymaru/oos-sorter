@@ -31,8 +31,8 @@ async function setupMonitor(req, res) {
   const hooks = await ensureMonitorWebhooks({ base: `https://${host}`, token });
   // Seed the status baseline but PRESERVE any existing title cache.
   const prev = await loadMonitorState().catch(() => ({ titles: {} }));
-  const statuses = await fetchAllStatuses();
-  await saveMonitorState({ statuses, titles: prev.titles || {} });
+  const { statuses, titles } = await fetchAllStatuses();
+  await saveMonitorState({ statuses, titles: { ...(prev.titles || {}), ...titles } });
   const created = hooks.filter((h) => h.status === 'created').length;
   res.end(JSON.stringify({ ok: true, webhook: created ? 'created' : 'ready', webhooks: hooks.length, seeded: Object.keys(statuses).length }));
 }

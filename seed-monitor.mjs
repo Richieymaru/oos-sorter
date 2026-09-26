@@ -16,9 +16,9 @@ import { saveMonitorState } from './monitor-state.mjs';
 
 (async () => {
   console.log('Seeding product-change monitor baseline…');
-  const statuses = await fetchAllStatuses();
-  await saveMonitorState({ statuses });
-  console.log(`Done. Baseline recorded for ${Object.keys(statuses).length} products.`);
+  const { statuses, titles } = await fetchAllStatuses();
+  await saveMonitorState({ statuses, titles });
+  console.log(`Done. Baseline recorded for ${Object.keys(statuses).length} products (${Object.keys(titles).length} titles cached for delete naming).`);
 })().catch((e) => {
   console.error(e.message);
   process.exit(1);
