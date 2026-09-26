@@ -566,8 +566,8 @@ export function funnelsBody(view) {
 
   const cur = a.currency;
   const cards = `<div class="grid c4">
-    ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `last ${a.trend.length} days · ${a.totalOrders} orders`, tone: a.totalRevenue ? 'pos' : '' })}
-    ${statCard({ value: a.totalOrders, label: 'Orders', sub: 'recent window' })}
+    ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `from ${a.totalOrders} recent orders`, tone: a.totalRevenue ? 'pos' : '' })}
+    ${statCard({ value: a.totalOrders, label: 'Orders', sub: 'most recent' })}
     ${statCard({ value: money(cur, a.aov), label: 'Avg order value', sub: 'per order' })}
     ${statCard({ value: a.avgDaysToConvert == null ? '—' : a.avgDaysToConvert, label: 'Days to convert', sub: a.tier === 'full' ? 'first visit → purchase' : 'needs customer-data access' })}
   </div>`;
