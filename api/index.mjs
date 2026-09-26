@@ -3,6 +3,7 @@ import { loadState } from '../state.mjs';
 import { loadMonitorState } from '../monitor-state.mjs';
 import { recentActivity } from '../monitor.mjs';
 import { loadMonitorLog, monitorTag, fetchSheetActivity } from '../monitor-log.mjs';
+import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
   shell, setPageHeaders, statCard, badge, activityFeed, assistantBody,
@@ -61,13 +62,14 @@ export default async function handler(req, res) {
     return;
   }
 
-  let settings, state, handles, monitor, activity;
+  let settings, state, handles, monitor, notified, activity;
   try {
-    [settings, state, handles, monitor] = await Promise.all([
+    [settings, state, handles, monitor, notified] = await Promise.all([
       loadSettings(),
       loadState(),
       fetchAllCollectionHandles().catch(() => []),
       loadMonitorState().catch(() => ({ titles: {} })),
+      loadNotified().catch(() => []),
     ]);
     if (settings.monitor) {
       // Prefer the Google Sheet — it holds the FULL rich history (old AND new),
@@ -110,22 +112,31 @@ export default async function handler(req, res) {
 
   const soldOut = (state.soldOut || []).length;
   const changesToday = activity.filter((a) => isToday(a.iso)).length;
+  const wl = deriveStats(notified);
+  const ICON_BELL = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M10 3a4 4 0 0 0-4 4c0 4-1.4 5-1.4 5h10.8S14 11 14 7a4 4 0 0 0-4-4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8.4 15a1.6 1.6 0 0 0 3.2 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 
   // --- stat cards ---
-  const engineCard = `<div class="card stat">
-    <span class="stat-ico">${ICON_PULSE}</span>
-    <div class="statval" style="font-size:19px;display:flex;align-items:center;height:34px">
-      ${badge('Running', 'ok').replace('badge ok">', 'badge ok"><span class="d"></span>')}
-    </div>
-    <div class="statlabel">Engine status</div>
-    <div class="statsub">last run ${esc(relTime(state.lastRun))}</div>
-  </div>`;
-
   const stats = `<div class="grid c4">
     ${statCard({ value: soldOut, label: 'Sold out now', sub: 'kept at the bottom', tone: soldOut ? 'warn' : '', icon: ICON_BOX })}
     ${statCard({ value: handles.length || '—', label: 'Collections', sub: settings.sort ? 'auto-sorted' : 'sorting off', icon: ICON_LAYERS })}
-    ${statCard({ value: settings.monitor ? changesToday : '—', label: 'Changes today', sub: settings.monitor ? 'tracked by the monitor' : 'monitor off', tone: settings.monitor && changesToday ? 'pos' : '' })}
-    ${engineCard}
+    ${statCard({ value: settings.waitlist ? wl.notified : '—', label: 'Waitlist notified', sub: settings.waitlist ? `${wl.clickRate}% clicked through` : 'waitlist off', tone: settings.waitlist && wl.clicked ? 'pos' : '', icon: ICON_BELL })}
+    ${statCard({ value: settings.monitor ? changesToday : '—', label: 'Changes today', sub: settings.monitor ? 'tracked by the monitor' : 'monitor off', tone: settings.monitor && changesToday ? 'pos' : '', icon: ICON_PULSE })}
+  </div>`;
+
+  // --- Assistant hero (the new AI feature) ---
+  const heroChip = (q) => `<a class="ahero-chip" href="/assistant?q=${encodeURIComponent(q)}">${esc(q)}</a>`;
+  const assistantHero = `<div class="ahero">
+    <div class="ahero-txt">
+      <div class="ahero-eyebrow">✨ New · AI Assistant</div>
+      <h2>Ask your store anything</h2>
+      <p>It knows the app and sees your live data — sold-out, waitlists, and who changed what. Ask it what to focus on.</p>
+      <div class="ahero-chips">
+        ${heroChip('How many products are sold out?')}
+        ${heroChip('Who changed product statuses recently?')}
+        ${heroChip('What should I focus on this week?')}
+      </div>
+    </div>
+    <a href="/assistant" class="ahero-cta"><button class="primary">Open Assistant →</button></a>
   </div>`;
 
   // --- automations rail ---
@@ -159,11 +170,23 @@ export default async function handler(req, res) {
     </div>
   </div>`;
 
+  const waitlistCard = `<div class="card">
+    <div class="card-h"><h2>Waitlist</h2>${badge(settings.waitlist ? 'On' : 'Off', settings.waitlist ? 'ok' : 'idle')}</div>
+    <div class="pad" style="padding-top:16px">
+      ${settings.waitlist
+        ? `<p class="muted" style="margin:0 0 12px;font-size:13px"><b style="color:var(--ink)">${wl.notified}</b> notified recently · <b style="color:var(--ink)">${wl.clicked}</b> clicked (${wl.clickRate}%) · <b style="color:var(--ink)">${wl.nudged}</b> nudged.</p>
+           <a href="/waitlists" style="text-decoration:none"><button class="ghost">View waitlists</button></a>`
+        : `<p class="muted" style="margin:0 0 12px;font-size:13px">Let shoppers get an email when a sold-out product returns — with click-through tracking and auto-nudges.</p>
+           <a href="/settings" style="text-decoration:none"><button class="ghost">Turn on in Settings</button></a>`}
+    </div>
+  </div>`;
+
   const rail = `
     <div class="card">
       <div class="card-h"><h2>Automations</h2><a href="/settings" class="faint" style="text-decoration:none">Manage</a></div>
       <div class="pad" style="padding-top:8px;padding-bottom:8px">${featRows}</div>
     </div>
+    ${waitlistCard}
     ${monitorCard}`;
 
   const onboarding = settings.sort ? '' : `<div class="callout" style="margin-bottom:18px"><div class="ct">
@@ -181,12 +204,16 @@ export default async function handler(req, res) {
       : `<div class="empty">The change monitor is off.<div class="faint" style="margin-top:6px">Turn it on in Settings to see who changes, adds, or deletes products and collections — right here.</div></div>`}
   </div>`;
 
+  const enginePill = `<span class="engine-pill"><span class="d"></span> Engine running · last run ${esc(relTime(state.lastRun))}</span>`;
+
   const body = `
   <div class="pagehead">
     <h1>Dashboard</h1>
-    <p>Everything ${esc(APP_NAME)} is doing for your store — sorting, alerts, and who’s changing what.</p>
+    <p>Everything ${esc(APP_NAME)} is doing for your store — sorting, back-in-stock, the change monitor, and your AI assistant.</p>
+    ${enginePill}
   </div>
   ${onboarding}
+  ${assistantHero}
   ${stats}
   <div class="layout">
     <div>${activityCard}</div>
@@ -199,6 +226,17 @@ export default async function handler(req, res) {
     .autoname{font-size:13.5px;font-weight:500;flex:1}
     .autodot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
     .autodot.on{background:var(--accent)}
+    .engine-pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin-top:9px}
+    .engine-pill .d{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+    .ahero{display:flex;gap:20px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(120deg,var(--accent-wash),var(--surface) 72%);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow-sm)}
+    .ahero-eyebrow{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--accent-ink);text-transform:uppercase;margin-bottom:7px}
+    .ahero-txt{min-width:250px;flex:1}
+    .ahero-txt h2{margin:0 0 5px;font-size:19px;letter-spacing:-.02em}
+    .ahero-txt p{margin:0 0 12px;color:var(--muted);font-size:13.5px;max-width:58ch}
+    .ahero-chips{display:flex;flex-wrap:wrap;gap:8px}
+    .ahero-chip{font-size:12.5px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);text-decoration:none;transition:background .15s,color .15s}
+    .ahero-chip:hover{background:var(--hover);color:var(--ink)}
+    .ahero-cta{flex:none;text-decoration:none}
   </style>`;
 
   setPageHeaders(res);
