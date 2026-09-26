@@ -61,6 +61,50 @@ export function monitorTag(fromLabel, toLabel) {
   return { label, tone };
 }
 
+/** Pure: turn one Google-Sheet row (as buildSheetRow wrote it: timestamp,
+ *  product, url, from, to, who, stock) into a dashboard feed item — the same
+ *  shape the metafield log produces, so the feed renders them identically. Type
+ *  is inferred from the storefront URL path. */
+export function sheetRowToActivity(row) {
+  const url = String(row?.url || '');
+  const type = /\/collections\//.test(url) ? 'Collection' : 'Product';
+  const { label, tone } = monitorTag(row?.from, row?.to);
+  let stock = row?.stock;
+  if (stock === '' || stock == null) stock = null;
+  else if (typeof stock !== 'number') { const n = Number(stock); stock = Number.isFinite(n) ? n : null; }
+  return {
+    type,
+    title: String(row?.product || ''),
+    href: url || null,
+    who: row?.who || null,
+    iso: row?.timestamp || null,
+    label,
+    tone,
+    stock,
+  };
+}
+
+/* ---- Google Sheet read (the full history, straight from the merchant's log) ---- */
+
+/** Fetch the most recent activity rows from the monitor Google Sheet (via the
+ *  Apps Script's doGet). Returns feed items newest-first, or null on any failure
+ *  so the caller can fall back to the metafield log / live events. Never throws. */
+export async function fetchSheetActivity(sheetUrl, limit = 20) {
+  if (!sheetUrl) return null;
+  try {
+    const u = new URL(sheetUrl);
+    u.searchParams.set('limit', String(limit));
+    const res = await fetch(u.toString(), { redirect: 'follow' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (data?.rows || []);
+    return rows.map(sheetRowToActivity);
+  } catch (e) {
+    console.error('sheet activity read failed:', e.message);
+    return null;
+  }
+}
+
 /* ---- metafield I/O (shop-level oos_sort.monitor_log) ---- */
 
 /** Read the activity log (empty array if unset/unparsable). */
