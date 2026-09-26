@@ -2,7 +2,8 @@
  * Minimal Google Gemini client (the FREE tier — no billing needed). The only
  * module that knows the LLM transport, so swapping providers later touches one
  * file. Needs a free API key from https://aistudio.google.com in GEMINI_API_KEY;
- * the model is GEMINI_MODEL (default gemini-2.0-flash).
+ * the model is GEMINI_MODEL (default gemini-flash-latest — the -2.0/-2.5 flash
+ * aliases were retired for new keys).
  *
  * The request/response shaping (geminiBody / geminiText) is pure and unit-tested
  * (gemini.test.mjs); askGemini does the fetch.
@@ -36,7 +37,7 @@ export function geminiText(data) {
 export async function askGemini(systemPrompt, messages) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error('NO_KEY');
-  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const model = process.env.GEMINI_MODEL || 'gemini-flash-latest';
   const res = await fetch(endpoint(model, key), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
