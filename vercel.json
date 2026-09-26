@@ -3,6 +3,7 @@
     { "source": "/", "destination": "/api/index" },
     { "source": "/collections", "destination": "/api/collections" },
     { "source": "/waitlists", "destination": "/api/waitlists" },
+    { "source": "/assistant", "destination": "/api/index?view=assistant" },
     { "source": "/settings", "destination": "/api/settings" }
   ]
 }

@@ -270,11 +270,90 @@ ${fontHead()}
     ${tab('/', 'home', 'Dashboard')}
     ${tab('/collections', 'collections', 'Collections')}
     ${tab('/waitlists', 'waitlists', 'Waitlists')}
+    ${tab('/assistant', 'assistant', 'Assistant')}
     ${tab('/settings', 'settings', 'Settings')}
   </nav>
 </div></header>
 <main>${body}</main>
 </body></html>`;
+}
+
+/** The Assistant chat page. Talks to POST /assistant (folded into /api/index). */
+export function assistantBody() {
+  return `
+  <div class="pagehead"><h1>Assistant</h1><p>Ask about your store, the app, or what to focus on. It can see your live data — sold-out products, waitlists, and who changed what.</p></div>
+  <div class="card pad">
+    <div id="chat" class="chat">
+      <div class="msg bot"><div class="bubble">Hi! I'm your store assistant. I can see your live data. Ask me things like <b>“how many products are sold out?”</b> or <b>“what should I focus on this week?”</b></div></div>
+    </div>
+    <div class="chips" id="suggest">
+      <button class="chip" data-q="How many products are sold out right now?">Sold-out count</button>
+      <button class="chip" data-q="How is the back-in-stock waitlist doing?">Waitlist status</button>
+      <button class="chip" data-q="Who changed product statuses recently, and to what?">Recent changes</button>
+      <button class="chip" data-q="Based on my current data, what are the top 3 things I should focus on?">What to focus on</button>
+    </div>
+    <form id="chatForm" class="chatbar">
+      <input id="msg" type="text" placeholder="Ask anything about your store…" autocomplete="off">
+      <button class="primary" id="send" type="submit">Send</button>
+    </form>
+    <div class="pw" style="margin-top:12px">
+      <label for="pw">Panel password</label>
+      <input type="password" id="pw" placeholder="to chat" autocomplete="current-password">
+      <span id="err" class="faint" style="margin-left:6px"></span>
+    </div>
+  </div>
+  <style>
+    .chat{display:flex;flex-direction:column;gap:12px;min-height:220px;max-height:52vh;overflow-y:auto;padding:6px 2px 12px}
+    .msg{display:flex}.msg.me{justify-content:flex-end}
+    .bubble{max-width:82%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+    .msg.bot .bubble{background:var(--hover);color:var(--ink);border-bottom-left-radius:5px}
+    .msg.me .bubble{background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+    .bubble b{font-weight:600}
+    .chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+    .chip{font-size:12.5px;padding:6px 11px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);cursor:pointer}
+    .chip:hover{background:var(--hover);color:var(--ink)}
+    .chatbar{display:flex;gap:8px}
+    .chatbar input{flex:1;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink);font:14px var(--sans)}
+    .typing{color:var(--faint);font-size:13px;padding:2px 4px}
+  </style>
+  <script>
+    var chat=document.getElementById('chat'), form=document.getElementById('chatForm'), input=document.getElementById('msg'),
+        send=document.getElementById('send'), pw=document.getElementById('pw'), err=document.getElementById('err');
+    var embedded=(typeof shopify!=='undefined' && !!shopify.idToken);
+    if(embedded){ var pwd=document.querySelector('.pw'); if(pwd) pwd.style.display='none'; }
+    else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
+    var history=[];
+    function esc(s){ var d=document.createElement('div'); d.textContent=String(s==null?'':s); return d.innerHTML; }
+    function bubble(role, text){
+      var wrap=document.createElement('div'); wrap.className='msg '+(role==='me'?'me':'bot');
+      var b=document.createElement('div'); b.className='bubble'; b.textContent=text; wrap.appendChild(b);
+      chat.appendChild(wrap); chat.scrollTop=chat.scrollHeight; return b;
+    }
+    async function authH(){ var h={'Content-Type':'application/json'}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
+    async function ask(q){
+      q=(q||'').trim(); if(!q) return;
+      if(!embedded && !(pw.value||'').trim()){ err.textContent='Enter the panel password below'; pw.focus(); return; }
+      err.textContent=''; input.value=''; send.disabled=true;
+      bubble('me', q); history.push({role:'user', text:q});
+      var t=document.createElement('div'); t.className='typing'; t.textContent='Thinking…'; chat.appendChild(t); chat.scrollTop=chat.scrollHeight;
+      try{
+        var r=await fetch('/assistant',{method:'POST',headers:await authH(),body:JSON.stringify({messages:history})});
+        var j=await r.json().catch(function(){return{};});
+        t.remove();
+        if(r.ok && j.ok){
+          if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} }
+          bubble('bot', j.reply); history.push({role:'assistant', text:j.reply});
+        } else if(j.setup){
+          bubble('bot', j.error || 'The assistant isn\\u2019t set up yet. Add a free Gemini API key (GEMINI_API_KEY) in the app\\u2019s Vercel environment, then redeploy.');
+        } else {
+          err.textContent = (r.status===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Something went wrong'));
+        }
+      }catch(e){ t.remove(); err.textContent='Network error'; }
+      send.disabled=false; input.focus();
+    }
+    form.addEventListener('submit', function(e){ e.preventDefault(); ask(input.value); });
+    document.querySelectorAll('.chip').forEach(function(c){ c.addEventListener('click', function(){ ask(c.dataset.q); }); });
+  </script>`;
 }
 
 /** Standard CSP + content-type headers so pages embed in the Shopify admin. */
