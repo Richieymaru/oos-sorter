@@ -270,11 +270,11 @@ ${fontHead()}
     ${tab('/', 'home', 'Dashboard')}
     ${tab('/collections', 'collections', 'Collections')}
     ${tab('/waitlists', 'waitlists', 'Waitlists')}
-    ${tab('/assistant', 'assistant', 'Assistant')}
     ${tab('/settings', 'settings', 'Settings')}
   </nav>
 </div></header>
 <main>${body}</main>
+${chatWidget()}
 </body></html>`;
 }
 
@@ -354,6 +354,161 @@ export function assistantBody() {
     }
     form.addEventListener('submit', function(e){ e.preventDefault(); ask(input.value); });
     document.querySelectorAll('.chip').forEach(function(c){ c.addEventListener('click', function(){ ask(c.dataset.q); }); });
+  </script>`;
+}
+
+/**
+ * The floating chat widget — a circle button pinned bottom-right on EVERY page
+ * (injected by shell()), opening a slide-up chat panel. Same brain as the
+ * Assistant page (POST /api/index → assistantReply), but reachable anywhere.
+ *
+ * Auth, done right this time: "embedded" means we are ACTUALLY inside the
+ * Shopify admin iframe (window.top !== window.self) AND App Bridge is present —
+ * not merely that its script loaded. On the standalone Vercel URL we are the top
+ * window, so we use the panel password. And shopify.idToken() is raced against a
+ * 2.5s timeout so it can never hang the send (the old bug: it hung forever on
+ * the standalone URL, so the fetch never fired and no reply ever came back).
+ */
+export function chatWidget() {
+  return `
+  <button id="cwFab" class="cw-fab" aria-label="Open store assistant" title="Ask the store assistant">
+    <svg class="cw-ico-chat" viewBox="0 0 24 24" width="24" height="24" fill="none" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9A1.5 1.5 0 0 1 18.5 16H9l-4 3.5V16H5.5A1.5 1.5 0 0 1 4 14.5v-9Z" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/><circle cx="9" cy="10" r="1" fill="#fff"/><circle cx="12.5" cy="10" r="1" fill="#fff"/><circle cx="16" cy="10" r="1" fill="#fff"/></svg>
+    <svg class="cw-ico-close" viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+  </button>
+  <div id="cwPanel" class="cw-panel" role="dialog" aria-label="Store assistant" aria-hidden="true">
+    <div class="cw-head">
+      <span class="cw-title"><span class="cw-dot"></span> Store Assistant</span>
+      <button id="cwMin" class="cw-x" aria-label="Close">&times;</button>
+    </div>
+    <div id="cwChat" class="cw-chat">
+      <div class="cw-msg bot"><div class="cw-bubble">Hi! I can see your live store data — sold-out products, waitlists, and who changed what. Ask me anything.</div></div>
+    </div>
+    <div class="cw-chips" id="cwChips">
+      <button class="cw-chip" data-q="How many products are sold out right now?">Sold-out count</button>
+      <button class="cw-chip" data-q="How is the back-in-stock waitlist doing?">Waitlist</button>
+      <button class="cw-chip" data-q="Who changed product statuses recently, and to what?">Recent changes</button>
+      <button class="cw-chip" data-q="Based on my current data, what are the top 3 things I should focus on?">What to focus on</button>
+    </div>
+    <form id="cwForm" class="cw-bar">
+      <input id="cwInput" type="text" placeholder="Ask about your store…" autocomplete="off">
+      <button class="cw-send" id="cwSend" type="submit" aria-label="Send">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M4 12l16-8-6 16-3-6-7-2Z" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      </button>
+    </form>
+    <div class="cw-pw" id="cwPwWrap">
+      <input type="password" id="cwPw" placeholder="Panel password" autocomplete="current-password">
+      <span id="cwErr" class="cw-err"></span>
+    </div>
+  </div>
+  <style>
+    .cw-fab{position:fixed;right:22px;bottom:22px;z-index:9998;width:58px;height:58px;border-radius:50%;
+      background:var(--accent);border:none;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22),0 2px 6px rgba(0,0,0,.14);
+      display:flex;align-items:center;justify-content:center;transition:transform .18s ease,filter .15s}
+    .cw-fab:hover{filter:brightness(1.07);transform:translateY(-2px)}
+    .cw-fab .cw-ico-close{display:none}
+    body.cw-open .cw-fab .cw-ico-chat{display:none}
+    body.cw-open .cw-fab .cw-ico-close{display:block}
+    .cw-panel{position:fixed;right:22px;bottom:92px;z-index:9999;width:380px;max-width:calc(100vw - 32px);
+      height:560px;max-height:calc(100vh - 120px);background:var(--surface);border:1px solid var(--line);
+      border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden;
+      opacity:0;transform:translateY(12px) scale(.98);pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+    body.cw-open .cw-panel{opacity:1;transform:none;pointer-events:auto}
+    .cw-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;
+      background:linear-gradient(120deg,var(--accent-wash),var(--surface) 90%);border-bottom:1px solid var(--line-2)}
+    .cw-title{display:flex;align-items:center;gap:8px;font-weight:650;font-size:14.5px;color:var(--ink)}
+    .cw-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+    .cw-x{background:none;border:none;font-size:22px;line-height:1;color:var(--faint);cursor:pointer;padding:0 4px}
+    .cw-x:hover{color:var(--ink)}
+    .cw-chat{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+    .cw-msg{display:flex}.cw-msg.me{justify-content:flex-end}
+    .cw-bubble{max-width:85%;padding:9px 12px;border-radius:14px;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+    .cw-msg.bot .cw-bubble{background:var(--hover);color:var(--ink);border-bottom-left-radius:4px}
+    .cw-msg.me .cw-bubble{background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+    .cw-bubble b{font-weight:600}
+    .cw-typing{color:var(--faint);font-size:12.5px;padding:2px 6px}
+    .cw-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 8px}
+    .cw-chip{font-size:11.5px;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);cursor:pointer}
+    .cw-chip:hover{background:var(--hover);color:var(--ink)}
+    .cw-bar{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line-2)}
+    .cw-bar input{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--surface);color:var(--ink);font:13.5px var(--sans)}
+    .cw-send{flex:none;width:40px;border:none;border-radius:11px;background:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .cw-send:hover{filter:brightness(1.07)}.cw-send:disabled{opacity:.6;cursor:default}
+    .cw-pw{display:flex;align-items:center;gap:8px;padding:0 12px 12px}
+    .cw-pw input{width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:12.5px var(--mono)}
+    .cw-err{font-size:11.5px;color:var(--danger)}
+    @media (max-width:520px){ .cw-panel{right:10px;left:10px;width:auto;bottom:84px;height:calc(100vh - 104px)} .cw-fab{right:16px;bottom:16px} }
+    @media (prefers-reduced-motion:reduce){ .cw-fab,.cw-panel{transition:none} }
+  </style>
+  <script>
+  (function(){
+    var fab=document.getElementById('cwFab'), panel=document.getElementById('cwPanel'),
+        chat=document.getElementById('cwChat'), form=document.getElementById('cwForm'),
+        input=document.getElementById('cwInput'), send=document.getElementById('cwSend'),
+        pwWrap=document.getElementById('cwPwWrap'), pw=document.getElementById('cwPw'), err=document.getElementById('cwErr');
+    if(!fab||!panel) return;
+    var inIframe=true; try{ inIframe = window.top !== window.self; }catch(e){ inIframe=true; }
+    var embedded = inIframe && (typeof shopify!=='undefined') && !!(shopify && shopify.idToken);
+    if(embedded){ pwWrap.style.display='none'; } else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
+    var history=[];
+
+    function openPanel(prefill){
+      document.body.classList.add('cw-open'); panel.setAttribute('aria-hidden','false');
+      if(prefill){ input.value=prefill; }
+      setTimeout(function(){ input.focus(); chat.scrollTop=chat.scrollHeight; }, 60);
+    }
+    function closePanel(){ document.body.classList.remove('cw-open'); panel.setAttribute('aria-hidden','true'); }
+    function toggle(){ document.body.classList.contains('cw-open') ? closePanel() : openPanel(); }
+    fab.addEventListener('click', function(){ toggle(); });
+    document.getElementById('cwMin').addEventListener('click', closePanel);
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape' && document.body.classList.contains('cw-open')) closePanel(); });
+    // Global hook so any page element (e.g. the dashboard hero) can open the chat with a question.
+    window.oosChat = { open: openPanel, close: closePanel, ask: function(q){ openPanel(); ask(q); } };
+
+    function bubble(role, text){
+      var wrap=document.createElement('div'); wrap.className='cw-msg '+(role==='me'?'me':'bot');
+      var b=document.createElement('div'); b.className='cw-bubble'; b.textContent=text; wrap.appendChild(b);
+      chat.appendChild(wrap); chat.scrollTop=chat.scrollHeight; return b;
+    }
+    // Race idToken against a timeout so a non-responding App Bridge can never hang the send.
+    function idToken(){
+      if(!embedded) return Promise.resolve(null);
+      return Promise.race([
+        Promise.resolve().then(function(){ return shopify.idToken(); }),
+        new Promise(function(res){ setTimeout(function(){ res(null); }, 2500); })
+      ]).catch(function(){ return null; });
+    }
+    async function authH(){
+      var h={'Content-Type':'application/json'};
+      var t=await idToken();
+      if(t){ h['Authorization']='Bearer '+t; } else { h['x-panel-password']=(pw.value||'').trim(); }
+      return h;
+    }
+    async function ask(q){
+      q=(q||'').trim(); if(!q) return;
+      if(!embedded && !(pw.value||'').trim()){ err.textContent='Enter the panel password'; pw.focus(); return; }
+      err.textContent=''; input.value=''; send.disabled=true;
+      bubble('me', q); history.push({role:'user', text:q});
+      var t=document.createElement('div'); t.className='cw-typing'; t.textContent='Thinking…'; chat.appendChild(t); chat.scrollTop=chat.scrollHeight;
+      try{
+        var r=await fetch('/api/index',{method:'POST',headers:await authH(),body:JSON.stringify({messages:history})});
+        var j=await r.json().catch(function(){return{};});
+        t.remove();
+        if(r.ok && j.ok){
+          if(!embedded){ try{ localStorage.setItem('oos_pw',(pw.value||'').trim()); }catch(e){} }
+          bubble('bot', j.reply); history.push({role:'assistant', text:j.reply});
+        } else if(j.setup){
+          bubble('bot', j.error || 'The assistant isn\\u2019t set up yet. Add a free Gemini API key (GEMINI_API_KEY) in Vercel, then redeploy.');
+        } else {
+          err.textContent = (r.status===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Something went wrong'));
+        }
+      }catch(e){ t.remove(); err.textContent='Network error'; }
+      send.disabled=false; input.focus();
+    }
+    form.addEventListener('submit', function(e){ e.preventDefault(); ask(input.value); });
+    document.querySelectorAll('#cwChips .cw-chip').forEach(function(c){ c.addEventListener('click', function(){ ask(c.dataset.q); }); });
+    // Deep-link: /?chat=<question> (e.g. from an old /assistant?q= bookmark) opens the chat pre-filled.
+    try{ var _q=new URLSearchParams(location.search).get('chat'); if(_q){ setTimeout(function(){ openPanel(_q); }, 120); } }catch(e){}
+  })();
   </script>`;
 }
 

@@ -6,7 +6,7 @@ import { loadMonitorLog, monitorTag, fetchSheetActivity } from '../monitor-log.m
 import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
-  shell, setPageHeaders, statCard, badge, activityFeed, assistantBody,
+  shell, setPageHeaders, statCard, badge, activityFeed,
   relTime, esc, notConnectedBody, shopOf, APP_NAME,
 } from '../ui.mjs';
 import { requireAuth } from './_auth.mjs';
@@ -55,10 +55,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  // --- Assistant page (GET /assistant) ---
+  // --- Old /assistant route: the assistant is now the floating chat widget on
+  //     every page, so send any bookmark to the dashboard (where it lives). ---
   if (param(req, 'view') === 'assistant') {
-    setPageHeaders(res);
-    res.end(shell({ title: 'Assistant', active: 'assistant', body: assistantBody() }));
+    const q = param(req, 'q');
+    res.statusCode = 302;
+    res.setHeader('Location', q ? `/?chat=${encodeURIComponent(q)}` : '/');
+    res.end();
     return;
   }
 
@@ -123,20 +126,20 @@ export default async function handler(req, res) {
     ${statCard({ value: settings.monitor ? changesToday : '—', label: 'Changes today', sub: settings.monitor ? 'tracked by the monitor' : 'monitor off', tone: settings.monitor && changesToday ? 'pos' : '', icon: ICON_PULSE })}
   </div>`;
 
-  // --- Assistant hero (the new AI feature) ---
-  const heroChip = (q) => `<a class="ahero-chip" href="/assistant?q=${encodeURIComponent(q)}">${esc(q)}</a>`;
+  // --- Assistant hero (the new AI feature) — opens the floating chat widget. ---
+  const heroChip = (q) => `<button type="button" class="ahero-chip" onclick="window.oosChat&&window.oosChat.ask(${JSON.stringify(q)})">${esc(q)}</button>`;
   const assistantHero = `<div class="ahero">
     <div class="ahero-txt">
       <div class="ahero-eyebrow">✨ New · AI Assistant</div>
       <h2>Ask your store anything</h2>
-      <p>It knows the app and sees your live data — sold-out, waitlists, and who changed what. Ask it what to focus on.</p>
+      <p>It knows the app and sees your live data — sold-out, waitlists, and who changed what. Ask it what to focus on — the chat button is always in the corner.</p>
       <div class="ahero-chips">
         ${heroChip('How many products are sold out?')}
         ${heroChip('Who changed product statuses recently?')}
         ${heroChip('What should I focus on this week?')}
       </div>
     </div>
-    <a href="/assistant" class="ahero-cta"><button class="primary">Open Assistant →</button></a>
+    <button type="button" class="ahero-cta primary" onclick="window.oosChat&&window.oosChat.open()">Open Assistant →</button>
   </div>`;
 
   // --- automations rail ---
@@ -234,9 +237,9 @@ export default async function handler(req, res) {
     .ahero-txt h2{margin:0 0 5px;font-size:19px;letter-spacing:-.02em}
     .ahero-txt p{margin:0 0 12px;color:var(--muted);font-size:13.5px;max-width:58ch}
     .ahero-chips{display:flex;flex-wrap:wrap;gap:8px}
-    .ahero-chip{font-size:12.5px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);text-decoration:none;transition:background .15s,color .15s}
+    .ahero-chip{font:inherit;font-size:12.5px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);text-decoration:none;cursor:pointer;transition:background .15s,color .15s}
     .ahero-chip:hover{background:var(--hover);color:var(--ink)}
-    .ahero-cta{flex:none;text-decoration:none}
+    .ahero-cta{flex:none;text-decoration:none;cursor:pointer}
   </style>`;
 
   setPageHeaders(res);
