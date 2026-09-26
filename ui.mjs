@@ -323,6 +323,7 @@ export function assistantBody() {
     if(embedded){ var pwd=document.querySelector('.pw'); if(pwd) pwd.style.display='none'; }
     else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
     var history=[];
+    try{ var _q=new URLSearchParams(location.search).get('q'); if(_q){ input.value=_q; setTimeout(function(){ input.focus(); },60); } }catch(e){}
     function esc(s){ var d=document.createElement('div'); d.textContent=String(s==null?'':s); return d.innerHTML; }
     function bubble(role, text){
       var wrap=document.createElement('div'); wrap.className='msg '+(role==='me'?'me':'bot');
