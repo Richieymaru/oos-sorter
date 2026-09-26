@@ -75,17 +75,23 @@ export function activityFeed(items) {
       <div class="faint" style="margin-top:6px">Status changes, new items and deletions will appear here as they happen.</div></div>`;
   }
   return `<ul class="feed">` + items.map((it) => {
-    const m = ACTION_META[it.action] || { label: cap(it.action), tone: 'neutral' };
+    // A rich row (from the persisted monitor log) carries its own label/tone —
+    // e.g. "Draft → Active" — matching the Slack read; otherwise fall back to the
+    // raw Shopify event action.
+    const m = it.label ? { label: it.label, tone: it.tone || 'neutral' } : (ACTION_META[it.action] || { label: cap(it.action), tone: 'neutral' });
     const ico = it.type === 'Collection' ? ICON_COLLECTION : ICON_PRODUCT;
     const title = it.href
       ? `<a href="${esc(it.href)}" target="_top" class="feed-link">${esc(it.title)}</a>`
       : esc(it.title);
     const who = it.who ? esc(it.who) : 'unknown';
+    const stockChip = it.stock != null && it.stock !== ''
+      ? `<span class="mstock" style="color:var(--muted)">stock ${esc(it.stock)}</span>`
+      : '';
     return `<li class="feed-item">
       <span class="feed-ico t-${m.tone}" aria-hidden="true">${ico}</span>
       <span class="feed-main">
         <span class="feed-title">${title} <span class="tag t-${m.tone}">${esc(m.label)}</span></span>
-        <span class="feed-meta"><span>${esc(it.type)}</span><span class="mwho">${who}</span></span>
+        <span class="feed-meta"><span>${esc(it.type)}</span><span class="mwho">${who}</span>${stockChip}</span>
       </span>
       <span class="feed-side">
         <span class="feed-time">${esc(relTime(it.iso))}</span>
