@@ -9,8 +9,7 @@
  * targeted re-sort of a few collections is quick.
  */
 import { waitUntil } from '@vercel/functions';
-import { runEngine } from '../sort-oos.mjs';
-import { collectionsForInventoryItem, productsForInventoryItem } from '../catalog.mjs';
+import { productsForInventoryItem } from '../catalog.mjs';
 import { notifyRestocksForProducts, alertNewlySoldOut } from '../restock.mjs';
 import { loadSettings } from '../settings.mjs';
 
@@ -40,22 +39,17 @@ async function readJson(req) {
 }
 
 /**
- * The actual work for one inventory change: re-sort the affected collections and
- * run the targeted back-in-stock / sold-out notify. Runs in the BACKGROUND (see
- * the handler) so it never delays the webhook response.
+ * The time-sensitive work for one inventory change: email anyone whose waitlisted
+ * product is back, and alert the owner about a newly sold-out product. Runs in the
+ * BACKGROUND (see the handler) so it never delays the webhook response.
+ *
+ * NOTE: this deliberately does NOT re-sort collections. On a large store a single
+ * inventory change can touch 100+ collections (some with thousands of products),
+ * and re-sorting all of them on every stock tick — in bursts — is a huge, mostly
+ * redundant load. Sorting is owned by the periodic `/api/run` rotating sweep
+ * (SWEEP_CHUNK); this webhook only does the fast, targeted notify.
  */
 async function processInventoryChange(itemId, host) {
-  const handles = itemId ? await collectionsForInventoryItem(itemId) : [];
-  if (handles.length) {
-    await runEngine({ handles });
-  } else {
-    console.log('webhook: no collections for inventory item', itemId, '— nothing to sort');
-  }
-
-  // Back-in-stock is normally done by the full /api/run sweep — but that scans
-  // the whole store and times out on big catalogs. So handle the just-changed
-  // product(s) here: if the waitlist feature is on, email anyone waiting on a
-  // product that's now back in stock. Targeted, so it stays fast at any scale.
   if (!itemId) return;
   const settings = await loadSettings().catch(() => ({}));
   const waitlistOn = resolveFlag(process.env.FEATURE_WAITLIST, settings.waitlist);
@@ -87,11 +81,9 @@ export default async function handler(req, res) {
   const host = req.headers['host'] || '';
 
   // Shopify drops any webhook we don't answer within ~5s and, after 19 straight
-  // failures, DELETES the subscription. Sorting a collection (flip to MANUAL +
-  // reorder + waitForJob) takes far longer than that, so we ACK immediately and
-  // do the work in the background (waitUntil keeps the function alive up to
-  // maxDuration). The 5-min /api/run sweep is the backstop if a background run
-  // is cut short.
+  // failures, DELETES the subscription. So we ACK immediately and run the
+  // (fast, targeted) back-in-stock / sold-out notify in the background —
+  // waitUntil keeps the function alive up to maxDuration.
   waitUntil(
     processInventoryChange(itemId, host).catch((err) => console.error('webhook bg error:', err.message))
   );

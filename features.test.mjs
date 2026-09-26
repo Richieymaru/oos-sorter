@@ -13,6 +13,7 @@ import {
   planRestores,
   retainBaseOrder,
   pushSoldOutDown,
+  sweepBatch,
 } from './features.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 
@@ -276,6 +277,16 @@ eq('accidentally-moved sold-out goes back down', pushSoldOutDown(['A', 'S', 'B',
   }
   eq('3000 random collections satisfy all invariants', bad, 0);
 }
+
+console.log('--- sweepBatch ---');
+const H = ['a', 'b', 'c', 'd', 'e'];
+eq('batch from cursor 0', sweepBatch(H, 0, 2), { batch: ['a', 'b'], nextCursor: 2 });
+eq('batch from cursor 3 wraps around', sweepBatch(H, 3, 3), { batch: ['d', 'e', 'a'], nextCursor: 1 });
+eq('chunk >= len covers all, cursor returns to start', sweepBatch(H, 0, 99), { batch: ['a', 'b', 'c', 'd', 'e'], nextCursor: 0 });
+eq('negative cursor normalized', sweepBatch(H, -1, 1), { batch: ['e'], nextCursor: 0 });
+eq('over-length cursor normalized', sweepBatch(H, 7, 1), { batch: ['c'], nextCursor: 3 });
+eq('chunk floored to at least 1', sweepBatch(H, 0, 0), { batch: ['a'], nextCursor: 1 });
+eq('empty handles are safe', sweepBatch([], 0, 5), { batch: [], nextCursor: 0 });
 
 console.log(
   `\n${failures ? '\x1b[31mFAILED\x1b[0m' : '\x1b[32mPASSED\x1b[0m'} — ${checks} checks, ${failures} failure(s)`

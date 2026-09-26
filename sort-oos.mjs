@@ -50,6 +50,7 @@ import {
   mergePending,
   planDrafts,
   pushSoldOutDown,
+  sweepBatch,
 } from './features.mjs';
 import { isInStock } from './stock.mjs';
 import { findCollection, fetchCollectionProducts } from './catalog.mjs';
@@ -79,6 +80,13 @@ let FEATURE_WAITLIST = false;
 const SEND_DIGEST = process.env.SEND_DIGEST === 'true';
 
 const MAX_MOVES = 250; // hard limit per collectionReorderProducts call
+
+// Auto-enable a rotating sweep once a store has more than this many collections —
+// a full sweep of that many (some with thousands of products) would exceed
+// Vercel's 60s limit. SWEEP_CHUNK is how many collections one swept run covers.
+// Both tunable via env; the defaults suit a large catalog.
+const AUTO_SWEEP_OVER = Number(process.env.SWEEP_AUTO_OVER) || 40;
+const AUTO_SWEEP_CHUNK = Number(process.env.SWEEP_CHUNK) || 12;
 
 function requireEnv(name) {
   const v = process.env[name];
@@ -350,30 +358,36 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: onlyParam =
   FEATURE_DRAFT = resolveFlag(process.env.FEATURE_DRAFT, settings.draft);
   FEATURE_WAITLIST = resolveFlag(process.env.FEATURE_WAITLIST, settings.waitlist);
 
-  // Rotating mini-sweep: sort the next `chunk` collections from a saved cursor,
-  // wrapping around. Lets a big store (where a full sweep times out) still get
-  // every collection re-checked over several small, fast runs — catching manual
-  // reorders and quiet collections. Treated like a targeted run below (skips the
-  // full-store notify/restock phases and the store-wide soldOut overwrite).
+  // Rotating sweep: sort a bounded slice of collections from a saved cursor,
+  // wrapping around, so a store too big for a single full sweep (60s Vercel
+  // limit) still gets every collection re-checked over several small, fast runs.
+  // Auto-enabled past AUTO_SWEEP_OVER collections; an explicit `chunk` also forces
+  // it. A swept run is treated like a targeted run below (skips the full-store
+  // notify diff and the store-wide soldOut overwrite).
   let sweepNextCursor = null;
-  if (chunk && (!only || !only.length)) {
-    const all = await resolveHandles();
-    if (all.length) {
+  let allHandles = null;
+  if (!only || !only.length) {
+    allHandles = await resolveHandles();
+    const effectiveChunk = chunk || (allHandles.length > AUTO_SWEEP_OVER ? AUTO_SWEEP_CHUNK : 0);
+    if (effectiveChunk && allHandles.length) {
       const st = await loadState().catch(() => ({}));
-      const start = Number.isInteger(st.sweepCursor)
-        ? ((st.sweepCursor % all.length) + all.length) % all.length
-        : 0;
-      const n = Math.min(chunk, all.length);
-      only = [];
-      for (let i = 0; i < n; i++) only.push(all[(start + i) % all.length]);
-      sweepNextCursor = (start + n) % all.length;
-      console.log(`Rotating sweep: collections ${start}..${start + n - 1} of ${all.length}`);
+      const { batch, nextCursor } = sweepBatch(allHandles, st.sweepCursor, effectiveChunk);
+      only = batch;
+      sweepNextCursor = nextCursor;
+      console.log(`Rotating sweep: ${batch.length} of ${allHandles.length} collections (cursor -> ${nextCursor})`);
+      // Persist the advanced cursor NOW, before sorting — so if this run is cut
+      // short at the 60s limit, the NEXT run moves on to the following slice
+      // instead of retrying this one forever.
+      if (!DRY_RUN) {
+        try { st.sweepCursor = nextCursor; await saveState(st); }
+        catch (e) { console.error('sweep cursor persist failed:', e.message); }
+      }
     }
   }
 
-  // `only` (from the webhook) restricts to specific collections; otherwise
-  // COLLECTION_HANDLES empty or "all" => auto-discover every collection.
-  const handles = only && only.length ? only : await resolveHandles();
+  // `only` (from the webhook or a sweep) restricts the run; otherwise process
+  // every discovered collection (reusing the handles already resolved above).
+  const handles = only && only.length ? only : (allHandles ?? await resolveHandles());
   if (!handles.length) {
     console.warn('No collections found to process.');
     return { ok: true, collections: 0, failures: 0, features: 'nothing', soldOut: 0 };
