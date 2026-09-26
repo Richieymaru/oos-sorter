@@ -2,7 +2,7 @@ import { loadSettings } from '../settings.mjs';
 import { loadState } from '../state.mjs';
 import { loadMonitorState } from '../monitor-state.mjs';
 import { recentActivity } from '../monitor.mjs';
-import { loadMonitorLog, monitorTag } from '../monitor-log.mjs';
+import { loadMonitorLog, monitorTag, fetchSheetActivity } from '../monitor-log.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
   shell, setPageHeaders, statCard, badge, activityFeed,
@@ -31,28 +31,34 @@ export default async function handler(req, res) {
       loadMonitorState().catch(() => ({ titles: {} })),
     ]);
     if (settings.monitor) {
-      // Prefer our persisted monitor log — it carries the same rich info as the
-      // Slack/Sheet notify (from → to status, stock, who). Fall back to Shopify's
-      // live event log until the persisted log has filled with new events.
-      const logged = await loadMonitorLog().catch(() => []);
-      if (logged.length) {
-        const shop = process.env.SHOP_DOMAIN;
-        activity = logged.slice(0, 18).map((r) => {
-          const { label, tone } = monitorTag(r.f, r.to);
-          return {
-            type: r.ty,
-            title: r.t,
-            href: r.h && shop ? `https://${shop}/${r.p || 'products'}/${r.h}` : null,
-            who: r.w,
-            iso: r.ts,
-            label,
-            tone,
-            stock: r.s,
-          };
-        });
-      } else {
-        activity = await recentActivity(18, monitor.titles || {}).catch(() => []);
+      // Prefer the Google Sheet — it holds the FULL rich history (old AND new),
+      // the same data the merchant sees in the Sheet/Slack. Fall back to the
+      // in-app metafield log, then to Shopify's bare live event log.
+      let items = settings.sheetWebhook
+        ? await fetchSheetActivity(settings.sheetWebhook, 18).catch(() => null)
+        : null;
+      if (!items || !items.length) {
+        const logged = await loadMonitorLog().catch(() => []);
+        if (logged.length) {
+          const shop = process.env.SHOP_DOMAIN;
+          items = logged.slice(0, 18).map((r) => {
+            const { label, tone } = monitorTag(r.f, r.to);
+            return {
+              type: r.ty,
+              title: r.t,
+              href: r.h && shop ? `https://${shop}/${r.p || 'products'}/${r.h}` : null,
+              who: r.w,
+              iso: r.ts,
+              label,
+              tone,
+              stock: r.s,
+            };
+          });
+        } else {
+          items = await recentActivity(18, monitor.titles || {}).catch(() => []);
+        }
       }
+      activity = items;
     } else {
       activity = [];
     }

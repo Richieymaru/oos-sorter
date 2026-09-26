@@ -38,11 +38,35 @@ function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
   var d = JSON.parse(e.postData.contents);
   sheet.appendRow([d.timestamp, d.product, d.url, d.from, d.to, d.who, d.stock]);
-  return ContentService
-    .createTextOutput(JSON.stringify({ ok: true }))
-    .setMimeType(ContentService.MimeType.JSON);
+  return json({ ok: true });
+}
+
+// Lets the app's Dashboard read the recent rows back, so "Recent activity" shows
+// your full history (old + new) with the same rich info as the Sheet/Slack.
+function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var last = sheet.getLastRow();
+  if (last < 1) return json([]);
+  var limit = Math.min(parseInt((e && e.parameter && e.parameter.limit) || '30', 10) || 30, 200);
+  var firstData = String(sheet.getRange(1, 1).getValue()).toLowerCase() === 'timestamp' ? 2 : 1;
+  var start = Math.max(firstData, last - limit + 1);
+  var n = last - start + 1;
+  if (n <= 0) return json([]);
+  var rows = sheet.getRange(start, 1, n, 7).getValues().map(function (r) {
+    return { timestamp: r[0], product: r[1], url: r[2], from: r[3], to: r[4], who: r[5], stock: r[6] };
+  }).reverse(); // newest first
+  return json(rows);
+}
+
+function json(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 ```
+
+> **Already set up the Sheet before?** Just open **Extensions → Apps Script**,
+> replace the file with the script above (it now has `doGet` too), then
+> **Deploy → Manage deployments → (edit, pencil) → Version: New version → Deploy**.
+> The Web App URL stays the same — no need to change it in Settings.
 
 ## 4. Register the webhook + seed the baseline (one time)
 

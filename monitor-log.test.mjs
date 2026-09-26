@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Pure tests for the monitor activity log. node monitor-log.test.mjs */
-import { monitorRow, appendMonitorLog, monitorTag } from './monitor-log.mjs';
+import { monitorRow, appendMonitorLog, monitorTag, sheetRowToActivity } from './monitor-log.mjs';
 
 let failures = 0, checks = 0;
 function ok(label, cond) { checks++; if (!cond) { failures++; console.error(`FAIL ${label}`); } else console.log(`  ok  ${label}`); }
@@ -27,6 +27,14 @@ ok('active -> draft reads as a warning', eq(monitorTag('Active', 'Draft'), { lab
 ok('create drops the placeholder from-label', eq(monitorTag('—', 'Added (Active)'), { label: 'Added (Active)', tone: 'pos' }));
 ok('delete is danger', eq(monitorTag('existed', 'Deleted'), { label: 'Deleted', tone: 'danger' }));
 ok('collection added is positive', monitorTag('—', 'Collection added').tone === 'pos');
+
+console.log('\n--- sheetRowToActivity ---');
+const a = sheetRowToActivity({ timestamp: '2026-09-25T03:00:00Z', product: 'John Wick Bundle', url: 'https://gel-ball-undercover.myshopify.com/products/john-wick', from: 'Draft', to: 'Active', who: 'Nick Power', stock: 5 });
+ok('maps a product row to a feed item', a.type === 'Product' && a.title === 'John Wick Bundle' && a.label === 'Draft → Active' && a.tone === 'pos' && a.stock === 5 && a.who === 'Nick Power' && a.iso === '2026-09-25T03:00:00Z' && a.href.includes('/products/john-wick'));
+const c = sheetRowToActivity({ url: 'https://x/collections/sale', product: 'Sale', from: '—', to: 'Collection added', who: 'Joshua', stock: '' });
+ok('infers collection from the url + null stock', c.type === 'Collection' && c.stock === null && c.tone === 'pos');
+ok('numeric-string stock becomes a number', sheetRowToActivity({ stock: '12', to: 'Active' }).stock === 12);
+ok('empty row is safe', sheetRowToActivity({}).type === 'Product' && sheetRowToActivity({}).stock === null);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
