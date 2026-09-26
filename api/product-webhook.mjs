@@ -64,27 +64,12 @@ export default async function handler(req, res) {
     }
 
     // Fan-out helper: post to the monitor's Slack + the Sheet (each optional).
-    const emit = async ({ title, handle, path, fromLabel, toLabel, action, who, stock }) => {
-      const at = new Date().toISOString();
-      const slack = await notifySlackMonitorEvent({
-        webhookUrl: settings.monitorSlackWebhook, title, handle, path, action, who, stock,
-      });
-      const sheet = await appendToSheet(
-        settings.sheetWebhook,
-        buildSheetRow({ at, title, handle, path, fromLabel, toLabel, who, stock, shop: process.env.SHOP_DOMAIN })
-      );
-      // Persist the same rich event for the in-app dashboard feed. Best-effort —
-      // never let a log write break the Slack/Sheet notify or the webhook reply.
-      try {
-        await recordMonitorEvent({
-          at, type: path === 'collections' ? 'Collection' : 'Product',
-          title, handle, path, fromLabel, toLabel, who, stock,
-        });
-      } catch (e) {
-        console.error('monitor log write failed:', e.message);
-      }
-      return { slack, sheet };
-    };
+    // Alerting now runs on the 5-min event-log poll (monitor-poll.mjs), which
+    // CONSOLIDATES a whole change-burst (status + channel/market exclusions) into
+    // one entry — the webhook can't see publication changes and would only ever
+    // emit the status half. So this webhook no longer emits; it just keeps the
+    // title/status baseline fresh below so the poll can name deletes.
+    const emit = async () => ({ skipped: true });
 
     // ---- COLLECTIONS ----
     if (topic === 'collections/create' || topic === 'collections/delete') {
