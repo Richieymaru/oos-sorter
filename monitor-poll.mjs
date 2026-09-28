@@ -12,7 +12,7 @@
  * "nothing logged", never to a crash. Pure core is unit-tested (monitor-poll.test.mjs).
  */
 import { gql } from './shopify.mjs';
-import { loadMonitorState, saveMonitorState } from './monitor-state.mjs';
+import { loadMonitorState, loadMonitorCursor, saveMonitorCursor } from './monitor-state.mjs';
 import { notifySlackMonitorEvent } from './slack.mjs';
 import { appendToSheet, buildSheetRow } from './monitor.mjs';
 import { recordMonitorEvent } from './monitor-log.mjs';
@@ -92,16 +92,50 @@ export function burstSummary(c) {
   return { label, tone };
 }
 
+/** The numeric part of an event gid ("gid://shopify/BasicEvent/123" -> "123"), or null. */
+export function eventNumId(gid) {
+  const n = String(gid || '').split('/').pop();
+  return /^\d+$/.test(n) ? n : null;
+}
+
+/**
+ * Keep only events whose id is strictly greater than `lastEventId` — the real
+ * dedupe. Event ids are monotonic by creation, so this reports each event once
+ * regardless of how the created_at query boundary behaves (the old timestamp-only
+ * cursor re-emitted the newest event every run). Compared as BigInt: ids can
+ * exceed Number.MAX_SAFE_INTEGER. A null cursor lets everything through (the
+ * caller establishes a baseline on the very first run instead).
+ */
+export function newerThan(events, lastEventId) {
+  const last = lastEventId ? BigInt(lastEventId) : 0n;
+  return (Array.isArray(events) ? events : []).filter((e) => {
+    const n = eventNumId(e && e.id);
+    return n != null && BigInt(n) > last;
+  });
+}
+
+/** The furthest-along cursor over a batch: the max event id (numeric) + max createdAt. */
+export function maxCursor(events) {
+  let id = 0n;
+  let at = null;
+  for (const e of (Array.isArray(events) ? events : [])) {
+    const n = eventNumId(e && e.id);
+    if (n != null && BigInt(n) > id) id = BigInt(n);
+    if (e && e.createdAt && (!at || e.createdAt > at)) at = e.createdAt;
+  }
+  return { lastEventId: id > 0n ? id.toString() : null, lastEventAt: at };
+}
+
 /* ---- I/O + orchestration ---- */
 
-/** Product/collection events newer than `sinceISO`, oldest-first. */
+/** Product/collection events newer than `sinceISO`, oldest-first (includes id). */
 export async function pollShopEvents(sinceISO, limit = 100) {
   const q = `(subject_type:PRODUCT OR subject_type:COLLECTION) AND created_at:>'${sinceISO}'`;
   const d = await gql(
     `query($q: String!, $n: Int!) {
        events(first: $n, sortKey: CREATED_AT, reverse: false, query: $q) {
          nodes { ... on BasicEvent {
-           action message author createdAt subjectType subjectId
+           id action message author createdAt subjectType subjectId
            subject { __typename ... on Product { title handle } ... on Collection { title handle } }
          } }
        }
@@ -112,18 +146,41 @@ export async function pollShopEvents(sinceISO, limit = 100) {
 }
 
 /**
- * Poll the event log, consolidate new bursts, and emit each. Advances a cursor
- * (lastEventAt in oos_sort.monitor) so each event is reported once. Full runs only.
- * @returns {Promise<{emitted:number}>}
+ * Poll the event log, consolidate new bursts, and emit each exactly once.
+ *
+ * Dedupe is by event id, tracked in a DEDICATED cursor metafield
+ * (oos_sort.mon_cursor) that only this poll writes — so the product webhook,
+ * which writes oos_sort.monitor (statuses/titles) on every product edit, can no
+ * longer clobber the cursor and make the poll replay events. The created_at
+ * window is only a coarse fetch bound (backed off 2 min so a boundary event is
+ * never missed); `newerThan` by id is what guarantees "report once".
+ *
+ * First run (no cursor yet): establish a baseline and emit NOTHING, so deploying
+ * this never replays history — and it immediately stops any in-progress storm.
+ * @returns {Promise<{emitted:number, baseline?:boolean}>}
  */
 export async function runMonitorPoll(settings, { dryRun = false } = {}) {
-  const state = await loadMonitorState().catch(() => ({ titles: {} }));
-  // First ever run: only look back an hour, so we don't dump the whole history.
-  const since = state.lastEventAt || new Date(Date.now() - 3600000).toISOString();
+  const cur = await loadMonitorCursor().catch(() => ({ lastEventId: null, lastEventAt: null }));
+
+  const backoffMs = 2 * 60 * 1000; // overlap the window; id dedupe removes the overlap
+  const sinceMs = cur.lastEventAt ? Date.parse(cur.lastEventAt) - backoffMs : Date.now() - 3600000;
+  const since = new Date(sinceMs).toISOString();
   const raw = await pollShopEvents(since, 100);
   if (!raw.length) return { emitted: 0 };
 
-  const events = raw.map((n) => ({
+  // No cursor yet -> record where we are and emit nothing (no history replay).
+  if (!cur.lastEventId) {
+    if (!dryRun) await saveMonitorCursor(maxCursor(raw));
+    return { emitted: 0, baseline: true };
+  }
+
+  // The dedupe: only events we haven't already reported.
+  const fresh = newerThan(raw, cur.lastEventId);
+  // Advance the cursor over ALL fetched events (even skipped/'other' ones), so
+  // the next poll's window + id filter never re-scans them.
+  const nextCursor = maxCursor(raw);
+
+  const events = fresh.map((n) => ({
     subjectId: String(n.subjectId || '').split('/').pop(),
     type: n.subjectType === 'COLLECTION' ? 'Collection' : 'Product',
     title: n.subject?.title || null,
@@ -134,6 +191,7 @@ export async function runMonitorPoll(settings, { dryRun = false } = {}) {
     classified: classifyEvent(n.action, n.message),
   }));
 
+  const state = await loadMonitorState().catch(() => ({ titles: {} }));
   const shop = process.env.SHOP_DOMAIN;
   const titles = state.titles || {};
   let emitted = 0;
@@ -160,10 +218,8 @@ export async function runMonitorPoll(settings, { dryRun = false } = {}) {
     emitted++;
   }
 
-  const newest = raw.reduce((mx, n) => (n.createdAt > mx ? n.createdAt : mx), since);
-  if (!dryRun && newest !== state.lastEventAt) {
-    state.lastEventAt = newest;
-    await saveMonitorState(state);
-  }
+  // Advance the dedicated cursor over ALL fetched events (its own metafield, so
+  // the webhook can't reset it). Even a run that emitted nothing moves it forward.
+  if (!dryRun && nextCursor.lastEventId) await saveMonitorCursor(nextCursor);
   return { emitted };
 }
