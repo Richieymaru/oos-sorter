@@ -29,13 +29,17 @@ const JOURNEY_FIELDS = `
     firstVisit { source referrerUrl landingPage }
   }`;
 
-const ordersQuery = (fields) => `query Orders($n: Int!) {
-  orders(first: $n, sortKey: CREATED_AT, reverse: true) {
+const ordersQuery = (fields) => `query Orders($n: Int!, $q: String!, $c: String) {
+  orders(first: $n, after: $c, sortKey: CREATED_AT, reverse: true, query: $q) {
+    pageInfo { hasNextPage endCursor }
     nodes { ${fields} }
   }
 }`;
 
 const isDenied = (err) => /ACCESS_DENIED/i.test(String(err && err.message));
+
+/** ISO timestamp `days` ago, for a `created_at:>=` search filter. */
+const sinceISO = (days) => new Date(Date.now() - days * 86400000).toISOString();
 
 /** Normalise one raw order node into a flat, framework-free shape. */
 export function normalizeOrder(n) {
@@ -60,25 +64,89 @@ export function normalizeOrder(n) {
 }
 
 /**
- * Fetch recent orders, newest first. Returns
- *   { orders, tier: 'full' | 'base' | 'none', denied }
+ * Fetch orders from the last `days` (default 30), newest first, paginating up to
+ * `maxPages`. A fixed date window (not "last N orders") so the whole Funnels page
+ * has one clear, consistent time frame. Returns
+ *   { orders, tier: 'full'|'base'|'none', denied, days, since }
  * - 'full': journey/traffic-source data present (protected data granted)
  * - 'base': read_orders works, but protected data is off (no journey)
  * - 'none': read_orders not granted yet (empty orders)
  */
-export async function fetchOrders({ limit = 250 } = {}) {
+export async function fetchOrders({ days = 30, pageSize = 250, maxPages = 4 } = {}) {
+  const since = sinceISO(days);
+  const q = `created_at:>='${since}'`;
+  async function run(fields) {
+    const out = [];
+    let cursor = null;
+    let pages = 0;
+    do {
+      const d = await gql(ordersQuery(fields), { n: pageSize, q, c: cursor });
+      out.push(...(d.orders?.nodes || []).map(normalizeOrder));
+      cursor = d.orders?.pageInfo?.hasNextPage ? d.orders.pageInfo.endCursor : null;
+      pages += 1;
+    } while (cursor && pages < maxPages);
+    return out;
+  }
   try {
-    const d = await gql(ordersQuery(BASE_FIELDS + JOURNEY_FIELDS), { n: limit });
-    return { orders: (d.orders?.nodes || []).map(normalizeOrder), tier: 'full', denied: false };
+    return { orders: await run(BASE_FIELDS + JOURNEY_FIELDS), tier: 'full', denied: false, days, since };
   } catch (e) {
     if (!isDenied(e)) throw e;
-    // Protected customer data likely off — try the base fields read_orders allows.
     try {
-      const d = await gql(ordersQuery(BASE_FIELDS), { n: limit });
-      return { orders: (d.orders?.nodes || []).map(normalizeOrder), tier: 'base', denied: true };
+      return { orders: await run(BASE_FIELDS), tier: 'base', denied: true, days, since };
     } catch (e2) {
-      if (isDenied(e2)) return { orders: [], tier: 'none', denied: true };
+      if (isDenied(e2)) return { orders: [], tier: 'none', denied: true, days, since };
       throw e2;
     }
+  }
+}
+
+const ABANDONED_FIELDS = `
+  createdAt
+  totalPriceSet { shopMoney { amount currencyCode } }
+  lineItems(first: 5) { nodes { title quantity } }`;
+
+/** Normalise an abandoned-checkout node (same flat shape as an order, no journey). */
+export function normalizeAbandoned(n) {
+  const money = n.totalPriceSet?.shopMoney || {};
+  return {
+    createdAt: n.createdAt || null,
+    amount: Number(money.amount || 0),
+    currency: money.currencyCode || null,
+    items: (n.lineItems?.nodes || []).map((li) => ({ title: li.title || '(untitled)', qty: Number(li.quantity || 0) })),
+  };
+}
+
+/**
+ * Abandoned checkouts (reached checkout, didn't complete) in the last `days`.
+ * read_orders covers this. Returns { abandoned, count, denied, days, since }.
+ * `count` is Shopify's exact total for the window; `abandoned` is the fetched
+ * sample (up to maxPages) used to see WHICH products get abandoned.
+ */
+export async function fetchAbandonedCheckouts({ days = 30, pageSize = 250, maxPages = 4 } = {}) {
+  const since = sinceISO(days);
+  const q = `created_at:>='${since}'`;
+  const query = `query($n: Int!, $q: String!, $c: String) {
+    abandonedCheckoutsCount(query: $q) { count }
+    abandonedCheckouts(first: $n, after: $c, sortKey: CREATED_AT, reverse: true, query: $q) {
+      pageInfo { hasNextPage endCursor }
+      nodes { ${ABANDONED_FIELDS} }
+    }
+  }`;
+  try {
+    const out = [];
+    let cursor = null;
+    let pages = 0;
+    let count = 0;
+    do {
+      const d = await gql(query, { n: pageSize, q, c: cursor });
+      count = d.abandonedCheckoutsCount?.count ?? count;
+      out.push(...(d.abandonedCheckouts?.nodes || []).map(normalizeAbandoned));
+      cursor = d.abandonedCheckouts?.pageInfo?.hasNextPage ? d.abandonedCheckouts.pageInfo.endCursor : null;
+      pages += 1;
+    } while (cursor && pages < maxPages);
+    return { abandoned: out, count, denied: false, days, since };
+  } catch (e) {
+    if (isDenied(e)) return { abandoned: [], count: 0, denied: true, days, since };
+    throw e;
   }
 }

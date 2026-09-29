@@ -138,6 +138,72 @@ export function analyzeFunnels(orders, { tier = 'full', days = 14, now = Date.no
   };
 }
 
+/**
+ * The checkout drop-off funnel from orders + abandoned checkouts (both same
+ * window). "Reached checkout" = completed orders + abandoned checkouts; the gap
+ * between reached and completed is where money is lost. `abandonedCount` is
+ * Shopify's exact total; `abandoned` is the sampled records (to see WHICH
+ * products get abandoned). Pure.
+ */
+export function analyzeCheckout(orders, abandoned, abandonedCount, { currency } = {}) {
+  const completed = Array.isArray(orders) ? orders.length : 0;
+  const abandonedN = Number.isFinite(abandonedCount) ? abandonedCount : (Array.isArray(abandoned) ? abandoned.length : 0);
+  const reached = completed + abandonedN;
+  const cur = currency
+    || (abandoned || []).find((a) => a.currency)?.currency
+    || (orders || []).find((o) => o.currency)?.currency
+    || 'USD';
+  const valueLost = round2((abandoned || []).reduce((s, a) => s + a.amount, 0));
+  // Which products sit in abandoned carts most often — the "why they hesitate" hint.
+  const map = new Map();
+  for (const a of (abandoned || [])) {
+    for (const li of (a.items || [])) {
+      if (!map.has(li.title)) map.set(li.title, { title: li.title, units: 0, checkouts: 0 });
+      const p = map.get(li.title);
+      p.units += li.qty;
+      p.checkouts += 1;
+    }
+  }
+  const topAbandoned = [...map.values()].sort((a, b) => b.checkouts - a.checkouts || b.units - a.units).slice(0, 6);
+  return {
+    completed,
+    abandoned: abandonedN,
+    reached,
+    completionRate: pct(completed, reached),
+    abandonRate: pct(abandonedN, reached),
+    valueLost,
+    currency: cur,
+    topAbandoned,
+    sampled: (abandoned || []).length, // how many abandoned records we actually inspected
+  };
+}
+
+/** "Where to focus" lines for the checkout funnel, ranked most-actionable first. Pure. */
+export function checkoutInsights(c) {
+  const out = [];
+  if (!c || !c.reached) return out;
+  if (c.abandoned > 0) {
+    out.push({
+      tone: c.abandonRate >= 70 ? 'danger' : 'warn',
+      text: `${c.abandonRate}% of shoppers who reached checkout didn't finish — about ${c.currency} ${c.valueLost} left in abandoned carts. This is your biggest, most fixable leak.`,
+    });
+    out.push({
+      tone: 'neutral',
+      text: `Fastest wins for checkout drop-off: show shipping cost earlier, offer express/Shop Pay, and turn on an abandoned-cart email (Shopify → Marketing → Automations) to recover a slice automatically.`,
+    });
+    if (c.topAbandoned.length) {
+      const p = c.topAbandoned[0];
+      out.push({
+        tone: 'neutral',
+        text: `Most-abandoned item: “${p.title}” (in ${p.checkouts} abandoned checkout${p.checkouts === 1 ? '' : 's'}). Check its price, shipping and stock — friction on a popular item costs the most.`,
+      });
+    }
+  } else {
+    out.push({ tone: 'pos', text: `No abandoned checkouts in this window — shoppers who reach checkout are completing. Focus effort higher up (traffic and add-to-cart).` });
+  }
+  return out;
+}
+
 /** A few plain-English "where to focus" lines, ranked. Pure. */
 export function buildInsights(a) {
   const out = [];
