@@ -11,8 +11,8 @@ import {
 } from '../ui.mjs';
 import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
-import { fetchOrders } from '../orders.mjs';
-import { analyzeFunnels } from '../funnels.mjs';
+import { fetchOrders, fetchAbandonedCheckouts } from '../orders.mjs';
+import { analyzeFunnels, analyzeCheckout, checkoutInsights } from '../funnels.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -73,11 +73,17 @@ export default async function handler(req, res) {
   if (param(req, 'view') === 'funnels') {
     let body;
     try {
-      const { orders, tier } = await fetchOrders({ limit: 250 });
-      const analysis = analyzeFunnels(orders, { tier });
-      body = funnelsBody({ analysis });
+      const days = 30;
+      const [ordRes, abRes] = await Promise.all([
+        fetchOrders({ days }),
+        fetchAbandonedCheckouts({ days }).catch(() => ({ abandoned: [], count: 0 })),
+      ]);
+      const analysis = analyzeFunnels(ordRes.orders, { tier: ordRes.tier, days });
+      const checkout = analyzeCheckout(ordRes.orders, abRes.abandoned, abRes.count, { currency: analysis.currency });
+      checkout.insights = checkoutInsights(checkout);
+      body = funnelsBody({ analysis, checkout, window: { days, since: ordRes.since } });
     } catch (e) {
-      console.error('funnels: order fetch failed —', e.message);
+      console.error('funnels: fetch failed —', e.message);
       body = funnelsBody({ error: 'Order data is temporarily unavailable. If this persists, check that read_orders is granted on the store.' });
     }
     setPageHeaders(res);

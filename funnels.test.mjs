@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Pure tests for funnel analytics. node funnels.test.mjs — no env, no network. */
-import { analyzeFunnels, channelLabel, hostOf, dailyTrend, topProducts, buildInsights } from './funnels.mjs';
-import { normalizeOrder } from './orders.mjs';
+import { analyzeFunnels, channelLabel, hostOf, dailyTrend, topProducts, buildInsights, analyzeCheckout, checkoutInsights } from './funnels.mjs';
+import { normalizeOrder, normalizeAbandoned } from './orders.mjs';
 
 let failures = 0, checks = 0;
 function ok(label, cond) { checks++; if (!cond) { failures++; console.error(`FAIL ${label}`); } else console.log(`  ok  ${label}`); }
@@ -84,6 +84,36 @@ console.log('\n--- empty / none tier is safe ---');
 const empty = analyzeFunnels([], { tier: 'none', now: NOW });
 ok('no orders -> zeros, no crash', empty.totalOrders === 0 && empty.totalRevenue === 0 && empty.insights.length === 0);
 ok('empty trend still 14 days', empty.trend.length === 14);
+
+console.log('\n--- normalizeAbandoned ---');
+const ab = normalizeAbandoned({ createdAt: '2026-09-20T00:00:00Z', totalPriceSet: { shopMoney: { amount: '80.00', currencyCode: 'AUD' } }, lineItems: { nodes: [{ title: 'Gel Blaster', quantity: 1 }] } });
+ok('amount parsed', ab.amount === 80 && ab.currency === 'AUD');
+ok('items mapped', ab.items[0].title === 'Gel Blaster');
+
+console.log('\n--- analyzeCheckout (drop-off funnel) ---');
+const compl = [order({ amount: 100 }), order({ amount: 200 }), order({ amount: 150 })]; // 3 completed
+const aband = [
+  { createdAt: iso(1), amount: 90, currency: 'AUD', items: [{ title: 'Gel Blaster', qty: 1 }] },
+  { createdAt: iso(2), amount: 60, currency: 'AUD', items: [{ title: 'Gel Blaster', qty: 1 }, { title: 'Ammo', qty: 2 }] },
+];
+const co = analyzeCheckout(compl, aband, 2, { currency: 'AUD' });
+ok('completed = 3', co.completed === 3);
+ok('abandoned = 2 (uses exact count)', co.abandoned === 2);
+ok('reached checkout = 5', co.reached === 5);
+ok('completion rate = 60%', co.completionRate === 60);
+ok('abandon rate = 40%', co.abandonRate === 40);
+ok('value lost summed', co.valueLost === 150);
+ok('top abandoned = Gel Blaster (2 checkouts)', co.topAbandoned[0].title === 'Gel Blaster' && co.topAbandoned[0].checkouts === 2);
+ok('exact count overrides sampled length', analyzeCheckout(compl, aband, 57, { currency: 'AUD' }).abandoned === 57);
+const coEmpty = analyzeCheckout([], [], 0, {});
+ok('no data -> zeros, no divide-by-zero', coEmpty.reached === 0 && coEmpty.completionRate === 0);
+
+console.log('\n--- checkoutInsights ---');
+ok('flags the leak with value', checkoutInsights(co).some((i) => /didn.t finish/.test(i.text) && /150/.test(i.text)));
+ok('high abandon rate is danger', checkoutInsights(analyzeCheckout([order({})], aband, 9, { currency: 'AUD' }))[0].tone === 'danger');
+ok('names most-abandoned product', checkoutInsights(co).some((i) => /Gel Blaster/.test(i.text)));
+ok('no abandoned -> positive', checkoutInsights(analyzeCheckout(compl, [], 0, {}))[0].tone === 'pos');
+ok('empty funnel -> no insights', checkoutInsights(coEmpty).length === 0);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

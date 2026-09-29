@@ -9,8 +9,8 @@ import { productsWithWaitlist } from './restock.mjs';
 import { loadNotified, deriveStats } from './notified.mjs';
 import { loadMonitorLog, monitorTag } from './monitor-log.mjs';
 import { fetchAllCollectionHandles } from './sort-oos.mjs';
-import { fetchOrders } from './orders.mjs';
-import { analyzeFunnels } from './funnels.mjs';
+import { fetchOrders, fetchAbandonedCheckouts } from './orders.mjs';
+import { analyzeFunnels, analyzeCheckout } from './funnels.mjs';
 import { askGemini } from './gemini.mjs';
 
 const SHOP = process.env.SHOP_DOMAIN;
@@ -35,7 +35,14 @@ export async function gatherContext() {
     productsWithWaitlist().catch(() => []),
     loadNotified().catch(() => []),
     loadMonitorLog().catch(() => []),
-    fetchOrders({ limit: 250 }).then((r) => analyzeFunnels(r.orders, { tier: r.tier })).catch(() => null),
+    Promise.all([
+      fetchOrders({ days: 30 }),
+      fetchAbandonedCheckouts({ days: 30 }).catch(() => ({ abandoned: [], count: 0 })),
+    ]).then(([o, ab]) => {
+      const f = analyzeFunnels(o.orders, { tier: o.tier, days: 30 });
+      f.checkout = analyzeCheckout(o.orders, ab.abandoned, ab.count, { currency: f.currency });
+      return f;
+    }).catch(() => null),
   ]);
   const on = (b) => (b ? 'ON' : 'off');
   const stats = deriveStats(notified);
@@ -74,6 +81,11 @@ function funnelSummary(f) {
     lines.push(`(Traffic-source data is off — protected customer data access not enabled yet.)`);
   }
   if (f.products.length) lines.push(`Best sellers: ${f.products.slice(0, 3).map((p) => `${p.title} (${p.units}u)`).join(', ')}.`);
+  const c = f.checkout;
+  if (c && c.reached) {
+    lines.push(`Checkout funnel: ${c.reached} reached checkout, ${c.completed} completed (${c.completionRate}%), ${c.abandoned} abandoned (${c.abandonRate}%) leaving ${c.currency} ${c.valueLost} in carts.`);
+    if (c.topAbandoned.length) lines.push(`Most-abandoned items: ${c.topAbandoned.slice(0, 3).map((p) => p.title).join(', ')}.`);
+  }
   return lines.join('\n');
 }
 

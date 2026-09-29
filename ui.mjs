@@ -546,9 +546,18 @@ function trendSpark(trend) {
  * analysis.tier drives what's shown: 'none' (no order access yet), 'base'
  * (revenue/channels/products), 'full' (+ traffic sources & funnel insights).
  */
+function rangeLabel(win) {
+  if (!win) return '';
+  const days = win.days || 30;
+  const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const since = win.since ? new Date(win.since) : null;
+  return since ? `Last ${days} days · ${fmt(since)} – ${fmt(new Date())}` : `Last ${days} days`;
+}
+
 export function funnelsBody(view) {
-  const { analysis: a, error } = view || {};
-  const head = `<div class="pagehead"><h1>Funnels</h1><p>Where your sales actually come from — channels, traffic sources, best sellers, and where to focus. Based on your recent orders.</p></div>`;
+  const { analysis: a, checkout, window: win, error } = view || {};
+  const range = rangeLabel(win);
+  const head = `<div class="pagehead"><h1>Funnels</h1><p>Where your sales come from and where shoppers drop off — channels, traffic sources, best sellers, checkout completion, and where to focus.</p>${range ? `<div class="fn-range">📅 ${esc(range)}</div>` : ''}</div>`;
 
   if (error) {
     return head + `<div class="card pad"><b>Couldn't load orders.</b><p class="muted" style="margin-top:6px">${esc(error)}</p></div>` + '';
@@ -565,17 +574,39 @@ export function funnelsBody(view) {
   }
 
   const cur = a.currency;
+  const days = (win && win.days) || 30;
   const cards = `<div class="grid c4">
-    ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `from ${a.totalOrders} recent orders`, tone: a.totalRevenue ? 'pos' : '' })}
-    ${statCard({ value: a.totalOrders, label: 'Orders', sub: 'most recent' })}
+    ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `${a.totalOrders} orders · last ${days} days`, tone: a.totalRevenue ? 'pos' : '' })}
+    ${statCard({ value: a.totalOrders, label: 'Orders', sub: 'completed & paid' })}
     ${statCard({ value: money(cur, a.aov), label: 'Avg order value', sub: 'per order' })}
-    ${statCard({ value: a.avgDaysToConvert == null ? '—' : a.avgDaysToConvert, label: 'Days to convert', sub: a.tier === 'full' ? 'first visit → purchase' : 'needs customer-data access' })}
+    ${checkout && checkout.reached
+      ? statCard({ value: `${checkout.completionRate}%`, label: 'Checkout completion', sub: `${checkout.abandoned} abandoned`, tone: checkout.completionRate >= 60 ? 'pos' : 'warn' })
+      : statCard({ value: a.avgDaysToConvert == null ? '—' : a.avgDaysToConvert, label: 'Days to convert', sub: a.tier === 'full' ? 'first visit → purchase' : 'needs customer-data access' })}
   </div>`;
 
-  const insights = a.insights && a.insights.length ? `<div class="card">
-    <div class="card-h"><h2>Where to focus</h2><span class="faint">from your recent orders</span></div>
+  // "Where to focus" — checkout leaks first (biggest lever), then order insights.
+  const focusList = [...((checkout && checkout.insights) || []), ...(a.insights || [])];
+  const insights = focusList.length ? `<div class="card">
+    <div class="card-h"><h2>Where to focus</h2><span class="faint">last ${days} days</span></div>
     <div class="pad" style="padding-top:12px;display:flex;flex-direction:column;gap:10px">
-      ${a.insights.map((i) => `<div class="fn-insight t-${esc(i.tone)}"><span class="fn-dot"></span><span>${esc(i.text)}</span></div>`).join('')}
+      ${focusList.map((i) => `<div class="fn-insight t-${esc(i.tone)}"><span class="fn-dot"></span><span>${esc(i.text)}</span></div>`).join('')}
+    </div></div>` : '';
+
+  // Checkout drop-off funnel: reached checkout -> completed, with the abandoned gap.
+  const checkoutCard = checkout && checkout.reached ? `<div class="card">
+    <div class="card-h"><h2>Checkout funnel</h2><span class="faint">reached checkout → completed</span></div>
+    <div class="pad" style="padding-top:16px">
+      <div class="fn-funnel">
+        <div class="fn-stage"><div class="fn-stage-top"><span>Reached checkout</span><b>${checkout.reached}</b></div><div class="fn-stage-bar"><span style="width:100%"></span></div></div>
+        <div class="fn-stage"><div class="fn-stage-top"><span>Completed the purchase</span><b>${checkout.completed} · ${checkout.completionRate}%</b></div><div class="fn-stage-bar"><span class="done" style="width:${Math.max(3, checkout.completionRate)}%"></span></div></div>
+      </div>
+      <div class="fn-leak">
+        <div><div class="fn-leak-n danger">${checkout.abandoned}</div><div class="fn-leak-l">abandoned (${checkout.abandonRate}%)</div></div>
+        <div><div class="fn-leak-n danger">${esc(money(checkout.currency, checkout.valueLost))}</div><div class="fn-leak-l">left in carts${checkout.sampled < checkout.abandoned ? ' (sampled)' : ''}</div></div>
+      </div>
+      ${checkout.topAbandoned && checkout.topAbandoned.length
+        ? `<div class="fn-aband-h">Most-abandoned items</div>` + checkout.topAbandoned.map((p) => `<div class="fn-prow"><span class="fn-pname">${esc(p.title)}</span><span class="fn-punits">${p.checkouts} checkout${p.checkouts === 1 ? '' : 's'}</span></div>`).join('')
+        : ''}
     </div></div>` : '';
 
   const trendCard = `<div class="card">
@@ -612,10 +643,22 @@ export function funnelsBody(view) {
 
   return head + baseNote + cards + `
     <div class="layout" style="margin-top:18px">
-      <div class="grid" style="gap:16px">${insights}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
+      <div class="grid" style="gap:16px">${insights}${checkoutCard}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
       <div class="grid" style="gap:16px">${trendCard}${productsCard}</div>
     </div>
     <style>
+      .fn-range{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:5px 11px;border-radius:999px}
+      .fn-funnel{display:flex;flex-direction:column;gap:12px}
+      .fn-stage-top{display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:5px}
+      .fn-stage-top b{font-variant-numeric:tabular-nums;color:var(--ink)}
+      .fn-stage-bar{height:26px;border-radius:8px;background:var(--line-2);overflow:hidden}
+      .fn-stage-bar span{display:block;height:100%;border-radius:8px;background:var(--accent-wash)}
+      .fn-stage-bar span.done{background:var(--accent)}
+      .fn-leak{display:flex;gap:28px;margin:18px 0 2px;padding:14px 16px;border-radius:12px;background:var(--hover);border:1px solid var(--line)}
+      .fn-leak-n{font-size:21px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+      .fn-leak-n.danger{color:var(--danger)}
+      .fn-leak-l{font-size:12px;color:var(--muted);margin-top:2px}
+      .fn-aband-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:18px 0 2px}
       .fn-bars{display:flex;flex-direction:column;gap:13px}
       .fn-bar-top{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:5px}
       .fn-bar-label{font-weight:560;color:var(--ink)}.fn-bar-val{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
