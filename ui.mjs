@@ -531,12 +531,12 @@ function barRows(rows, currency, { max = 6 } = {}) {
     </div>`).join('')}</div>`;
 }
 
-/** A tiny inline bar sparkline for the daily order trend. */
+/** A tiny inline bar sparkline for the order trend (day/week/month buckets). */
 function trendSpark(trend) {
   if (!trend || !trend.length) return '';
   const peak = Math.max(...trend.map((d) => d.orders), 1);
-  return `<div class="fn-spark" role="img" aria-label="Orders per day, last ${trend.length} days">${trend.map((d) => `
-    <span class="fn-spark-col" title="${esc(d.day)}: ${d.orders} order${d.orders === 1 ? '' : 's'}">
+  return `<div class="fn-spark" role="img" aria-label="Orders over time">${trend.map((d) => `
+    <span class="fn-spark-col" title="${esc(d.label)}: ${d.orders} order${d.orders === 1 ? '' : 's'}">
       <span class="fn-spark-bar" style="height:${Math.max(4, Math.round((d.orders / peak) * 100))}%"></span>
     </span>`).join('')}</div>`;
 }
@@ -546,18 +546,36 @@ function trendSpark(trend) {
  * analysis.tier drives what's shown: 'none' (no order access yet), 'base'
  * (revenue/channels/products), 'full' (+ traffic sources & funnel insights).
  */
+const FUNNEL_RANGES = [
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: '14d', label: '14 days' },
+  { key: '30d', label: '30 days' },
+  { key: '3mo', label: '3 months' },
+  { key: '6mo', label: '6 months' },
+  { key: '1y', label: '1 year' },
+];
+
 function rangeLabel(win) {
   if (!win) return '';
-  const days = win.days || 30;
   const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const since = win.since ? new Date(win.since) : null;
-  return since ? `Last ${days} days · ${fmt(since)} – ${fmt(new Date())}` : `Last ${days} days`;
+  const until = win.until ? new Date(win.until) : new Date();
+  return since ? `${win.label} · ${fmt(since)} – ${fmt(until)}` : (win.label || '');
+}
+
+/** Segmented date-range picker — each option links to /funnels?range=KEY. */
+function rangePicker(activeKey) {
+  return `<div class="fn-ranges" role="tablist" aria-label="Date range">${FUNNEL_RANGES.map((r) =>
+    `<a href="/funnels?range=${r.key}" class="fn-range-opt${r.key === activeKey ? ' on' : ''}" role="tab" aria-selected="${r.key === activeKey}">${esc(r.label)}</a>`
+  ).join('')}</div>`;
 }
 
 export function funnelsBody(view) {
   const { analysis: a, checkout, window: win, error } = view || {};
   const range = rangeLabel(win);
-  const head = `<div class="pagehead"><h1>Funnels</h1><p>Where your sales come from and where shoppers drop off — channels, traffic sources, best sellers, checkout completion, and where to focus.</p>${range ? `<div class="fn-range">📅 ${esc(range)}</div>` : ''}</div>`;
+  const picker = rangePicker((win && win.key) || '30d');
+  const head = `<div class="pagehead"><h1>Funnels</h1><p>Where your sales come from and where shoppers drop off — channels, traffic sources, best sellers, checkout completion, and where to focus.</p>${range ? `<div class="fn-range">📅 ${esc(range)}</div>` : ''}${picker}</div>`;
 
   if (error) {
     return head + `<div class="card pad"><b>Couldn't load orders.</b><p class="muted" style="margin-top:6px">${esc(error)}</p></div>` + '';
@@ -575,8 +593,9 @@ export function funnelsBody(view) {
 
   const cur = a.currency;
   const days = (win && win.days) || 30;
+  const rangeText = win ? win.label.toLowerCase() : `last ${days} days`;
   const cards = `<div class="grid c4">
-    ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `${a.totalOrders} orders · last ${days} days`, tone: a.totalRevenue ? 'pos' : '' })}
+    ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `${a.totalOrders} orders · ${rangeText}`, tone: a.totalRevenue ? 'pos' : '' })}
     ${statCard({ value: a.totalOrders, label: 'Orders', sub: 'completed & paid' })}
     ${statCard({ value: money(cur, a.aov), label: 'Avg order value', sub: 'per order' })}
     ${checkout && checkout.reached
@@ -587,7 +606,7 @@ export function funnelsBody(view) {
   // "Where to focus" — checkout leaks first (biggest lever), then order insights.
   const focusList = [...((checkout && checkout.insights) || []), ...(a.insights || [])];
   const insights = focusList.length ? `<div class="card">
-    <div class="card-h"><h2>Where to focus</h2><span class="faint">last ${days} days</span></div>
+    <div class="card-h"><h2>Where to focus</h2><span class="faint">${esc(rangeText)}</span></div>
     <div class="pad" style="padding-top:12px;display:flex;flex-direction:column;gap:10px">
       ${focusList.map((i) => `<div class="fn-insight t-${esc(i.tone)}"><span class="fn-dot"></span><span>${esc(i.text)}</span></div>`).join('')}
     </div></div>` : '';
@@ -609,8 +628,20 @@ export function funnelsBody(view) {
         : ''}
     </div></div>` : '';
 
+  // Per-cart abandoned list — each shopper's abandoned cart on its own.
+  const cartsList = checkout && checkout.carts && checkout.carts.length ? `<div class="card">
+    <div class="card-h"><h2>Abandoned carts</h2><span class="faint">each shopper's cart</span></div>
+    <div class="pad" style="padding-top:8px">
+      ${checkout.carts.slice(0, 15).map((k) => {
+        const when = k.at ? new Date(k.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+        const items = (k.items || []).map((li) => `${esc(li.title)}${li.qty > 1 ? ' ×' + li.qty : ''}`).join(', ');
+        return `<div class="fn-cart"><div class="fn-cart-top"><span class="fn-cart-when">${esc(when)}</span><span class="fn-cart-val">${esc(money(k.currency, k.amount))}</span></div><div class="fn-cart-items">${items || '<span class="faint">no items</span>'}</div></div>`;
+      }).join('')}
+      ${checkout.carts.length > 15 ? `<div class="faint" style="padding:11px 0 2px;font-size:12px">Showing the 15 most recent of ${checkout.abandoned} abandoned carts.</div>` : ''}
+    </div></div>` : '';
+
   const trendCard = `<div class="card">
-    <div class="card-h"><h2>Order trend</h2><span class="faint">orders / day</span></div>
+    <div class="card-h"><h2>Order trend</h2><span class="faint">orders / ${esc(a.trendUnit || 'day')}</span></div>
     <div class="pad" style="padding-top:16px">${trendSpark(a.trend)}</div></div>`;
 
   const channelsCard = `<div class="card">
@@ -643,11 +674,20 @@ export function funnelsBody(view) {
 
   return head + baseNote + cards + `
     <div class="layout" style="margin-top:18px">
-      <div class="grid" style="gap:16px">${insights}${checkoutCard}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
+      <div class="grid" style="gap:16px">${insights}${checkoutCard}${cartsList}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
       <div class="grid" style="gap:16px">${trendCard}${productsCard}</div>
     </div>
     <style>
       .fn-range{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:5px 11px;border-radius:999px}
+      .fn-ranges{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+      .fn-range-opt{font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);text-decoration:none;transition:background .15s,color .15s,border-color .15s}
+      .fn-range-opt:hover{background:var(--hover);color:var(--ink)}
+      .fn-range-opt.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+      .fn-cart{padding:11px 0;border-top:1px solid var(--line-2)}
+      .fn-cart:first-child{border-top:0}
+      .fn-cart-top{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:3px}
+      .fn-cart-when{color:var(--muted)}.fn-cart-val{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+      .fn-cart-items{font-size:13px;color:var(--ink);line-height:1.45}
       .fn-funnel{display:flex;flex-direction:column;gap:12px}
       .fn-stage-top{display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:5px}
       .fn-stage-top b{font-variant-numeric:tabular-nums;color:var(--ink)}

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Pure tests for funnel analytics. node funnels.test.mjs — no env, no network. */
-import { analyzeFunnels, channelLabel, hostOf, dailyTrend, topProducts, buildInsights, analyzeCheckout, checkoutInsights } from './funnels.mjs';
+import { analyzeFunnels, channelLabel, hostOf, dailyTrend, topProducts, buildInsights, analyzeCheckout, checkoutInsights, buildTrend, resolveRange, RANGES } from './funnels.mjs';
 import { normalizeOrder, normalizeAbandoned } from './orders.mjs';
 
 let failures = 0, checks = 0;
@@ -45,7 +45,8 @@ const orders = [
   order({ amount: 300, source: 'web', day: 1, items: [{ title: 'A', qty: 2 }, { title: 'B', qty: 1 }], journey: { source: 'facebook', referrer: 'https://l.facebook.com/y', landing: '/a', days: 0, moments: 1 } }),
   order({ amount: 50, source: 'pos', day: 2, items: [{ title: 'B', qty: 1 }], journey: { source: 'direct', referrer: null, landing: '/b', days: 5, moments: 9 } }),
 ];
-const a = analyzeFunnels(orders, { tier: 'full', now: NOW });
+const WIN = { since: iso(5), until: iso(-1) };
+const a = analyzeFunnels(orders, { tier: 'full', ...WIN });
 ok('total orders', a.totalOrders === 3);
 ok('total revenue', a.totalRevenue === 450);
 ok('AOV', a.aov === 150);
@@ -57,7 +58,7 @@ ok('referrers grouped by host', a.referrers[0].label === 'l.facebook.com' && a.r
 ok('avg days to convert', a.avgDaysToConvert === Math.round(((2 + 0 + 5) / 3) * 100) / 100);
 
 console.log('\n--- tier=base hides journey-derived data ---');
-const base = analyzeFunnels(orders, { tier: 'base', now: NOW });
+const base = analyzeFunnels(orders, { tier: 'base', ...WIN });
 ok('base tier: no traffic sources', base.trafficSources.length === 0);
 ok('base tier: no referrers', base.referrers.length === 0);
 ok('base tier: still has revenue + channels', base.totalRevenue === 450 && base.channels.length === 2);
@@ -81,9 +82,10 @@ ok('insights generated for real data', a.insights.length >= 2);
 ok('concentrated source flagged warn', a.insights.some((i) => i.tone === 'warn' && /%/.test(i.text)));
 
 console.log('\n--- empty / none tier is safe ---');
-const empty = analyzeFunnels([], { tier: 'none', now: NOW });
+const empty = analyzeFunnels([], { tier: 'none', ...WIN });
 ok('no orders -> zeros, no crash', empty.totalOrders === 0 && empty.totalRevenue === 0 && empty.insights.length === 0);
-ok('empty trend still 14 days', empty.trend.length === 14);
+ok('empty trend zero-filled over the window (daily)', empty.trend.length >= 6 && empty.trend.every((p) => p.orders === 0));
+ok('trend unit is day for a short window', a.trendUnit === 'day');
 
 console.log('\n--- normalizeAbandoned ---');
 const ab = normalizeAbandoned({ createdAt: '2026-09-20T00:00:00Z', totalPriceSet: { shopMoney: { amount: '80.00', currencyCode: 'AUD' } }, lineItems: { nodes: [{ title: 'Gel Blaster', quantity: 1 }] } });
@@ -114,6 +116,27 @@ ok('high abandon rate is danger', checkoutInsights(analyzeCheckout([order({})], 
 ok('names most-abandoned product', checkoutInsights(co).some((i) => /Gel Blaster/.test(i.text)));
 ok('no abandoned -> positive', checkoutInsights(analyzeCheckout(compl, [], 0, {}))[0].tone === 'pos');
 ok('empty funnel -> no insights', checkoutInsights(coEmpty).length === 0);
+
+console.log('\n--- resolveRange ---');
+ok('has 7 selectable ranges', RANGES.length === 7);
+ok('30d default for unknown key', resolveRange('zzz').key === '30d' && resolveRange('zzz').days === 30);
+ok('today = 1 day, no until offset into future', resolveRange('today').days === 1);
+ok('yesterday has an until bound', !!resolveRange('yesterday').until);
+ok('1y ≈ 365 days', resolveRange('1y').days === 365);
+ok('since is before until/now', new Date(resolveRange('3mo').since) < new Date());
+
+console.log('\n--- buildTrend adaptive granularity ---');
+const dayT = buildTrend([{ createdAt: iso(1), amount: 50 }, { createdAt: iso(1), amount: 50 }], iso(10), iso(-1));
+ok('short window -> daily unit', dayT.unit === 'day');
+ok('daily buckets zero-filled + a populated day', dayT.points.length >= 10 && dayT.points.some((p) => p.orders === 2 && p.revenue === 100));
+const wkT = buildTrend([], iso(120), iso(-1));
+ok('~4 month window -> weekly unit', wkT.unit === 'week');
+const moT = buildTrend([], iso(300), iso(-1));
+ok('~10 month window -> monthly unit', moT.unit === 'month' && moT.points.length >= 6);
+
+console.log('\n--- analyzeCheckout carts (per-cart list) ---');
+ok('carts carry each abandoned cart with its items', co.carts.length === 2 && co.carts[0].items.length >= 1);
+ok('cart has value + date', co.carts.every((k) => k.amount != null && k.at));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

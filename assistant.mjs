@@ -36,10 +36,10 @@ export async function gatherContext() {
     loadNotified().catch(() => []),
     loadMonitorLog().catch(() => []),
     Promise.all([
-      fetchOrders({ days: 30 }),
-      fetchAbandonedCheckouts({ days: 30 }).catch(() => ({ abandoned: [], count: 0 })),
+      fetchOrders({}), // default window: last 30 days
+      fetchAbandonedCheckouts({}).catch(() => ({ abandoned: [], count: 0 })),
     ]).then(([o, ab]) => {
-      const f = analyzeFunnels(o.orders, { tier: o.tier, days: 30 });
+      const f = analyzeFunnels(o.orders, { tier: o.tier });
       f.checkout = analyzeCheckout(o.orders, ab.abandoned, ab.count, { currency: f.currency });
       return f;
     }).catch(() => null),
