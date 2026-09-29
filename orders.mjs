@@ -38,8 +38,13 @@ const ordersQuery = (fields) => `query Orders($n: Int!, $q: String!, $c: String)
 
 const isDenied = (err) => /ACCESS_DENIED/i.test(String(err && err.message));
 
-/** ISO timestamp `days` ago, for a `created_at:>=` search filter. */
-const sinceISO = (days) => new Date(Date.now() - days * 86400000).toISOString();
+/** Build a created_at search filter from an ISO window (since inclusive, until exclusive). */
+function windowFilter(since, until) {
+  const parts = [];
+  if (since) parts.push(`created_at:>='${since}'`);
+  if (until) parts.push(`created_at:<'${until}'`);
+  return parts.join(' AND ') || `created_at:>='${new Date(Date.now() - 30 * 86400000).toISOString()}'`;
+}
 
 /** Normalise one raw order node into a flat, framework-free shape. */
 export function normalizeOrder(n) {
@@ -72,9 +77,8 @@ export function normalizeOrder(n) {
  * - 'base': read_orders works, but protected data is off (no journey)
  * - 'none': read_orders not granted yet (empty orders)
  */
-export async function fetchOrders({ days = 30, pageSize = 250, maxPages = 4 } = {}) {
-  const since = sinceISO(days);
-  const q = `created_at:>='${since}'`;
+export async function fetchOrders({ since = null, until = null, pageSize = 250, maxPages = 4 } = {}) {
+  const q = windowFilter(since, until);
   async function run(fields) {
     const out = [];
     let cursor = null;
@@ -88,13 +92,13 @@ export async function fetchOrders({ days = 30, pageSize = 250, maxPages = 4 } = 
     return out;
   }
   try {
-    return { orders: await run(BASE_FIELDS + JOURNEY_FIELDS), tier: 'full', denied: false, days, since };
+    return { orders: await run(BASE_FIELDS + JOURNEY_FIELDS), tier: 'full', denied: false, since, until };
   } catch (e) {
     if (!isDenied(e)) throw e;
     try {
-      return { orders: await run(BASE_FIELDS), tier: 'base', denied: true, days, since };
+      return { orders: await run(BASE_FIELDS), tier: 'base', denied: true, since, until };
     } catch (e2) {
-      if (isDenied(e2)) return { orders: [], tier: 'none', denied: true, days, since };
+      if (isDenied(e2)) return { orders: [], tier: 'none', denied: true, since, until };
       throw e2;
     }
   }
@@ -103,7 +107,7 @@ export async function fetchOrders({ days = 30, pageSize = 250, maxPages = 4 } = 
 const ABANDONED_FIELDS = `
   createdAt
   totalPriceSet { shopMoney { amount currencyCode } }
-  lineItems(first: 5) { nodes { title quantity } }`;
+  lineItems(first: 10) { nodes { title quantity } }`;
 
 /** Normalise an abandoned-checkout node (same flat shape as an order, no journey). */
 export function normalizeAbandoned(n) {
@@ -122,9 +126,8 @@ export function normalizeAbandoned(n) {
  * `count` is Shopify's exact total for the window; `abandoned` is the fetched
  * sample (up to maxPages) used to see WHICH products get abandoned.
  */
-export async function fetchAbandonedCheckouts({ days = 30, pageSize = 250, maxPages = 4 } = {}) {
-  const since = sinceISO(days);
-  const q = `created_at:>='${since}'`;
+export async function fetchAbandonedCheckouts({ since = null, until = null, pageSize = 250, maxPages = 4 } = {}) {
+  const q = windowFilter(since, until);
   const query = `query($n: Int!, $q: String!, $c: String) {
     abandonedCheckoutsCount(query: $q) { count }
     abandonedCheckouts(first: $n, after: $c, sortKey: CREATED_AT, reverse: true, query: $q) {
@@ -144,9 +147,9 @@ export async function fetchAbandonedCheckouts({ days = 30, pageSize = 250, maxPa
       cursor = d.abandonedCheckouts?.pageInfo?.hasNextPage ? d.abandonedCheckouts.pageInfo.endCursor : null;
       pages += 1;
     } while (cursor && pages < maxPages);
-    return { abandoned: out, count, denied: false, days, since };
+    return { abandoned: out, count, denied: false, since, until };
   } catch (e) {
-    if (isDenied(e)) return { abandoned: [], count: 0, denied: true, days, since };
+    if (isDenied(e)) return { abandoned: [], count: 0, denied: true, since, until };
     throw e;
   }
 }
