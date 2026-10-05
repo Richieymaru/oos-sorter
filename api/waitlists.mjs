@@ -177,10 +177,11 @@ export default async function handler(req, res) {
         <td>${esc(r.t)}</td>
         <td>${vName(r)}</td>
         <td class="num">${fmt(r.ts)}</td>
+        <td class="num">${r.c ? fmt(r.c) : '<span class="faint">&mdash;</span>'}</td>
         <td>${statusChip(r)}</td>
         <td>${resendCell(r)}</td>
       </tr>`).join('')
-    : `<tr><td colspan="6" class="faint">No one has been notified yet.</td></tr>`;
+    : `<tr><td colspan="7" class="faint">No one has been notified yet.</td></tr>`;
 
   const cards = items.length
     ? items
@@ -248,7 +249,7 @@ export default async function handler(req, res) {
   <div class="pagehead" style="margin-top:26px"><h2 style="font-size:16px;margin:0 0 2px">Recently notified</h2><p style="margin:0">Who we emailed when a product came back &mdash; whether they clicked through, and resend if they missed it.</p></div>
   <div class="card pad">
     <table>
-      <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="num">Notified</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="num">Notified</th><th class="num">Clicked</th><th>Status</th><th></th></tr></thead>
       <tbody>${recentRows}</tbody>
     </table>
   </div>
