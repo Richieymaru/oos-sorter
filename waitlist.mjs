@@ -123,7 +123,15 @@ export function unsubUrl(base, productShortId, email) {
  *  unsubscribe HMAC (product:email); `relPath` is a storefront-relative path
  *  ("/cart/<vid>:1" or "/products/<handle>") the redirect validates before use. */
 export function trackUrl(base, productShortId, email, relPath) {
-  const root = base || process.env.PUBLIC_URL || 'https://oos-sorter.vercel.app';
+  // The app's own public URL. Must be THIS deployment (so the click redirect uses
+  // THIS store's domain) — never a hardcoded dev URL, which sent GBU's email links
+  // to the dev app and on to the dev store's /password page. Vercel always sets
+  // VERCEL_PROJECT_PRODUCTION_URL to the project's own production host.
+  const root =
+    base ||
+    process.env.PUBLIC_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : null) ||
+    'https://oos-sorter.vercel.app';
   const u = new URL('/api/unsubscribe', root);
   u.searchParams.set('click', '1');
   u.searchParams.set('product', String(productShortId));
