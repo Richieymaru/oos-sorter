@@ -59,6 +59,7 @@ import { loadSettings } from './settings.mjs';
 import { restoreRestocked, applyDrafts } from './draft.mjs';
 import { sendDigest } from './notify.mjs';
 import { notifyRestocks, nudgeUnengaged } from './restock.mjs';
+import { reconcileOrders } from './notified.mjs';
 import { runMonitorPoll } from './monitor-poll.mjs';
 
 /** True only when this file is the process entry point, not an import. */
@@ -474,6 +475,15 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: onlyParam =
     const nu = await nudgeUnengaged({ dryRun: DRY_RUN, days: nudgeDays });
     if (nu.nudged) {
       console.log(`Nudge: ${DRY_RUN ? 'would nudge' : 'nudged'} ${nu.nudged} un-engaged shopper(s)`);
+    }
+
+    // Attribute real orders back to notified shoppers — the waitlist's revenue.
+    if (!DRY_RUN) {
+      try {
+        const at = await reconcileOrders({ days: 60 });
+        if (at.matched) console.log(`Attribution: matched ${at.matched} notified shopper(s) to an order`);
+        else if (at.emailRedacted) console.log('Attribution: order email is hidden — enable Level 2 protected customer data to track orders');
+      } catch (e) { console.error('attribution failed:', e.message); }
     }
   }
 

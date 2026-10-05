@@ -2,7 +2,7 @@
 /** Pure tests for the notified-log helpers. node notified.test.mjs */
 import {
   notifiedRow, appendNotified, trimToFit, markClicked, markNudged,
-  markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId,
+  markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId, matchOrders,
 } from './notified.mjs';
 
 let failures = 0, checks = 0;
@@ -79,8 +79,8 @@ ok('dedupes to one nudge per (email,product)', dueDedup.length === 1 && dueDedup
 
 console.log('\n--- deriveStats ---');
 const stats = deriveStats([mk({}), mk({ c: 'x' }), mk({ c: 'x', n: 'y' }), mk({ o: 'z' })]);
-ok('counts + click rate', eq(stats, { notified: 4, clicked: 2, nudged: 1, ordered: 1, clickRate: 50 }));
-ok('empty stats', eq(deriveStats([]), { notified: 0, clicked: 0, nudged: 0, ordered: 0, clickRate: 0 }));
+ok('counts + click rate', eq(stats, { notified: 4, clicked: 2, nudged: 1, ordered: 1, orders: 1, revenue: 0, currency: null, clickRate: 50 }));
+ok('empty stats', eq(deriveStats([]), { notified: 0, clicked: 0, nudged: 0, ordered: 0, orders: 0, revenue: 0, currency: null, clickRate: 0 }));
 
 console.log('\n--- safeRelPath ---');
 ok('accepts a product path', safeRelPath('/products/x') === '/products/x');
@@ -96,6 +96,37 @@ ok('parses an add-to-cart permalink', cartVariantId('/cart/5965419872411:1') ===
 ok('null for a product-page path', cartVariantId('/products/solid-m4') === null);
 ok('null for a malformed cart path', cartVariantId('/cart/abc:1') === null);
 ok('null for empty', cartVariantId('') === null);
+
+console.log('\n--- matchOrders (order attribution) ---');
+const nlog = [
+  notifiedRow({ email: 'A@x.com', productId: '111', title: 'Widget', ts: '2026-09-30T00:00:00Z' }),
+  notifiedRow({ email: 'b@x.com', productId: '222', title: 'Gadget', ts: '2026-09-30T00:00:00Z' }),
+];
+const ords = [
+  { id: 'gid://shopify/Order/9001', email: 'a@x.com', createdAt: '2026-10-02T00:00:00Z', amount: 339.99, currency: 'AUD', productIds: ['111'] },
+  { id: 'gid://shopify/Order/9002', email: 'b@x.com', createdAt: '2026-09-29T00:00:00Z', amount: 50, currency: 'AUD', productIds: ['222'] }, // BEFORE notification
+];
+const mr = matchOrders(nlog, ords);
+ok('matches shopper to her order (email case-insensitive)', mr.matched === 1 && mr.log[0].o === '2026-10-02T00:00:00Z');
+ok('stores amount + currency + order id', mr.log[0].oa === 339.99 && mr.log[0].oc === 'AUD' && mr.log[0].oid === '9001');
+ok('does NOT match an order placed BEFORE notification', mr.log[1].o == null);
+ok('no double-match on rerun (already ordered)', matchOrders(mr.log, ords).matched === 0);
+ok('ignores orders with no email (redacted)', matchOrders(nlog, [{ id: 'gid://shopify/Order/9003', email: null, createdAt: '2026-10-03T00:00:00Z', amount: 10, productIds: ['111'] }]).matched === 0);
+ok('wrong product does not match', matchOrders(nlog, [{ id: 'gid://shopify/Order/9004', email: 'a@x.com', createdAt: '2026-10-02T00:00:00Z', amount: 10, productIds: ['999'] }]).matched === 0);
+
+console.log('\n--- deriveStats revenue (distinct orders) ---');
+const paidRow = (email, p, extra) => ({ ...notifiedRow({ email, productId: p, title: 'X', ts: '2026-09-30T00:00:00Z' }), ...extra });
+const paid = [
+  paidRow('a@x.com', '111', { o: '2026-10-02T00:00:00Z', oa: 339.99, oc: 'AUD', oid: '9001' }),
+  paidRow('a@x.com', '112', { o: '2026-10-02T00:00:00Z', oa: 339.99, oc: 'AUD', oid: '9001' }), // same order
+  paidRow('c@x.com', '333', { o: '2026-10-03T00:00:00Z', oa: 100, oc: 'AUD', oid: '9005' }),
+];
+const st = deriveStats(paid);
+ok('ordered counts rows', st.ordered === 3);
+ok('orders counts DISTINCT orders', st.orders === 2);
+ok('revenue dedups by order (no double-count)', st.revenue === 439.99);
+ok('currency carried', st.currency === 'AUD');
+ok('empty log -> zero revenue', deriveStats([]).revenue === 0);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
