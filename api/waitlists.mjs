@@ -7,7 +7,7 @@ import { shortId, longId } from '../shopify.mjs';
 import { loadState } from '../state.mjs';
 import { loadSettings } from '../settings.mjs';
 import { sendWaitlistReport } from '../notify.mjs';
-import { loadNotified, deriveStats } from '../notified.mjs';
+import { loadNotified, deriveStats, reconcileOrders } from '../notified.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -80,7 +80,15 @@ export default async function handler(req, res) {
     return;
   }
 
-  // GET = the page.
+  // GET = the page. Attribute recent orders to notified shoppers first, so the
+  // "Ordered" status + waitlist revenue are fresh every time this page is opened
+  // (GBU auto-chunks engine runs, so we can't rely on the full-sweep for this).
+  let attrNote = '';
+  try {
+    const at = await reconcileOrders({ days: 60 });
+    if (at.emailRedacted) attrNote = 'Order revenue needs Level 2 customer-data access — enable it in the Dev Dashboard to see who bought.';
+  } catch (e) { console.error('attribution (page):', e.message); }
+
   const [items, state, notifiedLog] = await Promise.all([
     productsWithWaitlist().catch(() => []),
     loadState().catch(() => ({})),
@@ -116,6 +124,7 @@ export default async function handler(req, res) {
     } catch { /* leave dashes if the lookup fails — display only, never blocks the page */ }
   }
   const fmt = (ts) => esc(String(ts || '').replace('T', ' ').slice(0, 16));
+  const money = (cur, amt) => `${cur ? cur + ' ' : ''}${(Number(amt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const thumb = (u) =>
     u
       ? `<img src="${esc(u + (u.includes('?') ? '&' : '?') + 'width=96')}" alt="" width="46" height="46" style="width:46px;height:46px;border-radius:9px;object-fit:cover;border:1px solid var(--line);flex:none">`
@@ -154,7 +163,7 @@ export default async function handler(req, res) {
   const chip = (bg, fg, label) =>
     `<span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;background:${bg};color:${fg};white-space:nowrap">${label}</span>`;
   const statusChip = (r) => {
-    if (r.o) return chip('#e7f6ee', '#0e7a4b', 'Ordered');
+    if (r.o) return chip('#e7f6ee', '#0e7a4b', 'Ordered' + (r.oa ? ' · ' + esc(money(r.oc, r.oa)) : ''));
     if (r.u) return chip('#eef1f6', '#8b95a3', 'Unsubscribed');
     if (r.c) return chip('#e7f6ee', '#0e7a4b', 'Clicked');
     if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged');
@@ -236,11 +245,13 @@ export default async function handler(req, res) {
 
   const body = `
   <div class="pagehead"><h1>Waitlists</h1><p>Shoppers waiting for a sold-out product to return. They're emailed automatically on restock &mdash; or send now.</p></div>
-  <div class="grid c3" style="margin-bottom:16px">
+  <div class="grid c4" style="margin-bottom:16px">
     ${statCard({ value: items.length, label: 'Products with a waitlist' })}
     ${statCard({ value: total, label: 'Shoppers waiting' })}
-    ${statCard({ value: stats.notified, label: 'Notified (recent)', sub: `${stats.clicked} clicked · ${stats.clickRate}% · ${stats.nudged} nudged`, tone: stats.clicked ? 'pos' : '' })}
+    ${statCard({ value: stats.notified, label: 'Notified (recent)', sub: `${stats.clicked} clicked · ${stats.clickRate}%`, tone: stats.clicked ? 'pos' : '' })}
+    ${statCard({ value: stats.revenue ? money(stats.currency, stats.revenue) : '—', label: 'Waitlist revenue', sub: `${stats.orders || 0} order(s) from notified`, tone: stats.revenue ? 'pos' : '' })}
   </div>
+  ${attrNote ? `<div class="callout" style="margin:-4px 0 16px"><div class="ct" style="font-size:12.5px">${esc(attrNote)}</div></div>` : ''}
   <div class="actions" style="margin:0 0 18px">
     <button class="ghost" id="emailAll">Email me the full list</button>
     <span id="msgAll" class="faint" style="font-size:12.5px"></span>

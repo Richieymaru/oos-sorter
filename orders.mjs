@@ -121,6 +121,56 @@ export function normalizeAbandoned(n) {
 }
 
 /**
+ * Orders for waitlist attribution: who bought what, and when. Needs the order's
+ * EMAIL (to match a notified shopper) and its line-item product ids. Email is
+ * Level-2 protected customer data, so if it comes back redacted (null on every
+ * order) we report `emailRedacted` so the caller can skip matching and tell the
+ * owner to enable Level 2. Returns { orders, emailRedacted, denied }.
+ */
+export async function fetchOrdersForAttribution({ since = null, until = null, pageSize = 250, maxPages = 6 } = {}) {
+  const q = windowFilter(since, until);
+  const query = `query($n: Int!, $q: String!, $c: String) {
+    orders(first: $n, after: $c, sortKey: CREATED_AT, reverse: true, query: $q) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        createdAt
+        email
+        currentTotalPriceSet { shopMoney { amount currencyCode } }
+        lineItems(first: 25) { nodes { product { id } } }
+      }
+    }
+  }`;
+  try {
+    const out = [];
+    let cursor = null;
+    let pages = 0;
+    let anyEmail = false;
+    do {
+      const d = await gql(query, { n: pageSize, q, c: cursor });
+      for (const n of (d.orders?.nodes || [])) {
+        const money = n.currentTotalPriceSet?.shopMoney || {};
+        if (n.email) anyEmail = true;
+        out.push({
+          id: String(n.id || '').split('/').pop(),
+          createdAt: n.createdAt || null,
+          email: n.email || null,
+          amount: Number(money.amount || 0),
+          currency: money.currencyCode || null,
+          productIds: (n.lineItems?.nodes || []).map((li) => (li.product?.id ? String(li.product.id).split('/').pop() : null)).filter(Boolean),
+        });
+      }
+      cursor = d.orders?.pageInfo?.hasNextPage ? d.orders.pageInfo.endCursor : null;
+      pages += 1;
+    } while (cursor && pages < maxPages);
+    return { orders: out, emailRedacted: out.length > 0 && !anyEmail, denied: false };
+  } catch (e) {
+    if (isDenied(e)) return { orders: [], emailRedacted: false, denied: true };
+    throw e;
+  }
+}
+
+/**
  * Abandoned checkouts (reached checkout, didn't complete) in the last `days`.
  * read_orders covers this. Returns { abandoned, count, denied, days, since }.
  * `count` is Shopify's exact total for the window; `abandoned` is the fetched

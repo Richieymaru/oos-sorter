@@ -11,6 +11,7 @@
  */
 
 import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
+import { fetchOrdersForAttribution } from './orders.mjs';
 
 const CAP = 1000;           // max rows kept (also trimmed by byte size below)
 const LIMIT = 131072;       // Shopify metafield JSON value cap, in bytes
@@ -64,6 +65,32 @@ function setNewest(log, email, productId, field, value) {
 
 export const markClicked = (log, email, productId, whenISO) => setNewest(log, email, productId, 'c', whenISO);
 
+/**
+ * Attribute real orders to notified shoppers — the waitlist's ROI. For each order
+ * (email + product ids + createdAt + amount), mark every un-ordered notified row
+ * whose email + product match and whose notification came BEFORE the order. Sets
+ * o = orderedAt, oa = order amount, oc = currency, oid = order id. Pure.
+ * `orders`: [{ id, email, createdAt, amount, currency, productIds:[numeric] }].
+ */
+export function matchOrders(log, orders) {
+  const list = Array.isArray(log) ? log.slice() : [];
+  let matched = 0;
+  for (const ord of (Array.isArray(orders) ? orders : [])) {
+    const email = lc(ord.email);
+    if (!email || !ord.createdAt) continue;
+    const pids = new Set((ord.productIds || []).map(nid));
+    const ot = new Date(ord.createdAt).getTime();
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      if (r.o || r.e !== email || !pids.has(r.p)) continue;
+      if (new Date(r.ts).getTime() > ot) continue; // the order must come AFTER we notified them
+      list[i] = { ...r, o: ord.createdAt, oa: Number(ord.amount) || 0, oc: ord.currency || null, oid: nid(ord.id) };
+      matched += 1;
+    }
+  }
+  return { log: list, matched };
+}
+
 /** Flag EVERY un-nudged row for (email, product) — the nudge is one-per-shopper-
  *  per-product, so all rows (e.g. two variants) are consumed together; otherwise
  *  an older row keeps n==null and re-qualifies on every run (indefinite re-send). */
@@ -111,15 +138,26 @@ export function selectNudges(log, nowISO, days, isInStockByProduct) {
   return out;
 }
 
-/** Dashboard counters over the retained window. */
+/** Dashboard counters over the retained window, incl. attributed revenue. */
 export function deriveStats(log) {
   const list = Array.isArray(log) ? log : [];
   const notified = list.length;
   const clicked = list.filter((x) => x.c).length;
   const nudged = list.filter((x) => x.n).length;
-  const ordered = list.filter((x) => x.o).length;
+  const orderedRows = list.filter((x) => x.o);
+  const ordered = orderedRows.length;
   const clickRate = notified ? Math.round((clicked / notified) * 100) : 0;
-  return { notified, clicked, nudged, ordered, clickRate };
+  // Revenue = sum over DISTINCT orders (one order can match several rows).
+  const byOrder = new Map();
+  let currency = null;
+  for (const x of orderedRows) {
+    if (x.oid) byOrder.set(x.oid, Number(x.oa) || 0);
+    else byOrder.set('_' + byOrder.size, Number(x.oa) || 0);
+    if (!currency && x.oc) currency = x.oc;
+  }
+  const revenue = Math.round([...byOrder.values()].reduce((a, b) => a + b, 0) * 100) / 100;
+  const orders = byOrder.size;
+  return { notified, clicked, nudged, ordered, orders, revenue, currency, clickRate };
 }
 
 /** A safe storefront-relative redirect target, or null. Blocks open-redirects. */
@@ -190,3 +228,21 @@ export const applyNudged = (email, productId, whenISO = new Date().toISOString()
   applyMark((log) => markNudged(log, email, productId, whenISO));
 export const applyUnsubscribed = (email, productId) =>
   applyMark((log) => markUnsubscribed(log, email, productId));
+
+/**
+ * Attribute recent orders to notified shoppers and persist. Run on full engine
+ * passes. Returns { matched } — or { emailRedacted:true } when the order email is
+ * hidden (needs Level-2 protected customer data), or { denied:true } without
+ * read_orders. Only fetches/writes when there are un-ordered rows to resolve.
+ */
+export async function reconcileOrders({ days = 60 } = {}) {
+  const log = await loadNotified();
+  if (!log.length || !log.some((r) => !r.o)) return { matched: 0 };
+  const since = new Date(Date.now() - days * DAY).toISOString();
+  const { orders, emailRedacted, denied } = await fetchOrdersForAttribution({ since });
+  if (denied) return { matched: 0, denied: true };
+  if (emailRedacted) return { matched: 0, emailRedacted: true };
+  const { log: next, matched } = matchOrders(log, orders);
+  if (matched) await saveNotified(next);
+  return { matched };
+}
