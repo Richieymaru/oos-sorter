@@ -83,6 +83,7 @@ export default async function handler(req, res) {
   // GET = the page. Attribute recent orders to notified shoppers first, so the
   // "Ordered" status + waitlist revenue are fresh every time this page is opened
   // (GBU auto-chunks engine runs, so we can't rely on the full-sweep for this).
+  const notifiedView = /[?&]view=notified\b/.test(req.url || '');
   let attrNote = '';
   try {
     const at = await reconcileOrders({ days: 60 });
@@ -244,26 +245,31 @@ export default async function handler(req, res) {
     : `<div class="card empty">No waitlists yet. Shoppers join from the "Notify me when available" button on sold-out product pages.</div>`;
 
   const body = `
-  <div class="pagehead"><h1>Waitlists</h1><p>Shoppers waiting for a sold-out product to return. They're emailed automatically on restock &mdash; or send now.</p></div>
-  <div class="grid c4" style="margin-bottom:16px">
+  ${notifiedView
+    ? `<div class="pagehead"><h1>Recently notified</h1><p>Who we emailed when a product came back &mdash; whether they clicked through, and resend if they missed it. <a href="/waitlists" style="color:var(--accent-ink);font-weight:600">&larr; back to waitlists</a></p></div>
+  <div class="grid c3" style="margin-bottom:16px">
+    ${statCard({ value: stats.notified, label: 'Notified (recent)' })}
+    ${statCard({ value: `${stats.clicked}`, label: 'Clicked', sub: `${stats.clickRate}% click-through`, tone: stats.clicked ? 'pos' : '' })}
+    ${statCard({ value: stats.revenue ? money(stats.currency, stats.revenue) : '—', label: 'Waitlist revenue', sub: `${stats.orders || 0} order(s) from notified`, tone: stats.revenue ? 'pos' : '' })}
+  </div>`
+    : `<div class="pagehead"><h1>Waitlists</h1><p>Shoppers waiting for a sold-out product to return. They're emailed automatically on restock &mdash; or send now. <a href="/notified" style="color:var(--accent-ink);font-weight:600">see who's been notified &rarr;</a></p></div>
+  <div class="grid c3" style="margin-bottom:16px">
     ${statCard({ value: items.length, label: 'Products with a waitlist' })}
     ${statCard({ value: total, label: 'Shoppers waiting' })}
     ${statCard({ value: stats.notified, label: 'Notified (recent)', sub: `${stats.clicked} clicked · ${stats.clickRate}%`, tone: stats.clicked ? 'pos' : '' })}
-    ${statCard({ value: stats.revenue ? money(stats.currency, stats.revenue) : '—', label: 'Waitlist revenue', sub: `${stats.orders || 0} order(s) from notified`, tone: stats.revenue ? 'pos' : '' })}
-  </div>
+  </div>`}
   ${attrNote ? `<div class="callout" style="margin:-4px 0 16px"><div class="ct" style="font-size:12.5px">${esc(attrNote)}</div></div>` : ''}
-  <div class="actions" style="margin:0 0 18px">
+  ${notifiedView ? '' : `<div class="actions" style="margin:0 0 18px">
     <button class="ghost" id="emailAll">Email me the full list</button>
     <span id="msgAll" class="faint" style="font-size:12.5px"></span>
   </div>
-  ${cards}
-  <div class="pagehead" style="margin-top:26px"><h2 style="font-size:16px;margin:0 0 2px">Recently notified</h2><p style="margin:0">Who we emailed when a product came back &mdash; whether they clicked through, and resend if they missed it.</p></div>
-  <div class="card pad">
+  ${cards}`}
+  ${notifiedView ? `<div class="card pad">
     <table>
       <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="num">Notified</th><th class="num">Clicked</th><th>Status</th><th></th></tr></thead>
       <tbody>${recentRows}</tbody>
     </table>
-  </div>
+  </div>` : ''}
   <div class="pw" style="margin-top:16px">
     <label for="pw">Panel password</label>
     <input type="password" id="pw" placeholder="to send" autocomplete="current-password">
@@ -319,5 +325,5 @@ export default async function handler(req, res) {
     });
   </script>`;
   setPageHeaders(res);
-  res.end(shell({ title: 'Waitlists', active: 'waitlists', body }));
+  res.end(shell({ title: notifiedView ? 'Recently notified' : 'Waitlists', active: notifiedView ? 'notified' : 'waitlists', body }));
 }

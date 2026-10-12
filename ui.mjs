@@ -105,34 +105,38 @@ const CSS = `
   :root{
     --bg:#f5f6f8; --surface:#ffffff; --surface-2:#fafbfc; --ink:#0f1520; --muted:#59636f; --faint:#8b95a1;
     --line:#e6e9ee; --line-2:#eef1f4; --hover:#f3f5f7;
-    --accent:#10a171; --accent-ink:#0b6b4c; --accent-wash:#e6f5ee;
+    --accent:#10a171; --accent-2:#17b887; --accent-ink:#0b6b4c; --accent-wash:#e6f5ee;
     --pos:#10a171; --pos-wash:#e6f5ee; --warn:#b5761b; --warn-wash:#fbf1e0;
     --danger:#c5384b; --danger-wash:#fbe9ec; --info:#3667e0; --info-wash:#e9f0fe;
     --neutral:#5a6672; --neutral-wash:#eef1f4;
-    --radius:14px; --radius-sm:10px;
-    --shadow:0 1px 2px rgba(15,21,32,.04), 0 4px 16px rgba(15,21,32,.05);
-    --shadow-sm:0 1px 2px rgba(15,21,32,.05);
+    --radius:16px; --radius-sm:11px;
+    --shadow:0 1px 2px rgba(15,21,32,.04), 0 10px 28px -10px rgba(15,21,32,.12);
+    --shadow-sm:0 1px 2px rgba(15,21,32,.05), 0 2px 10px -6px rgba(15,21,32,.07);
+    --shadow-lg:0 2px 6px rgba(15,21,32,.06), 0 24px 50px -16px rgba(15,21,32,.16);
+    --ring:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent);
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
     --sans:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   }
   @media (prefers-color-scheme:dark){:root{
     --bg:#0d1014; --surface:#161b22; --surface-2:#1a2029; --ink:#e8edf3; --muted:#9aa4b1; --faint:#6b7684;
     --line:#232a34; --line-2:#1e252e; --hover:#1c232c;
-    --accent:#2ccb8c; --accent-ink:#7fe7bd; --accent-wash:#123024;
+    --accent:#2ccb8c; --accent-2:#39d89a; --accent-ink:#7fe7bd; --accent-wash:#123024;
     --pos:#2ccb8c; --pos-wash:#123024; --warn:#e0b978; --warn-wash:#2a2213;
     --danger:#f08a97; --danger-wash:#331a1f; --info:#8fb0ff; --info-wash:#152139;
     --neutral:#9aa4b1; --neutral-wash:#1e252e;
-    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 26px rgba(0,0,0,.4);
-    --shadow-sm:0 1px 2px rgba(0,0,0,.35);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 30px -10px rgba(0,0,0,.5);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.35), 0 2px 10px -6px rgba(0,0,0,.4);
+    --shadow-lg:0 2px 6px rgba(0,0,0,.4), 0 26px 52px -16px rgba(0,0,0,.6);
+    --ring:0 0 0 3px color-mix(in srgb,var(--accent) 24%,transparent);
   }}
   *{box-sizing:border-box}
   html,body{margin:0}
-  body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5;font-size:14px;letter-spacing:-.005em}
+  body{background:var(--bg);background-image:radial-gradient(1200px 520px at 50% -240px, color-mix(in srgb,var(--accent) 8%,transparent), transparent 72%);background-attachment:fixed;color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5;font-size:14px;letter-spacing:-.005em}
   a{color:inherit}
   .mono{font-family:var(--mono)}
   .muted{color:var(--muted)} .faint{color:var(--faint)}
   /* top bar */
-  .topbar{background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  .topbar{background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:saturate(1.6) blur(14px);-webkit-backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line);box-shadow:0 1px 0 color-mix(in srgb,var(--accent) 9%,transparent);position:sticky;top:0;z-index:5}
   .topinner{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:18px;height:60px}
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.02em;font-size:15.5px}
   .brand .mark{display:block;border-radius:7px}
@@ -159,10 +163,11 @@ const CSS = `
   .card-h h2{font-size:14.5px;font-weight:650;margin:0;letter-spacing:-.01em}
   .card-h .faint{margin-left:auto;font-size:12.5px}
   /* stat cards */
-  .stat{padding:18px 20px;position:relative;overflow:hidden}
-  .stat-ico{position:absolute;top:16px;right:16px;color:var(--faint);opacity:.8}
-  .statval{font-size:32px;font-weight:700;letter-spacing:-.035em;line-height:1.05;font-variant-numeric:tabular-nums}
-  .statlabel{color:var(--muted);font-size:13px;margin-top:6px;font-weight:500}
+  .stat{padding:20px 22px;position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
+  .stat:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:color-mix(in srgb,var(--accent) 22%,var(--line))}
+  .stat-ico{position:absolute;top:15px;right:15px;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:var(--accent-wash);color:var(--accent-ink);opacity:1}
+  .statval{font-size:34px;font-weight:720;letter-spacing:-.04em;line-height:1.02;font-variant-numeric:tabular-nums}
+  .statlabel{color:var(--muted);font-size:13px;margin-top:7px;font-weight:550}
   .statsub{color:var(--faint);font-size:12px;margin-top:9px}
   .stat.t-pos{border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
   .stat.t-pos::before,.stat.t-danger::before,.stat.t-warn::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
@@ -228,15 +233,20 @@ const CSS = `
   .rowtext{display:flex;flex-direction:column;gap:2px}
   .rowtitle{font-size:14.5px;font-weight:560}.rowdesc{font-size:12.5px;color:var(--muted)}
   .actions{margin-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
-  button{font-family:var(--sans);font-size:14px;font-weight:560;border-radius:var(--radius-sm);cursor:pointer;padding:10px 16px;border:1px solid transparent;transition:filter .15s,background .15s,border-color .15s}
-  .primary{background:var(--accent);color:#fff}.primary:hover{filter:brightness(1.06)}
-  .ghost{background:var(--surface);color:var(--ink);border-color:var(--line)}.ghost:hover{background:var(--hover)}
+  button{font-family:var(--sans);font-size:14px;font-weight:580;border-radius:var(--radius-sm);cursor:pointer;padding:10px 17px;border:1px solid transparent;transition:filter .15s,background .15s,border-color .15s,box-shadow .15s,transform .08s}
+  .primary{background:linear-gradient(180deg,var(--accent-2),var(--accent));color:#fff;box-shadow:0 1px 2px rgba(15,21,32,.14),0 6px 16px -7px color-mix(in srgb,var(--accent) 55%,transparent)}
+  .primary:hover{filter:brightness(1.04);box-shadow:0 2px 5px rgba(15,21,32,.16),0 12px 24px -7px color-mix(in srgb,var(--accent) 62%,transparent)}
+  .primary:active{transform:translateY(1px)}
+  .ghost{background:var(--surface);color:var(--ink);border-color:var(--line);box-shadow:var(--shadow-sm)}.ghost:hover{background:var(--hover);border-color:color-mix(in srgb,var(--accent) 28%,var(--line))}
   button:disabled{opacity:.6;cursor:default}
   #msg{font-size:12.5px;color:var(--accent-ink)} #msg.err{color:var(--danger)}
   .pw{margin-top:16px;display:flex;align-items:center;gap:10px}
   .pw input{font-family:var(--mono);font-size:13px;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);width:190px;max-width:60%}
   .pw label{font-size:12px;color:var(--faint)}
   a:focus-visible,button:focus-visible,.feed-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+  input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;border-color:var(--accent)!important;box-shadow:var(--ring)}
+  nav.tabs a.on{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 24%,transparent)}
+  .card-h{border-bottom:1px solid var(--line-2);background:linear-gradient(180deg,color-mix(in srgb,var(--surface-2) 60%,transparent),transparent)}
 `;
 
 /** App Bridge tags so pages opened inside the Shopify admin can fetch a session
@@ -270,6 +280,7 @@ ${fontHead()}
     ${tab('/', 'home', 'Dashboard')}
     ${tab('/collections', 'collections', 'Collections')}
     ${tab('/waitlists', 'waitlists', 'Waitlists')}
+    ${tab('/notified', 'notified', 'Notified')}
     ${tab('/funnels', 'funnels', 'Funnels')}
     ${tab('/settings', 'settings', 'Settings')}
   </nav>
