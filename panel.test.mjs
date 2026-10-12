@@ -12,8 +12,13 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2 };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProducts: ['Free gels'], freeGiftCode: '' };
 eq('empty -> all false', normalizeSettings({}), base);
+eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
+eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProducts, ['Free gels']);
+eq('freeGift enable + custom products parsed', normalizeSettings({ freeGiftEnabled: true, freeGiftProducts: 'Gel balls\nStickers' }).freeGiftProducts, ['Gel balls', 'Stickers']);
+eq('freeGift empty list falls back to default', normalizeSettings({ freeGiftProducts: '' }).freeGiftProducts, ['Free gels']);
+eq('freeGift code trimmed', normalizeSettings({ freeGiftCode: '  FREEGEL  ' }).freeGiftCode, 'FREEGEL');
 eq('undefined -> all false', normalizeSettings(undefined), base);
 eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });
 eq('mixed', normalizeSettings({ sort: true, notify: false }), { ...base, sort: true });

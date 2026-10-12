@@ -20,12 +20,32 @@ import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partition
 import { sendBackInStock, sendSoldOutAlert, sendNudge, formatMoney } from './notify.mjs';
 import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
+import { loadSettings } from './settings.mjs';
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
  *  a failure here must never break the actual emailing. */
 /** Map numeric variant id -> the fetched variant node (has price/compareAtPrice). */
 function variantsById(sp) {
   return new Map((sp?.variants?.nodes || []).map((v) => [shortId(v.id), v]));
+}
+
+/** In-stock variants of this product OTHER than the one the shopper waited for,
+ *  each as { title, priceText, url } with a tracked cart link. Capped at 4; skips
+ *  single-variant ("Default Title") products. Used to offer alternatives in the nudge. */
+function altInStockVariants(sp, waitedVariantId, ctx, base, productShort, email) {
+  const nodes = sp?.variants?.nodes || [];
+  if (nodes.length < 2) return [];
+  const out = [];
+  for (const v of nodes) {
+    const vid = shortId(v.id);
+    if (String(vid) === String(waitedVariantId)) continue;
+    if (!v.title || v.title === 'Default Title') continue;
+    if (!isVariantInStock(sp, vid)) continue;
+    const { priceText } = priceTextFor(v, ctx.currency);
+    out.push({ title: v.title, priceText, url: trackUrl(base, productShort, email, `/cart/${vid}:1`) });
+    if (out.length >= 4) break;
+  }
+  return out;
 }
 
 /** Formatted price + (sale) compare-at text for one variant, in the shop
@@ -386,6 +406,11 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
   const stock = await fetchProductsByIds(ids);
   const spById = new Map(stock.map((p) => [shortId(p.id), p]));
   const ctx = await getShopContext();
+  const settings = await loadSettings().catch(() => null);
+  // 2-day nudge free-gift offer (OFF by default; owner sets up fulfilment + enables it).
+  const freeGift = settings && settings.freeGiftEnabled && (settings.freeGiftProducts || []).length
+    ? { products: settings.freeGiftProducts, code: settings.freeGiftCode || null }
+    : null;
   const due = selectNudges(log, now, days, (p) => {
     const sp = spById.get(p);
     return sp ? isInStock(sp) : false;
@@ -411,8 +436,9 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
       clickCartUrl: trackUrl(base, row.p, row.e, relCart),
       clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
     };
+    const altVariants = altInStockVariants(sp, row.v, ctx, base, row.p, row.e);
     try {
-      await sendNudge(row.e, payload, unsubUrl(base, row.p, row.e), { dryRun });
+      await sendNudge(row.e, payload, unsubUrl(base, row.p, row.e), { dryRun, freeGift, altVariants });
       if (!dryRun) await applyNudged(row.e, row.p, now);
       nudged++;
     } catch (e) {

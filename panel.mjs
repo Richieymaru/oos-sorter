@@ -96,6 +96,24 @@ export function settingsBody(settings) {
     <input id="nudgeDays" type="number" min="1" max="14" value="${nudgeDays}" style="width:90px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
   </div>
   <div class="card pad" style="margin-top:14px">
+    <label class="row" for="freeGiftEnabled" style="margin-bottom:6px">
+      <input type="checkbox" id="freeGiftEnabled"${ck(settings.freeGiftEnabled)} class="sw">
+      <span class="track" aria-hidden="true"><span class="thumb"></span></span>
+      <span class="rowtext">
+        <span class="rowtitle">Offer a free gift in the follow-up nudge</span>
+        <span class="rowdesc">When a notified shopper still hasn’t clicked after the nudge delay, the follow-up email offers these products free. ⚠️ Set up the actual free-gift fulfilment in Shopify first (a free Buy-X-Get-Y automatic discount, a free-gift app, or a discount code) — this only writes the offer into the email. Off by default.</span>
+      </span>
+    </label>
+    <div style="height:10px"></div>
+    <label class="rowtitle" for="freeGiftProducts">Free products to offer</label>
+    <p class="rowdesc" style="margin:3px 0 9px">One per line. Default is “Free gels” — add or change as you like.</p>
+    <textarea id="freeGiftProducts" rows="3" placeholder="Free gels" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc((settings.freeGiftProducts || []).join('\n'))}</textarea>
+    <div style="height:12px"></div>
+    <label class="rowtitle" for="freeGiftCode">Discount code (optional)</label>
+    <p class="rowdesc" style="margin:3px 0 9px">If a code applies the free gift, enter it and the email tells shoppers to use it at checkout. Leave blank if the gift is automatic.</p>
+    <input id="freeGiftCode" type="text" placeholder="e.g. FREEGEL" value="${esc(settings.freeGiftCode || '')}" style="width:220px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+  </div>
+  <div class="card pad" style="margin-top:14px">
     <label class="rowtitle" for="monitorSlack">Slack — product changes</label>
     <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a product’s status changes. Separate from the waitlist Slack above — point it at your product-changes channel. Leave blank to skip Slack for product changes (the Google Sheet still logs them).</p>
     <input id="monitorSlack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(monitorSlack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
@@ -129,7 +147,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProducts:document.getElementById('freeGiftProducts').value, freeGiftCode:document.getElementById('freeGiftCode').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

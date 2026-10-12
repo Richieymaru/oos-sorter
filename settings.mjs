@@ -47,10 +47,26 @@ export function normalizeSheetWebhook(input) {
   return /^https:\/\/script\.google\.com\/macros\//.test(v) ? v : '';
 }
 
+/** Pure: parse a short free-text list (array, or a string split on
+ *  newline/comma/semicolon) into clean, deduped items (max `max`, each `maxLen`). */
+export function normalizeStrList(input, max = 10, maxLen = 80) {
+  const parts = Array.isArray(input) ? input : String(input ?? '').split(/[\n,;]+/);
+  const seen = new Set();
+  const out = [];
+  for (const p of parts) {
+    const v = String(p).trim().slice(0, maxLen);
+    const k = v.toLowerCase();
+    if (v && !seen.has(k)) { seen.add(k); out.push(v); if (out.length >= max) break; }
+  }
+  return out;
+}
+
 /** Pure: coerce an arbitrary object to strict toggles (default false) + the
- *  extra digest/report recipients list + the Slack + Google Sheet webhook URLs. */
+ *  extra digest/report recipients list + the Slack + Google Sheet webhook URLs +
+ *  the nudge delay and the Buy-nothing "free gift" nudge offer. */
 export function normalizeSettings(obj) {
   const o = obj || {};
+  const freeGiftProducts = normalizeStrList(o.freeGiftProducts);
   return {
     sort: o.sort === true,
     notify: o.notify === true,
@@ -62,6 +78,11 @@ export function normalizeSettings(obj) {
     monitorSlackWebhook: normalizeSlackWebhook(o.monitorSlackWebhook),
     sheetWebhook: normalizeSheetWebhook(o.sheetWebhook),
     nudgeDays: clampInt(o.nudgeDays, 2, 1, 14),
+    // 2-day nudge free-gift offer. OFF by default so no "free product" promise goes
+    // out until the owner sets up fulfilment and turns it on. Defaults to "Free gels".
+    freeGiftEnabled: o.freeGiftEnabled === true,
+    freeGiftProducts: freeGiftProducts.length ? freeGiftProducts : ['Free gels'],
+    freeGiftCode: String(o.freeGiftCode ?? '').trim().slice(0, 40),
   };
 }
 
