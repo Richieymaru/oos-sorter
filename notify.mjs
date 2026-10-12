@@ -405,6 +405,21 @@ export function buildNudge(product, unsub, { freeGift = null, altVariants = null
   });
 }
 
+/** Pure: build the "a different variant is in stock" email. `product` carries the
+ *  PRIMARY in-stock alternative (its variantId/price), and `altVariants` any others.
+ *  Sent to a shopper whose own waited variant is still sold out. */
+export function buildAltVariant(product, unsub, { altVariants = null } = {}) {
+  const title = product.title ?? 'Your item';
+  const host = product.storeHost || SHOP;
+  return buildRestockEmail(product, unsub, {
+    eyebrow: 'A different option is in stock',
+    subject: `A different option for ${title} is available`,
+    leadHtml: `The option you were waiting for is still sold out on ${esc(host)} — but these are in stock right now. Grab one before they go.`,
+    introText: `The option you wanted for "${title}" is still sold out, but other options are in stock on ${host}.`,
+    altVariants,
+  });
+}
+
 let transportCache = null;
 function transport(user, pass) {
   if (!transportCache) {
@@ -487,5 +502,21 @@ export async function sendNudge(email, product, unsub, { dryRun, freeGift = null
   if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for nudge emails');
   const info = await transport(user, pass).sendMail({ from: `${FROM_NAME} <${user}>`, to: email, subject, text, html });
   console.log(`  nudged ${email}: "${subject}" (${info.messageId})`);
+  return info;
+}
+
+/** Send a one-shot "a different option is in stock" email to a single shopper
+ *  whose own waited variant is still sold out. */
+export async function sendAltVariant(email, product, unsub, { dryRun, altVariants = null } = {}) {
+  const { subject, text, html } = buildAltVariant(product, unsub, { altVariants });
+  if (dryRun) {
+    console.log(`  [dry run] would offer alternatives to ${email}: "${subject}"`);
+    return { dryRun: true };
+  }
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for alternative-variant emails');
+  const info = await transport(user, pass).sendMail({ from: `${FROM_NAME} <${user}>`, to: email, subject, text, html });
+  console.log(`  offered alternatives to ${email}: "${subject}" (${info.messageId})`);
   return info;
 }

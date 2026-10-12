@@ -114,6 +114,16 @@ export function settingsBody(settings) {
     <input id="freeGiftCode" type="text" placeholder="e.g. FREEGEL" value="${esc(settings.freeGiftCode || '')}" style="width:220px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
   </div>
   <div class="card pad" style="margin-top:14px">
+    <label class="row" for="offerAltVariant">
+      <input type="checkbox" id="offerAltVariant"${ck(settings.offerAltVariant)} class="sw">
+      <span class="track" aria-hidden="true"><span class="thumb"></span></span>
+      <span class="rowtext">
+        <span class="rowtitle">Offer a different variant when theirs is still out</span>
+        <span class="rowdesc">When a waitlisted shopper’s option is still sold out but a <strong>different</strong> option of the same product is back in stock, email them the available option (once each). Only real stock facts, no promise — safe to turn on. Off by default.</span>
+      </span>
+    </label>
+  </div>
+  <div class="card pad" style="margin-top:14px">
     <label class="rowtitle" for="monitorSlack">Slack — product changes</label>
     <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a product’s status changes. Separate from the waitlist Slack above — point it at your product-changes channel. Leave blank to skip Slack for product changes (the Google Sheet still logs them).</p>
     <input id="monitorSlack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(monitorSlack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
@@ -147,7 +157,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProducts:document.getElementById('freeGiftProducts').value, freeGiftCode:document.getElementById('freeGiftCode').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProducts:document.getElementById('freeGiftProducts').value, freeGiftCode:document.getElementById('freeGiftCode').value, offerAltVariant:document.getElementById('offerAltVariant').checked };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

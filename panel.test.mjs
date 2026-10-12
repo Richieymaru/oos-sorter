@@ -12,13 +12,16 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProducts: ['Free gels'], freeGiftCode: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProducts: ['Free gels'], freeGiftCode: '', offerAltVariant: false };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProducts, ['Free gels']);
 eq('freeGift enable + custom products parsed', normalizeSettings({ freeGiftEnabled: true, freeGiftProducts: 'Gel balls\nStickers' }).freeGiftProducts, ['Gel balls', 'Stickers']);
 eq('freeGift empty list falls back to default', normalizeSettings({ freeGiftProducts: '' }).freeGiftProducts, ['Free gels']);
 eq('freeGift code trimmed', normalizeSettings({ freeGiftCode: '  FREEGEL  ' }).freeGiftCode, 'FREEGEL');
+eq('offerAltVariant off by default', normalizeSettings({}).offerAltVariant, false);
+eq('offerAltVariant enables', normalizeSettings({ offerAltVariant: true }).offerAltVariant, true);
+eq('offerAltVariant string "true" is not true', normalizeSettings({ offerAltVariant: 'true' }).offerAltVariant, false);
 eq('undefined -> all false', normalizeSettings(undefined), base);
 eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });
 eq('mixed', normalizeSettings({ sort: true, notify: false }), { ...base, sort: true });
@@ -79,6 +82,8 @@ eq('renders the setup button wired to the setup-monitor action', /id="setupMon"/
 eq('renders a separate product-changes slack field', /id="monitorSlack"/.test(sb) && sb.includes('monitorSlackWebhook:'), true);
 eq('prefills existing monitor slack webhook', settingsBody({ monitorSlackWebhook: 'https://hooks.slack.com/services/p/q/r' }).includes('https://hooks.slack.com/services/p/q/r'), true);
 eq('prefills existing sheet webhook', settingsBody({ sheetWebhook: 'https://script.google.com/macros/s/x/exec' }).includes('https://script.google.com/macros/s/x/exec'), true);
+eq('renders the alt-variant toggle wired to the body', /id="offerAltVariant"/.test(sb) && sb.includes('offerAltVariant:'), true);
+eq('alt-variant toggle reflects saved on-state', /id="offerAltVariant"[^>]*checked/.test(settingsBody({ offerAltVariant: true })), true);
 
 console.log('\n--- nudgeDays ---');
 eq('clamps + defaults nudgeDays', normalizeSettings({ nudgeDays: 99 }).nudgeDays, 14);

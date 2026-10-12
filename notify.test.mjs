@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // buildBackInStock reads SHOP_DOMAIN at module load, so set it before importing.
 process.env.SHOP_DOMAIN = 'demo.myshopify.com';
-const { buildBackInStock, buildSoldOutAlert, buildNudge, fromName, formatMoney } = await import('./notify.mjs');
+const { buildBackInStock, buildSoldOutAlert, buildNudge, buildAltVariant, fromName, formatMoney } = await import('./notify.mjs');
 
 let failures = 0, checks = 0;
 function ok(label, cond) {
@@ -94,6 +94,20 @@ const noSale = buildBackInStock({ title: 'X', handle: 'x', priceText: '$50.00' }
 ok('no strike-through when there is no compare-at', !noSale.html.includes('line-through') && noSale.html.includes('$50.00'));
 const noPrice = buildBackInStock({ title: 'Y', handle: 'y' }, unsub);
 ok('omits the price block when no priceText', !noPrice.html.includes('font-size:18px;font-weight:700'));
+
+console.log('--- buildAltVariant (a different option is in stock) ---');
+const alt = buildAltVariant(
+  { title: 'Hydro Gel Balls', handle: 'hydro-gel', variantId: '501', variantTitle: 'Blue', storeHost: 'gelballundercover.com.au', priceText: 'A$19.00',
+    clickCartUrl: 'https://gelballundercover.com.au/cart/501:1' },
+  unsub,
+  { altVariants: [{ title: 'Green', priceText: 'A$19.00', url: 'https://gelballundercover.com.au/cart/502:1' }] }
+);
+ok('alt subject names the product', alt.subject === 'A different option for Hydro Gel Balls is available');
+ok('alt eyebrow reads "a different option is in stock"', alt.html.toLowerCase().includes('a different option is in stock'));
+ok('alt lead says their option is still sold out', alt.html.includes('still sold out'));
+ok('alt primary option is the in-stock one (cart link)', alt.html.includes('/cart/501:1'));
+ok('alt lists the other in-stock option', alt.html.includes('Green') && alt.html.includes('/cart/502:1'));
+ok('alt keeps the unsubscribe link', alt.text.includes(unsub));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

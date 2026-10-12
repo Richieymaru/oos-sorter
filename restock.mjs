@@ -17,7 +17,7 @@ import { gql, shortId, getShopContext } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
-import { sendBackInStock, sendSoldOutAlert, sendNudge, formatMoney } from './notify.mjs';
+import { sendBackInStock, sendSoldOutAlert, sendNudge, sendAltVariant, formatMoney } from './notify.mjs';
 import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 import { loadSettings } from './settings.mjs';
@@ -44,6 +44,23 @@ function altInStockVariants(sp, waitedVariantId, ctx, base, productShort, email)
     const { priceText } = priceTextFor(v, ctx.currency);
     out.push({ title: v.title, priceText, url: trackUrl(base, productShort, email, `/cart/${vid}:1`) });
     if (out.length >= 4) break;
+  }
+  return out;
+}
+
+/** Every in-stock, real (non-"Default Title") variant of a product, as
+ *  { id, title, priceText }. These are the alternatives we can offer a shopper
+ *  whose own waited variant is still sold out. Empty for single-variant products. */
+function inStockVariantInfos(sp, ctx) {
+  const nodes = sp?.variants?.nodes || [];
+  if (nodes.length < 2) return [];
+  const out = [];
+  for (const v of nodes) {
+    const vid = shortId(v.id);
+    if (!v.title || v.title === 'Default Title') continue;
+    if (!isVariantInStock(sp, vid)) continue;
+    const { priceText } = priceTextFor(v, ctx.currency);
+    out.push({ id: vid, title: v.title, priceText });
   }
   return out;
 }
@@ -82,9 +99,12 @@ async function bumpNotified(shoppers) {
  * @param {Array} args.waiting - the subset to keep (still sold out)
  * @param {{title?:string, handle?:string, image?:string|null}} args.product
  * @param {string|null} args.fallbackVariantId - variant to link when an entry has none
+ * @param {{variants:Array<{id,title,priceText}>}|null} args.altOffer - when set
+ *   and non-empty, shoppers still waiting (their variant out) are offered these
+ *   in-stock alternatives once each (deduped by an `altTs` stamp on the entry).
  * @returns {Promise<number>} how many emails actually sent
  */
-async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base }) {
+async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base, altOffer = null }) {
   let sent = 0;
   const failed = [];
   const rows = [];
@@ -117,9 +137,44 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
     }
   }
 
+  // Offer alternatives to the shoppers still waiting (their variant is out) when
+  // the product has an in-stock variant they haven't been offered yet. One email
+  // per shopper, ever — tracked by an `altTs` stamp on the waitlist entry.
+  let altStamped = false;
+  const altAlts = altOffer?.variants || [];
+  if (altAlts.length) {
+    for (const sub of waiting) {
+      if (sub.altTs) continue; // already offered an alternative
+      const alts = altAlts.filter((a) => String(a.id) !== String(sub.variantId));
+      if (!alts.length) continue; // the only in-stock variant is the one they want (shouldn't happen here)
+      const primary = alts[0];
+      const rest = alts.slice(1);
+      const payload = {
+        ...product,
+        variantId: primary.id,
+        variantTitle: primary.title,
+        storeHost: ctx.host,
+        priceText: primary.priceText,
+        clickCartUrl: trackUrl(base, short, sub.email, `/cart/${primary.id}:1`),
+        clickProductUrl: trackUrl(base, short, sub.email, product.handle ? `/products/${product.handle}` : '/'),
+      };
+      const altVariants = rest.map((a) => ({
+        title: a.title,
+        priceText: a.priceText,
+        url: trackUrl(base, short, sub.email, `/cart/${a.id}:1`),
+      }));
+      try {
+        await sendAltVariant(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun, altVariants });
+        if (!dryRun) { sub.altTs = new Date().toISOString(); altStamped = true; }
+      } catch (e) {
+        console.error(`  ! alternative-variant email to ${sub.email} failed: ${e.message}`);
+      }
+    }
+  }
+
   if (!dryRun) {
     const keep = [...waiting, ...failed];
-    if (keep.length === list.length) {
+    if (keep.length === list.length && !altStamped) {
       /* nothing changed — skip the write */
     } else if (keep.length) {
       await setWaitlist(gid, keep);
@@ -171,6 +226,10 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
   const stock = await fetchProductsByIds(waited.map((w) => shortId(w.id)));
   const byId = new Map(stock.map((p) => [p.id, p]));
   const ctx = await getShopContext();
+  // Opt-in cross-variant offer (default OFF): email people whose variant is still
+  // out when a DIFFERENT variant of the same product is back in stock.
+  const settings = await loadSettings().catch(() => null);
+  const offerAlt = !!settings?.offerAltVariant;
 
   let productsNotified = 0;
   let emailsSent = 0;
@@ -179,7 +238,10 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
     if (!sp || !isInStock(sp)) continue; // every variant still sold out — keep the whole list
 
     const { notify, waiting } = partitionByStock(w.list, (variantId) => isVariantInStock(sp, variantId));
-    if (!notify.length) continue; // the product is back, but not the variants these people want
+    // The in-stock alternatives to offer those still waiting (empty unless opt-in on).
+    const altOffer = offerAlt ? { variants: inStockVariantInfos(sp, ctx) } : null;
+    // Nobody's waited variant is back AND there's no alternative to offer -> skip.
+    if (!notify.length && !(altOffer && altOffer.variants.length && waiting.length)) continue;
 
     const first = sp.variants?.nodes?.[0];
     emailsSent += await emailAndPrune({
@@ -193,8 +255,9 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
       ctx,
       dryRun,
       base,
+      altOffer,
     });
-    productsNotified++;
+    if (notify.length) productsNotified++;
   }
   return { waitlisted: waited.length, productsNotified, emailsSent };
 }
@@ -218,6 +281,8 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
   const stock = await fetchProductsByIds(withLists.map((w) => shortId(w.gid)));
   const byId = new Map(stock.map((p) => [p.id, p]));
   const ctx = await getShopContext();
+  const settings = await loadSettings().catch(() => null);
+  const offerAlt = !!settings?.offerAltVariant;
 
   let productsNotified = 0;
   let emailsSent = 0;
@@ -226,7 +291,8 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
     if (!sp || !isInStock(sp)) continue; // every variant still sold out — keep the whole list
 
     const { notify, waiting } = partitionByStock(list, (variantId) => isVariantInStock(sp, variantId));
-    if (!notify.length) continue; // the product is back, but not the variants these people want
+    const altOffer = offerAlt ? { variants: inStockVariantInfos(sp, ctx) } : null;
+    if (!notify.length && !(altOffer && altOffer.variants.length && waiting.length)) continue;
 
     const first = sp.variants?.nodes?.[0];
     emailsSent += await emailAndPrune({
@@ -240,8 +306,9 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
       ctx,
       dryRun,
       base,
+      altOffer,
     });
-    productsNotified++;
+    if (notify.length) productsNotified++;
   }
   return { productsNotified, emailsSent };
 }

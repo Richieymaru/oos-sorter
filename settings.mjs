@@ -83,6 +83,10 @@ export function normalizeSettings(obj) {
     freeGiftEnabled: o.freeGiftEnabled === true,
     freeGiftProducts: freeGiftProducts.length ? freeGiftProducts : ['Free gels'],
     freeGiftCode: String(o.freeGiftCode ?? '').trim().slice(0, 40),
+    // Cross-variant offer. OFF by default: when a waitlisted shopper's variant is
+    // still sold out but another variant of the same product is back, email them
+    // the available option (once each). Only safe facts (real stock), no promise.
+    offerAltVariant: o.offerAltVariant === true,
   };
 }
 
