@@ -20,7 +20,7 @@ import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partition
 import { sendBackInStock, sendSoldOutAlert, sendNudge, sendAltVariant, formatMoney } from './notify.mjs';
 import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
-import { loadSettings } from './settings.mjs';
+import { loadSettings, incentiveFor } from './settings.mjs';
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
  *  a failure here must never break the actual emailing. */
@@ -60,7 +60,7 @@ function inStockVariantInfos(sp, ctx) {
     if (!v.title || v.title === 'Default Title') continue;
     if (!isVariantInStock(sp, vid)) continue;
     const { priceText } = priceTextFor(v, ctx.currency);
-    out.push({ id: vid, title: v.title, priceText });
+    out.push({ id: vid, title: v.title, priceText, price: v.price });
   }
   return out;
 }
@@ -104,7 +104,7 @@ async function bumpNotified(shoppers) {
  *   in-stock alternatives once each (deduped by an `altTs` stamp on the entry).
  * @returns {Promise<number>} how many emails actually sent
  */
-async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base, altOffer = null }) {
+async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base, altOffer = null, settings = null }) {
   let sent = 0;
   const failed = [];
   const rows = [];
@@ -116,7 +116,8 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
     // tracked redirect so a click-through is recorded on the log row.
     const relCart = variantId ? `/cart/${variantId}:1` : (product.handle ? `/products/${product.handle}` : '/');
     const relProduct = product.handle ? `/products/${product.handle}` : '/';
-    const { priceText, compareAtText } = priceTextFor(variants.get(String(variantId)), ctx.currency);
+    const variantNode = variants.get(String(variantId));
+    const { priceText, compareAtText } = priceTextFor(variantNode, ctx.currency);
     const payload = {
       ...product,
       variantId,
@@ -124,6 +125,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
       storeHost: ctx.host,
       priceText,
       compareAtText,
+      incentives: incentiveFor(variantNode?.price, settings),
       clickCartUrl: trackUrl(base, short, sub.email, relCart),
       clickProductUrl: trackUrl(base, short, sub.email, relProduct),
     };
@@ -155,6 +157,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
         variantTitle: primary.title,
         storeHost: ctx.host,
         priceText: primary.priceText,
+        incentives: incentiveFor(primary.price, settings),
         clickCartUrl: trackUrl(base, short, sub.email, `/cart/${primary.id}:1`),
         clickProductUrl: trackUrl(base, short, sub.email, product.handle ? `/products/${product.handle}` : '/'),
       };
@@ -256,6 +259,7 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
       dryRun,
       base,
       altOffer,
+      settings,
     });
     if (notify.length) productsNotified++;
   }
@@ -307,6 +311,7 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
       dryRun,
       base,
       altOffer,
+      settings,
     });
     if (notify.length) productsNotified++;
   }
@@ -392,6 +397,7 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
   const first = p.variants?.nodes?.[0];
   const list = await readWaitlist(productGid);
   const ctx = await getShopContext();
+  const settings = await loadSettings().catch(() => null);
 
   const want = variantId == null ? null : String(variantId).replace(/\D/g, '');
   const { notify, waiting } = partitionByStock(list, (entryVariant) =>
@@ -409,6 +415,7 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
     ctx,
     dryRun,
     base,
+    settings,
   });
 
   return { sent, title: p.title, total: list.length };
@@ -432,7 +439,8 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
   const [sp] = await fetchProductsByIds([short]);
   if (!sp) return { sent: 0, error: 'Product not found.' };
   const ctx = await getShopContext();
-  const inStock = inStockVariantInfos(sp, ctx); // [{id,title,priceText}]
+  const settings = await loadSettings().catch(() => null);
+  const inStock = inStockVariantInfos(sp, ctx); // [{id,title,priceText,price}]
   const want = String(offerVariantId || '').replace(/\D/g, '');
   const offered = inStock.find((v) => String(v.id) === want) || null;
   if (!offered) return { sent: 0, error: 'That option isn’t in stock right now.' };
@@ -453,6 +461,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
       variantTitle: offered.title,
       storeHost: ctx.host,
       priceText: offered.priceText,
+      incentives: incentiveFor(offered.price, settings),
       clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1`),
       clickProductUrl: trackUrl(base, short, sub.email, sp.handle ? `/products/${sp.handle}` : '/'),
     };
@@ -492,7 +501,9 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
   const first = sp.variants?.nodes?.[0];
   const vId = vWant || (first?.id ? shortId(first.id) : null);
   const ctx = await getShopContext();
-  const { priceText, compareAtText } = priceTextFor(variantsById(sp).get(String(vId)), ctx.currency);
+  const settings = await loadSettings().catch(() => null);
+  const vNode = variantsById(sp).get(String(vId));
+  const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
   const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
   const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
   const payload = {
@@ -504,6 +515,7 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
     storeHost: ctx.host,
     priceText,
     compareAtText,
+    incentives: incentiveFor(vNode?.price, settings),
     clickCartUrl: trackUrl(base, short, email, relCart),
     clickProductUrl: trackUrl(base, short, email, relProduct),
   };
@@ -559,6 +571,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
       storeHost: ctx.host,
       priceText,
       compareAtText,
+      incentives: incentiveFor(vNode?.price, settings),
       clickCartUrl: trackUrl(base, row.p, row.e, relCart),
       clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
     };

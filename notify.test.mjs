@@ -109,5 +109,19 @@ ok('alt primary option is the in-stock one (cart link)', alt.html.includes('/car
 ok('alt lists the other in-stock option', alt.html.includes('Green') && alt.html.includes('/cart/502:1'));
 ok('alt keeps the unsubscribe link', alt.text.includes(unsub));
 
+console.log('--- order perks (price-tier incentives) ---');
+const perk = buildBackInStock(
+  { title: 'Big Kit', handle: 'big-kit', variantId: '9', priceText: 'A$1,299.00',
+    incentives: { freeShipping: true, gift: ['Gel blaster bundle', 'Target'] } },
+  unsub
+);
+ok('perks box shows free shipping', perk.html.includes('Free shipping') && perk.html.toLowerCase().includes('your order perks'));
+ok('perks box lists the gift products', perk.html.includes('Gel blaster bundle, Target'));
+ok('perks appear in plain text too', perk.text.includes('Free shipping') && perk.text.includes('Gel blaster bundle, Target'));
+const perkShipOnly = buildBackInStock({ title: 'X', handle: 'x', incentives: { freeShipping: true, gift: null } }, unsub);
+ok('free-shipping-only tier shows no gift line', perkShipOnly.html.includes('Free shipping') && !perkShipOnly.html.includes('Plus a free gift'));
+const noPerk = buildBackInStock({ title: 'Y', handle: 'y' }, unsub);
+ok('no perks box when none set', !noPerk.html.toLowerCase().includes('your order perks'));
+
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

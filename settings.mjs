@@ -87,7 +87,42 @@ export function normalizeSettings(obj) {
     // still sold out but another variant of the same product is back, email them
     // the available option (once each). Only safe facts (real stock), no promise.
     offerAltVariant: o.offerAltVariant === true,
+    // Price-tiered order perks shown in the restock emails, by the product's price
+    // (in the store's own currency). OFF by default — it only writes the offer into
+    // the email; the merchant must set up the real free-shipping rule + gift fulfilment.
+    incentivesEnabled: o.incentivesEnabled === true,
+    incentiveTier1: clampInt(o.incentiveTier1, 200, 0, 1000000),   // free shipping
+    incentiveTier2: clampInt(o.incentiveTier2, 500, 0, 1000000),   // + minor gift
+    incentiveTier3: clampInt(o.incentiveTier3, 1000, 0, 1000000),  // + major gift
+    // The actual product(s) offered as the minor/major gift — one or many, like the
+    // nudge free-gift list. Empty is fine (the email then just says "a free gift").
+    incentiveMinorGiftProducts: normalizeStrList(o.incentiveMinorGiftProducts),
+    incentiveMajorGiftProducts: normalizeStrList(o.incentiveMajorGiftProducts),
   };
+}
+
+/** Pure: the order perks a product at `price` (store currency) qualifies for,
+ *  or null. Tiers are evaluated highest-first so out-of-order config still behaves.
+ *  Returns { freeShipping:true, gift:string[]|null } — gift is the tier's gift
+ *  product(s) (minor/major) or null when the tier is free-shipping-only. */
+export function incentiveFor(price, settings) {
+  const s = settings || {};
+  if (!s.incentivesEnabled) return null;
+  const p = Number(price);
+  if (!Number.isFinite(p)) return null;
+  const major = (s.incentiveMajorGiftProducts || []).length ? s.incentiveMajorGiftProducts : ['a premium free gift'];
+  const minor = (s.incentiveMinorGiftProducts || []).length ? s.incentiveMinorGiftProducts : ['a free gift'];
+  const tiers = [
+    { min: Number(s.incentiveTier3), gift: major },
+    { min: Number(s.incentiveTier2), gift: minor },
+    { min: Number(s.incentiveTier1), gift: null },
+  ]
+    .filter((t) => Number.isFinite(t.min))
+    .sort((a, b) => b.min - a.min);
+  for (const t of tiers) {
+    if (p >= t.min) return { freeShipping: true, gift: t.gift };
+  }
+  return null;
 }
 
 export async function loadSettings() {

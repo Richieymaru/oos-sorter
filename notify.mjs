@@ -285,6 +285,9 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   const title = product.title ?? 'Your item';
   const hasGift = !!(freeGift && Array.isArray(freeGift.products) && freeGift.products.length);
   const hasAlts = Array.isArray(altVariants) && altVariants.length > 0;
+  // Price-tiered order perks (free shipping / + gift), carried on the product payload.
+  const inc = product.incentives && product.incentives.freeShipping ? product.incentives : null;
+  const incGift = inc && Array.isArray(inc.gift) && inc.gift.length ? inc.gift.join(', ') : (inc && inc.gift ? String(inc.gift) : '');
   // Single-variant products are literally titled "Default Title" — never show that.
   const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
   // Shopper-facing host: the store's primary/custom domain (gelballundercover.com.au),
@@ -304,9 +307,13 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   const altText = hasAlts
     ? `\nOther options in stock:\n${altVariants.map((v) => `  - ${v.title}${v.priceText ? ` (${v.priceText})` : ''}: ${v.url}`).join('\n')}\n`
     : '';
+  const incText = inc
+    ? `\nThis order qualifies for:\n  - Free shipping${incGift ? `\n  - Plus a free gift: ${incGift}` : ''}\n`
+    : '';
   const text =
     `${introText}\n\n` +
     priceLine +
+    incText +
     `Add it to your cart: ${cartUrl}\n` +
     `Or view the product: ${productUrl}\n` +
     freeGiftText +
@@ -319,6 +326,20 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
           ? `<span style="font-size:14px;font-weight:500;color:#8b95a3;text-decoration:line-through;margin-left:8px">${esc(product.compareAtText)}</span>`
           : ''
       }</div>`
+    : '';
+  const incentiveBlock = inc
+    ? `<tr><td style="padding:4px 24px 10px">
+         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:12px">
+           <tr><td style="padding:14px 16px">
+             <div style="font-size:12px;font-weight:700;letter-spacing:.05em;color:#1f6feb;text-transform:uppercase">&#128230; Your order perks</div>
+             <div style="font-size:14px;color:#161b22;margin-top:6px;line-height:1.6">
+               &#128666; <strong>Free shipping</strong> on this order${
+                 incGift ? `<br>&#127873; Plus a free gift: <strong>${esc(incGift)}</strong>` : ''
+               }
+             </div>
+           </td></tr>
+         </table>
+       </td></tr>`
     : '';
   const imageBlock = product.image
     ? `<tr><td style="padding:0 24px 4px" align="center">
@@ -355,6 +376,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
           ${priceBlock}
           <div style="font-size:14px;color:#5f6875;line-height:1.5">${leadHtml}</div>
         </td></tr>
+        ${incentiveBlock}
         ${imageBlock}
         ${freeGiftBlock}
         <tr><td style="padding:16px 24px 24px">

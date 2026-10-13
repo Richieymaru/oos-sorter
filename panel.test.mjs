@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { normalizeSettings, normalizeEmails, normalizeSlackWebhook, normalizeSheetWebhook } from './settings.mjs';
+import { normalizeSettings, normalizeEmails, normalizeSlackWebhook, normalizeSheetWebhook, incentiveFor } from './settings.mjs';
 import { isAuthorized, settingsBody } from './panel.mjs';
 
 let failures = 0, checks = 0;
@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProducts: ['Free gels'], freeGiftCode: '', offerAltVariant: false };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProducts: ['Free gels'], freeGiftCode: '', offerAltVariant: false, incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGiftProducts: [], incentiveMajorGiftProducts: [] };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProducts, ['Free gels']);
@@ -22,6 +22,22 @@ eq('freeGift code trimmed', normalizeSettings({ freeGiftCode: '  FREEGEL  ' }).f
 eq('offerAltVariant off by default', normalizeSettings({}).offerAltVariant, false);
 eq('offerAltVariant enables', normalizeSettings({ offerAltVariant: true }).offerAltVariant, true);
 eq('offerAltVariant string "true" is not true', normalizeSettings({ offerAltVariant: 'true' }).offerAltVariant, false);
+
+console.log('\n--- incentives (price-tier perks) ---');
+eq('incentives off by default', normalizeSettings({}).incentivesEnabled, false);
+eq('default thresholds 200/500/1000', [normalizeSettings({}).incentiveTier1, normalizeSettings({}).incentiveTier2, normalizeSettings({}).incentiveTier3], [200, 500, 1000]);
+eq('gift products default empty', [normalizeSettings({}).incentiveMinorGiftProducts, normalizeSettings({}).incentiveMajorGiftProducts], [[], []]);
+eq('custom thresholds clamped to int', [normalizeSettings({ incentiveTier1: '150.7' }).incentiveTier1], [151]);
+eq('minor gift products parsed (one per line)', normalizeSettings({ incentiveMinorGiftProducts: 'Free gels\nSticker' }).incentiveMinorGiftProducts, ['Free gels', 'Sticker']);
+// incentiveFor: off -> null
+eq('incentiveFor returns null when disabled', incentiveFor(999, normalizeSettings({})), null);
+const incOn = normalizeSettings({ incentivesEnabled: true, incentiveMinorGiftProducts: 'Sticker', incentiveMajorGiftProducts: 'Blaster' });
+eq('below tier1 -> null', incentiveFor(199, incOn), null);
+eq('tier1 (200) -> free shipping only', incentiveFor(200, incOn), { freeShipping: true, gift: null });
+eq('tier2 (500) -> free shipping + minor gift', incentiveFor(500, incOn), { freeShipping: true, gift: ['Sticker'] });
+eq('tier3 (1000) -> free shipping + major gift', incentiveFor(1500, incOn), { freeShipping: true, gift: ['Blaster'] });
+eq('empty minor gift falls back to a free gift label', incentiveFor(500, normalizeSettings({ incentivesEnabled: true })), { freeShipping: true, gift: ['a free gift'] });
+eq('non-numeric price -> null', incentiveFor('abc', incOn), null);
 eq('undefined -> all false', normalizeSettings(undefined), base);
 eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });
 eq('mixed', normalizeSettings({ sort: true, notify: false }), { ...base, sort: true });
@@ -84,6 +100,10 @@ eq('prefills existing monitor slack webhook', settingsBody({ monitorSlackWebhook
 eq('prefills existing sheet webhook', settingsBody({ sheetWebhook: 'https://script.google.com/macros/s/x/exec' }).includes('https://script.google.com/macros/s/x/exec'), true);
 eq('renders the alt-variant toggle wired to the body', /id="offerAltVariant"/.test(sb) && sb.includes('offerAltVariant:'), true);
 eq('alt-variant toggle reflects saved on-state', /id="offerAltVariant"[^>]*checked/.test(settingsBody({ offerAltVariant: true })), true);
+eq('renders the incentives toggle + thresholds wired to the body', /id="incentivesEnabled"/.test(sb) && /id="incentiveTier1"/.test(sb) && sb.includes('incentivesEnabled:') && sb.includes('incentiveTier1:'), true);
+eq('renders the minor/major gift product fields', /id="incentiveMinorGiftProducts"/.test(sb) && /id="incentiveMajorGiftProducts"/.test(sb), true);
+eq('prefills saved thresholds', settingsBody({ incentiveTier1: 250 }).includes('value="250"'), true);
+eq('prefills saved gift products', settingsBody({ incentiveMajorGiftProducts: ['Mega Bundle'] }).includes('Mega Bundle'), true);
 
 console.log('\n--- nudgeDays ---');
 eq('clamps + defaults nudgeDays', normalizeSettings({ nudgeDays: 99 }).nudgeDays, 14);

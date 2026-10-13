@@ -124,6 +124,39 @@ export function settingsBody(settings) {
     </label>
   </div>
   <div class="card pad" style="margin-top:14px">
+    <label class="row" for="incentivesEnabled" style="margin-bottom:6px">
+      <input type="checkbox" id="incentivesEnabled"${ck(settings.incentivesEnabled)} class="sw">
+      <span class="track" aria-hidden="true"><span class="thumb"></span></span>
+      <span class="rowtext">
+        <span class="rowtitle">Order perks by price (free shipping + gifts)</span>
+        <span class="rowdesc">Show tiered perks in the restock emails based on the product’s price, in your store’s currency. ⚠️ This only writes the offer into the email — set up the real free-shipping rule and gift fulfilment in Shopify first. Off by default.</span>
+      </span>
+    </label>
+    <div style="height:10px"></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <label class="rowtitle" for="incentiveTier1">Free shipping from</label>
+        <div><input id="incentiveTier1" type="number" min="0" value="${Number(settings.incentiveTier1) || 0}" style="width:120px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)"></div>
+      </div>
+      <div>
+        <label class="rowtitle" for="incentiveTier2">+ minor gift from</label>
+        <div><input id="incentiveTier2" type="number" min="0" value="${Number(settings.incentiveTier2) || 0}" style="width:120px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)"></div>
+      </div>
+      <div>
+        <label class="rowtitle" for="incentiveTier3">+ major gift from</label>
+        <div><input id="incentiveTier3" type="number" min="0" value="${Number(settings.incentiveTier3) || 0}" style="width:120px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)"></div>
+      </div>
+    </div>
+    <div style="height:12px"></div>
+    <label class="rowtitle" for="incentiveMinorGiftProducts">Minor gift product(s)</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Given at the “+ minor gift” tier. One per line. Leave blank to just say “a free gift”.</p>
+    <textarea id="incentiveMinorGiftProducts" rows="2" placeholder="e.g. Free gels (10,000pcs)" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc((settings.incentiveMinorGiftProducts || []).join('\n'))}</textarea>
+    <div style="height:12px"></div>
+    <label class="rowtitle" for="incentiveMajorGiftProducts">Major gift product(s)</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Given at the “+ major gift” tier. One per line. Leave blank to just say “a premium free gift”.</p>
+    <textarea id="incentiveMajorGiftProducts" rows="2" placeholder="e.g. Gel blaster bundle" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc((settings.incentiveMajorGiftProducts || []).join('\n'))}</textarea>
+  </div>
+  <div class="card pad" style="margin-top:14px">
     <label class="rowtitle" for="monitorSlack">Slack — product changes</label>
     <p class="rowdesc" style="margin:3px 0 9px">Paste a Slack Incoming Webhook URL to get a message whenever a product’s status changes. Separate from the waitlist Slack above — point it at your product-changes channel. Leave blank to skip Slack for product changes (the Google Sheet still logs them).</p>
     <input id="monitorSlack" type="url" placeholder="https://hooks.slack.com/services/…" value="${esc(monitorSlack)}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
@@ -157,7 +190,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProducts:document.getElementById('freeGiftProducts').value, freeGiftCode:document.getElementById('freeGiftCode').value, offerAltVariant:document.getElementById('offerAltVariant').checked };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProducts:document.getElementById('freeGiftProducts').value, freeGiftCode:document.getElementById('freeGiftCode').value, offerAltVariant:document.getElementById('offerAltVariant').checked, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGiftProducts:document.getElementById('incentiveMinorGiftProducts').value, incentiveMajorGiftProducts:document.getElementById('incentiveMajorGiftProducts').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);
