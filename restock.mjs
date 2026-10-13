@@ -415,6 +415,65 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
 }
 
 /**
+ * Manually offer ONE in-stock variant as an alternative to everyone still waiting
+ * on a product (the Waitlists "Offer this option" buttons). The merchant picks the
+ * variant to push (e.g. "we have plenty of Black"); it's sent as the headline of
+ * the same alternative-variant email, with any other in-stock options listed below.
+ *
+ * Recipients = shoppers whose OWN waited variant is still sold out and isn't the
+ * offered one (someone waiting for exactly this variant gets a normal "Send now"
+ * instead). Nobody is removed from the list — they're still waiting for their own
+ * option — but each is stamped `altTs` so the automatic offer won't double up.
+ *
+ * @returns {Promise<{sent:number, title:string, option:string}|{sent:0, error:string}>}
+ */
+export async function offerAltForProduct(productGid, { offerVariantId, base = null, dryRun = false } = {}) {
+  const short = shortId(productGid);
+  const [sp] = await fetchProductsByIds([short]);
+  if (!sp) return { sent: 0, error: 'Product not found.' };
+  const ctx = await getShopContext();
+  const inStock = inStockVariantInfos(sp, ctx); // [{id,title,priceText}]
+  const want = String(offerVariantId || '').replace(/\D/g, '');
+  const offered = inStock.find((v) => String(v.id) === want) || null;
+  if (!offered) return { sent: 0, error: 'That option isn’t in stock right now.' };
+
+  const list = await readWaitlist(productGid);
+  let sent = 0;
+  let stamped = false;
+  for (const sub of list) {
+    const subVar = sub.variantId ? String(sub.variantId).replace(/\D/g, '') : null;
+    if (subVar && subVar === String(offered.id)) continue; // their own option IS the offered one — that's a normal restock
+    if (subVar && isVariantInStock(sp, subVar)) continue;  // their own option is already back — no need to offer an alternative
+    const rest = inStock.filter((v) => String(v.id) !== String(offered.id) && String(v.id) !== String(subVar));
+    const payload = {
+      title: sp.title,
+      handle: sp.handle,
+      image: sp.featuredImage?.url || null,
+      variantId: offered.id,
+      variantTitle: offered.title,
+      storeHost: ctx.host,
+      priceText: offered.priceText,
+      clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1`),
+      clickProductUrl: trackUrl(base, short, sub.email, sp.handle ? `/products/${sp.handle}` : '/'),
+    };
+    const altVariants = rest.map((a) => ({
+      title: a.title,
+      priceText: a.priceText,
+      url: trackUrl(base, short, sub.email, `/cart/${a.id}:1`),
+    }));
+    try {
+      await sendAltVariant(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun, altVariants });
+      sent++;
+      if (!dryRun) { sub.altTs = new Date().toISOString(); stamped = true; }
+    } catch (e) {
+      console.error(`  ! manual alternative offer to ${sub.email} failed: ${e.message}`);
+    }
+  }
+  if (stamped && !dryRun) await setWaitlist(productGid, list);
+  return { sent, title: sp.title, option: offered.title };
+}
+
+/**
  * Manually re-send the back-in-stock email to ONE shopper (dashboard "Resend").
  * Guarded on current stock: if the product (or the shopper's variant) is sold out
  * again it sends nothing and reports soldOut, so we never tell a shopper "it's

@@ -1,6 +1,6 @@
 import { requireAuth } from './_auth.mjs';
 import { shell, setPageHeaders, esc, statCard } from '../ui.mjs';
-import { productsWithWaitlist, notifyOneProduct, resendOne } from '../restock.mjs';
+import { productsWithWaitlist, notifyOneProduct, resendOne, offerAltForProduct } from '../restock.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isVariantInStock, isInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
@@ -66,6 +66,19 @@ export default async function handler(req, res) {
         return;
       }
 
+      // Offer ONE in-stock variant as an alternative to everyone still waiting on
+      // a product (the "Offer this option" buttons). Doesn't clear the list.
+      if (body.action === 'offerAlt') {
+        const os = String(body.productId || '');
+        const on = os.replace(/\D/g, '');
+        const ogid = os.startsWith('gid://') ? os : (on ? longId(on) : null);
+        if (!ogid || !body.variantId) { res.end(JSON.stringify({ ok: false, error: 'Missing product or option.' })); return; }
+        const or = await offerAltForProduct(ogid, { offerVariantId: body.variantId });
+        if (or.error) { res.end(JSON.stringify({ ok: false, error: or.error })); return; }
+        res.end(JSON.stringify({ ok: true, sent: or.sent, option: or.option }));
+        return;
+      }
+
       const { productId, variantId } = body;
       const s = String(productId || '');
       const num = s.replace(/\D/g, '');
@@ -111,19 +124,32 @@ export default async function handler(req, res) {
     } catch { /* leave stock unknown -> Resend disabled, never blocks the page */ }
   }
 
-  // For any product with an entry that recorded no variant, pull the product's
-  // variants so we can show a real option name instead of a dash. Only fetch the
-  // ones that actually need it, keeping the query small on a big store.
-  const needIds = items
-    .filter((w) => w.list.some((s) => !(s.variantTitle && s.variantTitle !== 'Default Title')))
-    .map((w) => shortId(w.id));
+  // Pull the waitlisted products' variants + stock so we can (a) show a real
+  // option name instead of a dash, and (b) offer the in-stock options to the
+  // people still waiting. Only on the waitlists view (the notified view doesn't
+  // render product cards), and bounded to products that actually have a waitlist.
   let prodById = new Map();
-  if (needIds.length) {
+  if (!notifiedView && items.length) {
     try {
-      const prods = await fetchProductsByIds(needIds);
+      const prods = await fetchProductsByIds(items.map((w) => shortId(w.id)));
       prodById = new Map(prods.map((p) => [p.id, p]));
-    } catch { /* leave dashes if the lookup fails — display only, never blocks the page */ }
+    } catch { /* leave dashes / no offer chips if the lookup fails — never blocks the page */ }
   }
+  /** A product's in-stock, real-named variants as [{id, title}] — the options a
+   *  merchant can offer to shoppers whose own option is still sold out. */
+  const inStockOptions = (prod) => {
+    if (!prod) return [];
+    return prod.variants.nodes
+      .filter((v) => v.title && v.title !== 'Default Title' && isVariantInStock(prod, String(v.id).replace(/\D/g, '')))
+      .map((v) => ({ id: String(v.id).replace(/\D/g, ''), title: v.title }));
+  };
+  /** Shoppers on a list whose own waited option is still sold out (unknown-variant
+   *  entries count as waiting) — the recipients of an alternative-option offer. */
+  const stillWaiting = (list, prod) => list.filter((s) => {
+    const v = s.variantId ? String(s.variantId).replace(/\D/g, '') : null;
+    if (!v) return true;
+    return prod ? !isVariantInStock(prod, v) : true;
+  });
   const fmt = (ts) => esc(String(ts || '').replace('T', ' ').slice(0, 16));
   const money = (cur, amt) => `${cur ? cur + ' ' : ''}${(Number(amt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const thumb = (u) =>
@@ -202,6 +228,24 @@ export default async function handler(req, res) {
           const perVariant = groups.length > 1;
 
           const prod = prodById.get(w.id) || null;
+
+          // "Offer a different option" — in-stock options the merchant can push to
+          // the people whose own option is still sold out. Same email as a restock,
+          // but headlined with the option they pick; doesn't clear the list.
+          const options = inStockOptions(prod);
+          const waitingForAlt = stillWaiting(w.list, prod);
+          const offerRow = options.length && waitingForAlt.length
+            ? `<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                 <span class="faint" style="font-size:12.5px">Offer an in-stock option to the ${waitingForAlt.length} still waiting:</span>
+                 ${options
+                   .map(
+                     (v) =>
+                       `<button class="ghost offer" data-id="${esc(shortId(w.id))}" data-variant="${esc(v.id)}" data-option="${esc(v.title)}" data-count="${waitingForAlt.length}">${esc(v.title)}</button>`
+                   )
+                   .join('')}
+               </div>`
+            : '';
+
           const rows = w.list
             .map(
               (s) =>
@@ -235,6 +279,7 @@ export default async function handler(req, res) {
           ${sendButton(w, '', w.title, w.list.length)}
         </div>
         ${groupSenders}
+        ${offerRow}
         <table style="margin-top:12px">
           <thead><tr><th>Email</th><th>Variant</th><th class="num">Joined</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -309,6 +354,18 @@ export default async function handler(req, res) {
           setTimeout(function(){ location.reload(); }, 700);
         }
         else { msg.textContent=r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send'); b.disabled=false; b.textContent=old; }
+      });
+    });
+    document.querySelectorAll('.offer').forEach(function(b){
+      b.addEventListener('click', async function(){
+        if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
+        var n=b.dataset.count||'0';
+        if(!confirm('Email the '+n+' shopper(s) still waiting that "'+b.dataset.option+'" is in stock as an alternative? They stay on the list for their own option.')) return;
+        b.disabled=true; var old=b.textContent; b.textContent='Sending\\u2026';
+        var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify({action:'offerAlt',productId:b.dataset.id,variantId:b.dataset.variant})});
+        var j=await r.json().catch(function(){return{};});
+        if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } b.textContent='Offered to '+(j.sent||0)+' \\u2713'; setTimeout(function(){ b.disabled=false; b.textContent=old; },2500); }
+        else { b.textContent=old; b.disabled=false; msg.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send')); }
       });
     });
     document.querySelectorAll('.resend').forEach(function(b){
