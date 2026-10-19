@@ -34,8 +34,10 @@ export function nudgeStage(row) {
 const nid = (id) => String(id ?? '').replace(/\D/g, '');
 const lc = (e) => String(e ?? '').trim().toLowerCase();
 
-/** Build a log row from a shopper + product. */
-export function notifiedRow({ email, productId, title, variantId = null, variantTitle = null, ts = null }) {
+/** Build a log row from a shopper + product. `kind` marks what we sent:
+ *  null/undefined = a back-in-stock notification; 'alt' = a manual "a different
+ *  option is in stock" offer (so the Notified page can label + count it). */
+export function notifiedRow({ email, productId, title, variantId = null, variantTitle = null, ts = null, kind = null }) {
   return {
     e: lc(email),
     p: nid(productId),
@@ -48,6 +50,7 @@ export function notifiedRow({ email, productId, title, variantId = null, variant
     ns: 0,     // nudge stage (how many follow-ups sent, 0..MAX_NUDGES)
     u: false,  // unsubscribed
     o: null,   // orderedAt
+    k: kind || null, // 'alt' for an alternative-option offer; null = restock
   };
 }
 
@@ -147,6 +150,7 @@ export function selectNudges(log, nowISO, firstGapDays, isInStockByProduct) {
     const key = `${x.e}\u0000${x.p}`;
     if (seen.has(key)) continue;
     seen.add(key); // lock onto the NEWEST row per (email, product)
+    if (x.k === 'alt') continue; // alternative-option offers are a manual action, not part of the nudge cadence
     if (!(x.c == null && x.o == null && x.u !== true)) continue; // clicked / ordered / unsubscribed => never
     const stage = nudgeStage(x);
     if (stage >= MAX_NUDGES) continue; // finished the sequence — stop
@@ -187,9 +191,12 @@ export function deriveStats(log) {
     seen.add(key);
     nudgeSends += x.ns != null ? x.ns : (x.n ? 1 : 0);
   }
-  // Total shopper emails sent = one back-in-stock per row + every follow-up nudge.
+  // Alternative-option offers (manual "a different option is in stock") vs the
+  // back-in-stock notifications, for the Notified-page breakdown.
+  const offered = list.filter((x) => x.k === 'alt').length;
+  // Total shopper emails sent = one per row + every follow-up nudge.
   const totalSent = notified + nudgeSends;
-  return { notified, clicked, nudged, ordered, orders, revenue, currency, clickRate, nudgeSends, totalSent };
+  return { notified, clicked, nudged, ordered, orders, revenue, currency, clickRate, nudgeSends, offered, totalSent };
 }
 
 /** A safe storefront-relative redirect target, or null. Blocks open-redirects. */

@@ -446,6 +446,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
   const list = await readWaitlist(productGid);
   let sent = 0;
   let stamped = false;
+  const rows = []; // notified-log rows so these offers show + count on the Notified page
   for (const sub of list) {
     const subVar = sub.variantId ? String(sub.variantId).replace(/\D/g, '') : null;
     if (subVar && subVar === String(offered.id)) continue; // their own option IS the offered one — that's a normal restock
@@ -468,12 +469,19 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
     try {
       await sendAltVariant(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun });
       sent++;
-      if (!dryRun) { sub.altTs = new Date().toISOString(); stamped = true; }
+      if (!dryRun) {
+        sub.altTs = new Date().toISOString();
+        stamped = true;
+        rows.push(notifiedRow({ email: sub.email, productId: short, title: sp.title, variantId: offered.id, variantTitle: offered.title, kind: 'alt' }));
+      }
     } catch (e) {
       console.error(`  ! manual alternative offer to ${sub.email} failed: ${e.message}`);
     }
   }
   if (stamped && !dryRun) await setWaitlist(productGid, list);
+  if (rows.length) {
+    try { await recordNotified(rows); } catch (e) { console.error(`  ! offer log write failed: ${e.message}`); }
+  }
   return { sent, title: sp.title, option: offered.title };
 }
 

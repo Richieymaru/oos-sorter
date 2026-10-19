@@ -194,6 +194,7 @@ export default async function handler(req, res) {
     if (r.o) return chip('#e7f6ee', '#0e7a4b', 'Ordered' + (r.oa ? ' · ' + esc(money(r.oc, r.oa)) : ''));
     if (r.u) return chip('#eef1f6', '#8b95a3', 'Unsubscribed');
     if (r.c) return chip('#e7f6ee', '#0e7a4b', 'Clicked');
+    if (r.k === 'alt') return chip('#eef2ff', '#4451c7', 'Offered option');
     if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged' + (r.ns > 1 ? ` &times;${r.ns}` : ''));
     return chip('#eef1f6', '#5f6875', 'Notified');
   };
@@ -294,7 +295,12 @@ export default async function handler(req, res) {
   ${notifiedView
     ? `<div class="pagehead"><h1>Recently notified</h1><p>Who we emailed when a product came back &mdash; whether they clicked through, and resend if they missed it. <a href="/waitlists" style="color:var(--accent-ink);font-weight:600">&larr; back to waitlists</a></p></div>
   <div class="grid c3" style="margin-bottom:16px">
-    ${statCard({ value: stats.totalSent, label: 'Emails sent', sub: `${stats.notified} back-in-stock · ${stats.nudgeSends} follow-up${stats.nudgeSends === 1 ? '' : 's'}` })}
+    ${statCard({ value: stats.totalSent, label: 'Emails sent', sub: (() => {
+      const parts = [`${stats.notified - stats.offered} back-in-stock`];
+      if (stats.offered) parts.push(`${stats.offered} offer${stats.offered === 1 ? '' : 's'}`);
+      parts.push(`${stats.nudgeSends} follow-up${stats.nudgeSends === 1 ? '' : 's'}`);
+      return parts.join(' · ');
+    })() })}
     ${statCard({ value: `${stats.clicked}`, label: 'Clicked', sub: `${stats.clickRate}% click-through`, tone: stats.clicked ? 'pos' : '' })}
     ${statCard({ value: stats.revenue ? money(stats.currency, stats.revenue) : '—', label: 'Waitlist revenue', sub: `${stats.orders || 0} order(s) from notified`, tone: stats.revenue ? 'pos' : '' })}
   </div>`

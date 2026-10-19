@@ -16,7 +16,8 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 console.log('--- notifiedRow ---');
 const row = notifiedRow({ email: 'A@X.com', productId: 'gid://shopify/Product/55', title: 'Knife', variantId: 'gid://shopify/ProductVariant/99', variantTitle: 'Black', ts: 't1' });
-ok('lowercases email + numeric ids', eq(row, { e: 'a@x.com', p: '55', t: 'Knife', v: '99', vt: 'Black', ts: 't1', c: null, n: null, ns: 0, u: false, o: null }));
+ok('lowercases email + numeric ids', eq(row, { e: 'a@x.com', p: '55', t: 'Knife', v: '99', vt: 'Black', ts: 't1', c: null, n: null, ns: 0, u: false, o: null, k: null }));
+ok('alternative-offer rows are tagged kind=alt', notifiedRow({ email: 'a@x.com', productId: '5', title: 'X', kind: 'alt' }).k === 'alt');
 ok('null variant when absent', notifiedRow({ email: 'a@x.com', productId: '55', title: 'X', ts: 't' }).v === null);
 
 console.log('\n--- appendNotified ---');
@@ -94,8 +95,8 @@ ok('dedupes to one nudge per (email,product)', dueDedup.length === 1 && dueDedup
 
 console.log('\n--- deriveStats ---');
 const stats = deriveStats([mk({}), mk({ c: 'x' }), mk({ c: 'x', n: 'y' }), mk({ o: 'z' })]);
-ok('counts + click rate', eq(stats, { notified: 4, clicked: 2, nudged: 1, ordered: 1, orders: 1, revenue: 0, currency: null, clickRate: 50, nudgeSends: 0, totalSent: 4 }));
-ok('empty stats', eq(deriveStats([]), { notified: 0, clicked: 0, nudged: 0, ordered: 0, orders: 0, revenue: 0, currency: null, clickRate: 0, nudgeSends: 0, totalSent: 0 }));
+ok('counts + click rate', eq(stats, { notified: 4, clicked: 2, nudged: 1, ordered: 1, orders: 1, revenue: 0, currency: null, clickRate: 50, nudgeSends: 0, offered: 0, totalSent: 4 }));
+ok('empty stats', eq(deriveStats([]), { notified: 0, clicked: 0, nudged: 0, ordered: 0, orders: 0, revenue: 0, currency: null, clickRate: 0, nudgeSends: 0, offered: 0, totalSent: 0 }));
 // Follow-up sends: 2 distinct shoppers at stages 2 and 3 => 5 nudge emails; +3 rows notified = 8 total.
 const sendStats = deriveStats([
   { ...notifiedRow({ email: 'a@x.com', productId: '1', title: 'X', ts: 't3' }), ns: 2, n: 'x' },
@@ -104,6 +105,11 @@ const sendStats = deriveStats([
 ]);
 ok('nudgeSends sums stages per distinct shopper+product', sendStats.nudgeSends === 5);
 ok('totalSent = back-in-stock rows + nudge sends', sendStats.totalSent === 3 + 5);
+// Alternative-option offers: counted as sent (offered) but NOT auto-nudged.
+const altRow = { ...notifiedRow({ email: 'c@x.com', productId: '9', title: 'X', ts: '2026-09-10T00:00:00Z', kind: 'alt' }) };
+const altStats = deriveStats([altRow, mk({})]);
+ok('offers are counted in offered + totalSent', altStats.offered === 1 && altStats.totalSent === 2);
+ok('offers are never auto-nudged', selectNudges([altRow], NOW, 2, () => true).length === 0);
 
 console.log('\n--- safeRelPath ---');
 ok('accepts a product path', safeRelPath('/products/x') === '/products/x');
