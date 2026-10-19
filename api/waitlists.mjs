@@ -109,7 +109,7 @@ export default async function handler(req, res) {
           ? await previewResendEmail(pgid, String(body.email || ''), { variantId: body.variantId || null, base: pbase, gift: body.gift || 'auto' })
           : await previewOfferEmail(pgid, { offerVariantId: body.variantId, base: pbase, gift: body.gift || 'auto' });
         if (pr.error) { res.end(JSON.stringify({ ok: false, error: pr.error })); return; }
-        res.end(JSON.stringify({ ok: true, subject: pr.subject, html: pr.html, soldOut: pr.soldOut || false, option: pr.option || null, cart: pr.cart || null }));
+        res.end(JSON.stringify({ ok: true, subject: pr.subject, html: pr.html, soldOut: pr.soldOut || false, option: pr.option || null, cart: pr.cart || null, giftApplied: pr.giftApplied || '' }));
         return;
       }
 
@@ -457,8 +457,8 @@ export default async function handler(req, res) {
     if(emModal) emModal.addEventListener('click', function(e){ if(e.target===emModal) closeEmail(); });
     document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeEmail(); });
     var emCart=document.getElementById('emCart');
-    function showEmail(subject, html, cart){
-      emSubject.textContent=subject?('Subject: '+subject):'';
+    function showEmail(subject, html, cart, giftApplied){
+      emSubject.textContent=(subject?('Subject: '+subject):'') + (giftApplied!==undefined ? '   ·   Gift: ' + (giftApplied || 'none') : '');
       if(emCart){ if(cart){ emCart.textContent='🛒 Add to cart adds → '+cart+(cart.indexOf(',')>-1?'  ✓ gift included':'  (only this product — no gift added)'); emCart.style.display='block'; } else { emCart.style.display='none'; emCart.textContent=''; } }
       emFrame.srcdoc=html; emModal.style.display='block';
     }
@@ -471,10 +471,13 @@ export default async function handler(req, res) {
       if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
       var action = ctx.kind==='resend' ? 'previewResend' : 'previewOffer';
       var old; if(btn){ old=btn.textContent; btn.disabled=true; btn.textContent='\\u2026'; }
+      if(emGift) emGift.disabled=true;
+      if(emModal.style.display==='block') emSubject.textContent='Updating preview\\u2026';
       var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(Object.assign({action:action, gift:giftVal()}, ctx.data))});
       var j=await r.json().catch(function(){return{};});
       if(btn){ btn.disabled=false; btn.textContent=old; }
-      if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } showEmail(j.subject, j.html, j.cart); }
+      if(emGift) emGift.disabled=false;
+      if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } showEmail(j.subject, j.html, j.cart, j.giftApplied); }
       else msg.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not preview'));
     }
     function openPreview(kind, data, btn){ emCtx={kind:kind, data:data}; if(emGift) emGift.value='auto'; renderPreview(emCtx, btn); }
