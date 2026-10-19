@@ -586,7 +586,7 @@ export async function previewResendEmail(productGid, email, { variantId = null, 
     clickProductUrl: trackUrl(base, short, email, relProduct),
   };
   const { subject, html } = buildBackInStock(payload, unsubUrl(base, short, email));
-  return { subject, html, soldOut: vId ? !isVariantInStock(sp, vId) : !isInStock(sp) };
+  return { subject, html, soldOut: vId ? !isVariantInStock(sp, vId) : !isInStock(sp), cart: relCart };
 }
 
 /** Render (don't send) the exact "a different option is in stock" email that an
@@ -615,7 +615,7 @@ export async function previewOfferEmail(productGid, { offerVariantId, email = 'p
     clickProductUrl: trackUrl(base, short, email, sp.handle ? `/products/${sp.handle}` : '/'),
   };
   const { subject, html } = buildAltVariant(payload, unsubUrl(base, short, email));
-  return { subject, html, option: offered.title };
+  return { subject, html, option: offered.title, cart: `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, true, giftVariants)}` };
 }
 
 /**

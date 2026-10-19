@@ -92,7 +92,7 @@ export default async function handler(req, res) {
           ? await previewResendEmail(pgid, String(body.email || ''), { variantId: body.variantId || null, base: pbase })
           : await previewOfferEmail(pgid, { offerVariantId: body.variantId, base: pbase });
         if (pr.error) { res.end(JSON.stringify({ ok: false, error: pr.error })); return; }
-        res.end(JSON.stringify({ ok: true, subject: pr.subject, html: pr.html, soldOut: pr.soldOut || false, option: pr.option || null }));
+        res.end(JSON.stringify({ ok: true, subject: pr.subject, html: pr.html, soldOut: pr.soldOut || false, option: pr.option || null, cart: pr.cart || null }));
         return;
       }
 
@@ -382,6 +382,7 @@ export default async function handler(req, res) {
         <span id="emSubject" style="font-size:12.5px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button type="button" class="ghost" id="emClose">Close</button>
       </div>
+      <div id="emCart" style="display:none;padding:8px 16px;border-bottom:1px solid var(--line);background:#f7f9fc;font:12px var(--mono);color:#48506a;word-break:break-all"></div>
       <iframe id="emFrame" title="Email preview" style="flex:1;width:100%;border:0;background:#eef1f6"></iframe>
     </div>
   </div>
@@ -427,14 +428,19 @@ export default async function handler(req, res) {
     if(emClose) emClose.addEventListener('click', closeEmail);
     if(emModal) emModal.addEventListener('click', function(e){ if(e.target===emModal) closeEmail(); });
     document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeEmail(); });
-    function showEmail(subject, html){ emSubject.textContent=subject?('Subject: '+subject):''; emFrame.srcdoc=html; emModal.style.display='block'; }
+    var emCart=document.getElementById('emCart');
+    function showEmail(subject, html, cart){
+      emSubject.textContent=subject?('Subject: '+subject):'';
+      if(emCart){ if(cart){ emCart.textContent='🛒 Add to cart adds → '+cart+(cart.indexOf(',')>-1?'  ✓ gift included':'  (only this product — no gift added)'); emCart.style.display='block'; } else { emCart.style.display='none'; emCart.textContent=''; } }
+      emFrame.srcdoc=html; emModal.style.display='block';
+    }
     async function doPreview(action, data, btn){
       if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
       var old=btn.textContent; btn.disabled=true; btn.textContent='\\u2026';
       var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(Object.assign({action:action}, data))});
       var j=await r.json().catch(function(){return{};});
       btn.disabled=false; btn.textContent=old;
-      if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } showEmail(j.subject, j.html); }
+      if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } showEmail(j.subject, j.html, j.cart); }
       else msg.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not preview'));
     }
     document.querySelectorAll('.previewR').forEach(function(b){ b.addEventListener('click', function(){ doPreview('previewResend', {productId:b.dataset.id, email:b.dataset.email, variantId:b.dataset.variant}, b); }); });
