@@ -7,8 +7,9 @@ import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
   shell, setPageHeaders, statCard, badge, activityFeed, funnelsBody, areaChart,
-  relTime, esc, notConnectedBody, shopOf, APP_NAME,
+  relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner,
 } from '../ui.mjs';
+import { activeSaleReminder } from '../sales-calendar.mjs';
 import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
 import { fetchOrders, fetchAbandonedCheckouts } from '../orders.mjs';
@@ -141,6 +142,7 @@ export default async function handler(req, res) {
       checkout.insights = checkoutInsights(checkout);
       // Back-in-stock revenue card — the app's own value, from the notified log.
       const waitlist = settings.waitlist ? deriveStats(notifiedLog) : null;
+      const saleReminder = activeSaleReminder();
       // Top 5 products per category, by collection membership.
       const categoryDefs = PRODUCT_CATEGORIES.map((c, i) => ({ label: c.label, ids: new Set(catIdSets[i] || []) }));
       const categories = topProductsByCategory(ordRes.orders, categoryDefs, 5);
@@ -148,7 +150,7 @@ export default async function handler(req, res) {
       const shownIds = [...new Set(categories.flatMap((c) => c.products.map((p) => p.id)))];
       const imgs = shownIds.length ? await cachedProductImages(shownIds).catch(() => ({})) : {};
       for (const c of categories) for (const p of c.products) p.img = imgs[p.id] || null;
-      body = funnelsBody({ analysis, checkout, window: win, waitlist, categories });
+      body = funnelsBody({ analysis, checkout, window: win, waitlist, categories, saleReminder });
     } catch (e) {
       console.error('funnels: fetch failed —', e.message);
       body = funnelsBody({ error: 'Order data is temporarily unavailable. If this persists, check that read_orders is granted on the store.' });
@@ -333,6 +335,7 @@ export default async function handler(req, res) {
     <p>Everything ${esc(APP_NAME)} is doing for your store — sorting, back-in-stock, the change monitor, and your AI assistant.</p>
     ${enginePill}
   </div>
+  ${saleReminderBanner(activeSaleReminder())}
   ${onboarding}
   ${stats}
   <div class="layout">

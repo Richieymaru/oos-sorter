@@ -34,6 +34,45 @@ export const mark = `<svg class="mark" width="28" height="28" viewBox="0 0 48 48
   <circle cx="24" cy="24" r="4.4" fill="url(#mkCore)"/>
 </svg>`;
 
+/**
+ * The sale-event reminder banner: nudges the owner to recover abandoned carts
+ * around a big AU sale day. `ev` comes from activeSaleReminder() (or null →
+ * nothing). Dismissible per event+year (localStorage). Links to the Funnels
+ * abandoned-carts section where the Recover buttons live.
+ */
+export function saleReminderBanner(ev) {
+  if (!ev) return '';
+  const timing = ev.daysUntil > 1 ? `in ${ev.daysUntil} days`
+    : ev.daysUntil === 1 ? 'tomorrow'
+      : ev.daysUntil === 0 ? 'today' : 'on now';
+  const approx = ev.approx ? ' <span class="sb-approx">(approx — confirm the date)</span>' : '';
+  const tag = `${ev.key}-${new Date(ev.date).getUTCFullYear()}`;
+  return `<div class="sale-banner" id="saleBanner" data-ev="${esc(tag)}">
+    <span class="sb-ico" aria-hidden="true">🔥</span>
+    <div class="sb-txt"><b>${esc(ev.label)} is ${timing}.</b>${approx} A great time to win back abandoned carts — resend recovery emails from Funnels.</div>
+    <a href="/funnels" class="sb-cta">Recover abandoned carts</a>
+    <button class="sb-x" id="saleBannerX" aria-label="Dismiss reminder">&times;</button>
+  </div>
+  <style>
+    .sale-banner{display:flex;align-items:center;gap:14px;margin:0 0 18px;padding:14px 16px;border-radius:var(--radius);
+      background:linear-gradient(120deg,var(--warn-wash),var(--surface) 78%);border:1px solid color-mix(in srgb,var(--warn) 32%,var(--line));box-shadow:var(--shadow-sm)}
+    .sb-ico{font-size:20px;flex:none;line-height:1}
+    .sb-txt{flex:1;min-width:0;font-size:13.5px;line-height:1.5;color:var(--ink)}
+    .sb-txt b{font-weight:650}
+    .sb-approx{color:var(--muted);font-weight:500;font-size:12px}
+    .sb-cta{flex:none;text-decoration:none;font-weight:600;font-size:13px;padding:9px 15px;border-radius:var(--radius-sm);
+      background:var(--warn,#b5761b);color:#fff;white-space:nowrap}
+    .sb-cta:hover{filter:brightness(1.06)}
+    .sb-x{flex:none;background:none;border:none;font-size:22px;line-height:1;color:var(--faint);cursor:pointer;padding:0 2px}
+    .sb-x:hover{color:var(--ink)}
+    @media (max-width:560px){.sale-banner{flex-wrap:wrap}.sb-cta{order:3}.sb-txt{flex-basis:100%}}
+  </style>
+  <script>(function(){ try{ var b=document.getElementById('saleBanner'); if(!b) return; var k='oos_sale_'+b.dataset.ev;
+    if(localStorage.getItem(k)==='1'){ b.style.display='none'; return; }
+    var x=document.getElementById('saleBannerX'); if(x) x.addEventListener('click', function(){ b.style.display='none'; try{ localStorage.setItem(k,'1'); }catch(e){} });
+  }catch(e){} })();</script>`;
+}
+
 /** A status badge. tone: 'ok' | 'warn' | 'idle' | 'info' | 'danger'. */
 export function badge(label, tone = 'ok') {
   return `<span class="badge ${tone}">${esc(label)}</span>`;
@@ -745,7 +784,7 @@ export function funnelsBody(view) {
   const { analysis: a, checkout, window: win, error } = view || {};
   const range = rangeLabel(win);
   const picker = rangePicker((win && win.key) || '30d');
-  const head = `<div class="pagehead"><h1>Funnels</h1><p>Where your sales come from and where shoppers drop off — channels, traffic sources, best sellers, checkout completion, and where to focus.</p>${range ? `<div class="fn-range">📅 ${esc(range)}</div>` : ''}${picker}</div>`;
+  const head = `<div class="pagehead"><h1>Funnels</h1><p>Where your sales come from and where shoppers drop off — channels, traffic sources, best sellers, checkout completion, and where to focus.</p>${range ? `<div class="fn-range">📅 ${esc(range)}</div>` : ''}${picker}</div>${saleReminderBanner((view && view.saleReminder) || null)}`;
 
   if (error) {
     return head + `<div class="card pad"><b>Couldn't load orders.</b><p class="muted" style="margin-top:6px">${esc(error)}</p></div>` + '';

@@ -5,11 +5,28 @@
 
 ## Goal
 
-Help recover abandoned carts from inside the app, owner-controlled:
+Help recover abandoned carts from inside the app, owner-controlled. Sends are
+intended around **big Australian sale days** (Black Friday, Christmas, EOFY…),
+prompted by an in-app reminder banner — not a constant automation.
 
-**Manual "Recover" button** per abandoned cart — sends the shopper an email that
-restores their exact cart, with a **free-shipping note** incentive.
+**1. Sale-event reminder banner (Phase 1).** An AU sales calendar drives a
+dismissible banner on the Dashboard + Funnels that lights up **14 days before**
+a **Tier 1 + Tier 2** event, saying it's a good time to recover abandoned carts
+and linking to the abandoned-carts section.
+
+**2. Manual "Recover" button (Phase 2).** Per abandoned cart — sends the shopper
+an email that restores their exact cart, with a **free-shipping note** incentive.
 **Preview-first** (modal), like our Resend/Offer flow.
+
+### AU sales calendar (Tier 1 + Tier 2, the banner's triggers)
+
+Pure, year-aware (`sales-calendar.mjs`). Tier 1: Black Friday (4th Fri Nov),
+Cyber Monday (+3d), Christmas (Dec 25), Boxing Day (Dec 26), EOFY (Jun 30),
+Father's Day (1st Sun Sep). Tier 2: Click Frenzy (~Nov, approx), Click Frenzy
+Mayhem (~May, approx), Afterpay Day (~Mar & ~Aug, approx), Mother's Day (2nd Sun
+May), Amazon Prime Day (~Jul, approx). `activeSaleReminder(now, {leadDays:14,
+tiers:[1,2]})` returns the soonest qualifying event (or active one) + daysUntil;
+approximate promos are flagged so the banner says "(approx)".
 
 **Explicitly out of scope:**
 - Automatic recovery emails to all abandoners — Shopify's native automation
