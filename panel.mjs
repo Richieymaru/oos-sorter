@@ -97,7 +97,7 @@ export function settingsBody(settings) {
   </div>
   <div class="card pad" style="margin-top:14px">
     <label class="rowtitle" for="logoFile">Email logo (optional)</label>
-    <p class="rowdesc" style="margin:3px 0 9px">Shown at the top of the shopper emails instead of your store name. <strong>Upload an image</strong> (PNG/JPG/SVG, under 2 MB) or paste a hosted image URL. Leave blank to use your store’s brand logo if set, otherwise the store name.</p>
+    <p class="rowdesc" style="margin:3px 0 9px">Shown at the top of the shopper emails instead of your store name. <strong>Upload an image</strong> (PNG/JPG/SVG, under ~90 KB — an SVG or trimmed logo is ideal) or paste a hosted image URL. Leave blank to use your store’s brand logo if set, otherwise the store name.</p>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <input type="file" id="logoFile" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="font:12px var(--mono);max-width:100%">
       <button type="button" class="ghost" id="logoUpload">Upload</button>
@@ -224,7 +224,7 @@ export function settingsBody(settings) {
       if(!needAuth()) return;
       var f=logoFile && logoFile.files && logoFile.files[0];
       if(!f){ logoMsg.textContent='Choose an image first'; return; }
-      if(f.size>2000000){ logoMsg.textContent='Image must be under 2 MB'; return; }
+      if(f.size>90000){ logoMsg.textContent='Image must be under ~90 KB (try an SVG or a smaller PNG), or paste a URL'; return; }
       logoUpload.disabled=true; var old=logoUpload.textContent; logoUpload.textContent='Uploading\\u2026'; logoMsg.textContent='';
       try{
         var data=await new Promise(function(resolve,reject){ var fr=new FileReader(); fr.onload=function(){resolve(fr.result);}; fr.onerror=function(){reject(new Error('read'));}; fr.readAsDataURL(f); });

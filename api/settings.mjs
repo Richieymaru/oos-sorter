@@ -6,7 +6,7 @@ import { ensureMonitorWebhooks } from '../webhooks.mjs';
 import { fetchAllStatuses } from '../monitor.mjs';
 import { loadMonitorState, saveMonitorState } from '../monitor-state.mjs';
 import { buildBackInStock, buildNudge, buildAltVariant, formatMoney } from '../notify.mjs';
-import { getShopContext } from '../shopify.mjs';
+import { getShopContext, gql, getShopId } from '../shopify.mjs';
 import { giftImagesFor } from '../restock.mjs';
 
 /** Build the "what shoppers actually receive" samples from the CURRENT settings,
@@ -106,13 +106,17 @@ async function setupMonitor(req, res) {
   res.end(JSON.stringify({ ok: true, webhook: created ? 'created' : 'ready', webhooks: hooks.length, seeded: Object.keys(statuses).length }));
 }
 
+const LOGO_NS = 'oos_sort';
+const LOGO_KEY = 'email_logo';
+
 /**
- * Upload an email logo to Vercel Blob (public URL, email-safe) and return its URL.
- * Folded into this endpoint to stay under the 12-serverless-function cap. Body:
- * { filename, contentType, data } where data is a base64 (or data:) image string.
+ * Store an uploaded email logo in a shop metafield and return a hosted URL that
+ * serves it (GET /api/settings?asset=logo). No external storage or extra scope —
+ * works immediately. Body: { contentType, data } (base64 / data: image). The
+ * metafield is a json value, so the image is capped small (logos are tiny).
  */
-async function uploadLogo(res, body) {
-  const { filename, data, contentType } = body;
+async function uploadLogo(req, res, body) {
+  const { data, contentType } = body;
   if (!data || !contentType) { res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Missing image.' })); return; }
   if (!/^image\/(png|jpe?g|gif|webp|svg\+xml)$/.test(contentType)) {
     res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Use a PNG, JPG, GIF, WEBP or SVG image.' })); return;
@@ -120,21 +124,37 @@ async function uploadLogo(res, body) {
   let buf;
   try { buf = Buffer.from(String(data).replace(/^data:[^,]*,/, ''), 'base64'); }
   catch { res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Could not read the image.' })); return; }
-  if (!buf.length || buf.length > 2_000_000) {
-    res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Image must be under 2 MB.' })); return;
+  if (!buf.length || buf.length > 90_000) {
+    res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Logo must be under ~90 KB. Use a smaller/optimised image (an SVG or compressed PNG), or paste a hosted URL.' })); return;
   }
-  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg' }[contentType] || 'png';
-  const safe = String(filename || 'logo').replace(/[^a-z0-9._-]+/gi, '-').slice(0, 40);
   try {
-    const { put } = await import('@vercel/blob');
-    const r = await put(`oos-logo/${safe}.${ext}`, buf, { access: 'public', contentType, addRandomSuffix: true });
-    res.end(JSON.stringify({ ok: true, url: r.url }));
+    const shopId = await getShopId();
+    const value = JSON.stringify({ mime: contentType, data: buf.toString('base64') });
+    const d = await gql(
+      `mutation($m: [MetafieldsSetInput!]!) { metafieldsSet(metafields: $m) { userErrors { field message } } }`,
+      { m: [{ ownerId: shopId, namespace: LOGO_NS, key: LOGO_KEY, type: 'json', value }] }
+    );
+    const errs = d.metafieldsSet?.userErrors || [];
+    if (errs.length) { res.statusCode = 500; res.end(JSON.stringify({ ok: false, error: errs.map((e) => e.message).join('; ') })); return; }
+    const host = req.headers['x-forwarded-host'] || req.headers['host'] || '';
+    res.end(JSON.stringify({ ok: true, url: `https://${host}/api/settings?asset=logo&v=${Date.now()}` }));
   } catch (e) {
-    res.statusCode = 500;
-    const msg = /token|BLOB_READ_WRITE|blob store/i.test(String(e.message))
-      ? 'Logo storage isn’t set up yet. In Vercel → Storage, create a Blob store and connect it to this project, then redeploy.'
-      : ('Upload failed: ' + e.message);
-    res.end(JSON.stringify({ ok: false, error: msg }));
+    res.statusCode = 500; res.end(JSON.stringify({ ok: false, error: 'Upload failed: ' + e.message }));
+  }
+}
+
+/** Serve the stored logo image bytes (public — email clients load it). */
+async function serveLogo(res) {
+  try {
+    const d = await gql(`{ shop { metafield(namespace: "${LOGO_NS}", key: "${LOGO_KEY}") { value } } }`);
+    const raw = d.shop?.metafield?.value;
+    if (!raw) { res.statusCode = 404; res.setHeader('Content-Type', 'text/plain'); res.end('No logo set.'); return; }
+    const { mime, data } = JSON.parse(raw);
+    res.setHeader('Content-Type', mime || 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.end(Buffer.from(data, 'base64'));
+  } catch (e) {
+    res.statusCode = 500; res.setHeader('Content-Type', 'text/plain'); res.end('logo error');
   }
 }
 
@@ -149,7 +169,7 @@ export default async function handler(req, res) {
     try {
       const body = await readJson(req);
       if (body.action === 'setup-monitor') { await setupMonitor(req, res); return; }
-      if (body.action === 'upload-logo') { await uploadLogo(res, body); return; }
+      if (body.action === 'upload-logo') { await uploadLogo(req, res, body); return; }
       const settings = normalizeSettings(body);
       await saveSettings(settings);
       res.end(JSON.stringify({ ok: true, settings }));
@@ -160,6 +180,9 @@ export default async function handler(req, res) {
     }
     return;
   }
+
+  // GET ?asset=logo serves the uploaded logo image (public, for email clients).
+  if (/[?&]asset=logo\b/.test(req.url || '')) { await serveLogo(res); return; }
 
   // GET = the page. ?view=preview renders the sample emails instead.
   const previewView = /[?&]view=preview\b/.test(req.url || '');
