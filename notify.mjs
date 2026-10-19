@@ -364,14 +364,27 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   const variantChip = variant
     ? `<div style="margin:14px 0 0"><span style="display:inline-block;font-size:12.5px;color:#48506a;background:#f2f4f8;border:1px solid #e6eaf0;border-radius:8px;padding:5px 11px">Option: <strong style="color:#0f1729">${esc(variant)}</strong></span></div>`
     : '';
-  // Hero: product image on the LEFT, text on the right. Fluid two-column via
-  // inline-block (no media query) so it sits side-by-side on desktop and stacks
-  // (image on top, text below) on narrow mobile widths — works in Gmail.
-  const imgCol = product.image
-    ? `<div style="display:inline-block;vertical-align:top;width:100%;max-width:200px"><a href="${esc(cartUrl)}" style="text-decoration:none;display:block"><img src="${esc(product.image)}" alt="${esc(title)}" width="200" style="width:100%;height:190px;object-fit:cover;border-radius:12px;border:1px solid #eef1f6;display:block"></a></div>`
-    : '';
-  const textColMax = product.image ? 340 : 560;
-  const textColPad = product.image ? 'padding-left:16px;' : '';
+  // Hero text block (eyebrow pill + title + option + price), shared by both the
+  // with-image and no-image layouts.
+  const heroText =
+    `<span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.09em;color:#ffffff;background:${ACCENT};border-radius:999px;padding:5px 12px;text-transform:uppercase">${esc(eyebrow)}</span>` +
+    `<div style="font-size:22px;line-height:1.25;font-weight:800;color:#0f1729;letter-spacing:-.02em;margin:12px 0 0">${esc(title)}</div>` +
+    variantChip + priceBlock;
+  const leadP = `<p style="font-size:14px;color:#5b6472;line-height:1.55;margin:14px 0 0">${leadHtml}</p>`;
+  // Hero: product image on the LEFT, text on the right — a real 2-cell table so it
+  // stays side-by-side on EVERY width (desktop and mobile), not just desktop. The
+  // image scales with its cell (36%); the lead sits full-width below.
+  const heroRow = product.image
+    ? `<tr><td style="padding:18px 20px 4px">
+         <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
+           <td width="36%" valign="top" style="padding-right:14px">
+             <a href="${esc(cartUrl)}" style="text-decoration:none;display:block"><img src="${esc(product.image)}" alt="${esc(title)}" style="width:100%;height:auto;border-radius:12px;border:1px solid #eef1f6;display:block"></a>
+           </td>
+           <td valign="top">${heroText}</td>
+         </tr></table>
+         ${leadP}
+       </td></tr>`
+    : `<tr><td style="padding:18px 20px 4px">${heroText}${leadP}</td></tr>`;
   const incentiveBlock = inc
     ? `<tr><td style="padding:6px 20px 10px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:14px">
@@ -404,18 +417,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
             ? `<img src="${esc(product.brandLogo)}" alt="${esc(FROM_NAME)}" height="28" style="height:28px;max-height:32px;width:auto;max-width:190px;display:block;border:0">`
             : `<span style="font-size:15px;font-weight:800;color:#0f1729;letter-spacing:-.01em">${esc(FROM_NAME)}</span>`}
         </td></tr>
-        <tr><td style="padding:18px 20px 4px">
-          <div style="font-size:0;line-height:0">
-            ${imgCol}
-            <div style="display:inline-block;vertical-align:top;width:100%;max-width:${textColMax}px;box-sizing:border-box;${textColPad}line-height:normal">
-              <span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.09em;color:#ffffff;background:${ACCENT};border-radius:999px;padding:5px 12px;text-transform:uppercase">${esc(eyebrow)}</span>
-              <div style="font-size:22px;line-height:1.25;font-weight:800;color:#0f1729;letter-spacing:-.02em;margin:12px 0 0">${esc(title)}</div>
-              ${variantChip}
-              ${priceBlock}
-            </div>
-          </div>
-          <p style="font-size:14px;color:#5b6472;line-height:1.55;margin:14px 0 0">${leadHtml}</p>
-        </td></tr>
+        ${heroRow}
         ${freeGiftBlock}
         ${incentiveBlock}
         <tr><td style="padding:16px 20px 4px" align="center">
