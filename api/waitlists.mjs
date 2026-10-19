@@ -27,6 +27,13 @@ function fallbackVariantName(product) {
   return candidates.length === 1 ? candidates[0].title : null;
 }
 
+/** The owner's own email addresses (NOTIFY_EMAIL + notification recipients),
+ *  lowercased. These rows may be re-sent even when sold out (a test to yourself). */
+function ownerEmailSet(settings) {
+  const list = [process.env.NOTIFY_EMAIL, ...((settings && settings.notifyEmails) || [])];
+  return new Set(list.filter(Boolean).map((e) => String(e).trim().toLowerCase()));
+}
+
 async function readJson(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   let data = '';
@@ -60,7 +67,14 @@ export default async function handler(req, res) {
         const rn = rs.replace(/\D/g, '');
         const rgid = rs.startsWith('gid://') ? rs : (rn ? longId(rn) : null);
         if (!rgid || !body.email) { res.end(JSON.stringify({ ok: false, error: 'Missing product or email.' })); return; }
-        const rr = await resendOne(rgid, String(body.email), { variantId: body.variantId || null });
+        // `force` (re-send even when sold out) is honoured ONLY for the owner's own
+        // addresses — a test send to yourself. Validated server-side.
+        let force = false;
+        if (body.force) {
+          const st = await loadSettings().catch(() => ({}));
+          force = ownerEmailSet(st).has(String(body.email || '').trim().toLowerCase());
+        }
+        const rr = await resendOne(rgid, String(body.email), { variantId: body.variantId || null, force });
         if (rr.soldOut) { res.end(JSON.stringify({ ok: false, soldOut: true, error: 'Sold out again — nothing sent.' })); return; }
         res.end(JSON.stringify({ ok: true, sent: rr.sent }));
         return;
@@ -219,10 +233,17 @@ export default async function handler(req, res) {
     if (!sp) return false;
     return r.v ? isVariantInStock(sp, r.v) : isInStock(sp);
   };
+  const owners = ownerEmailSet(settings);
   const resendCell = (r) => {
     if (r.u) return `<span class="faint" style="font-size:12px">&mdash;</span>`;
     const prev = `<button class="ghost previewR" data-id="${esc(r.p)}" data-email="${esc(r.e)}" data-variant="${esc(r.v || '')}">Preview</button>`;
-    if (!inStockNow(r)) return `<span class="faint" style="font-size:12px;margin-right:8px">Sold out again</span>${prev}`;
+    if (!inStockNow(r)) {
+      // Owner's own email: allow a test re-send even when sold out.
+      if (owners.has(String(r.e).toLowerCase())) {
+        return `<button class="ghost resend" data-id="${esc(r.p)}" data-email="${esc(r.e)}" data-variant="${esc(r.v || '')}" data-force="1" title="Sold out — send a test to yourself anyway">Resend (test)</button> ${prev}`;
+      }
+      return `<span class="faint" style="font-size:12px;margin-right:8px">Sold out again</span>${prev}`;
+    }
     return `<button class="ghost resend" data-id="${esc(r.p)}" data-email="${esc(r.e)}" data-variant="${esc(r.v || '')}">Resend</button> ${prev}`;
   };
   const vName = (r) => (r.vt && r.vt !== 'Default Title') ? esc(r.vt) : (r.v ? `#${esc(r.v)}` : '&mdash;');
@@ -436,6 +457,7 @@ export default async function handler(req, res) {
         b.disabled=true; var old=b.textContent; b.textContent='Sending\\u2026';
         var body={action:'resend',productId:b.dataset.id,email:b.dataset.email};
         if(b.dataset.variant) body.variantId=b.dataset.variant;
+        if(b.dataset.force) body.force=1;
         var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(body)});
         var j=await r.json().catch(function(){return{};});
         if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } b.textContent='Sent \\u2713'; }

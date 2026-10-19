@@ -550,14 +550,15 @@ export async function previewOfferEmail(productGid, { offerVariantId, email = 'p
  * back" when it isn't. Consumes the row's one nudge slot so the auto-nudge won't
  * also fire. @returns {{sent:number, soldOut:boolean}}
  */
-export async function resendOne(productGid, email, { variantId = null, base = null, dryRun = false } = {}) {
+export async function resendOne(productGid, email, { variantId = null, base = null, dryRun = false, force = false } = {}) {
   const short = shortId(productGid);
   const [sp] = await fetchProductsByIds([short]);
   if (!sp) return { sent: 0, soldOut: true };
 
   const vWant = variantId ? String(variantId).replace(/\D/g, '') : null;
   const inStock = vWant ? isVariantInStock(sp, vWant) : isInStock(sp);
-  if (!inStock) return { sent: 0, soldOut: true };
+  // `force` lets the admin re-send to themselves even when it's sold out (a test).
+  if (!inStock && !force) return { sent: 0, soldOut: true };
 
   const first = sp.variants?.nodes?.[0];
   const vId = vWant || (first?.id ? shortId(first.id) : null);
