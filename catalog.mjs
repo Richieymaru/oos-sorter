@@ -105,6 +105,27 @@ export async function fetchCollectionProductIds(handle) {
   return ids;
 }
 
+/**
+ * Featured image URL per product, keyed by short numeric id. For the Funnels
+ * category lists (products come from order line items, which carry no image).
+ * Chunks ids through nodes(ids:). Returns { "<shortId>": url|null }.
+ */
+export async function fetchProductImages(ids) {
+  const uniq = [...new Set((ids || []).map((i) => String(i).replace(/\D/g, '')).filter(Boolean))];
+  const out = {};
+  for (let i = 0; i < uniq.length; i += 250) {
+    const gids = uniq.slice(i, i + 250).map((id) => `gid://shopify/Product/${id}`);
+    const d = await gql(
+      `query($ids: [ID!]!){ nodes(ids: $ids){ __typename ... on Product { id featuredImage { url } } } }`,
+      { ids: gids }
+    );
+    for (const n of (d.nodes || [])) {
+      if (n && n.id) out[String(n.id).split('/').pop()] = n.featuredImage?.url || null;
+    }
+  }
+  return out;
+}
+
 export async function findCollection(handle) {
   const d = await gql(
     `query Col($q: String!) {

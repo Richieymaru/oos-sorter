@@ -733,6 +733,14 @@ function rangePicker(activeKey) {
   ).join('')}</div>`;
 }
 
+// A small product thumbnail (Shopify CDN at 72px) with a neutral placeholder.
+const PROD_PH = `<span class="fn-thumb ph" aria-hidden="true"><svg viewBox="0 0 24 24" width="15" height="15" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="2.5" stroke="currentColor" stroke-width="1.6"/><circle cx="9" cy="10" r="1.5" stroke="currentColor" stroke-width="1.6"/><path d="m5 17 4.5-4.5L13 16l2.5-2.5L20 18" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>`;
+function prodThumb(url) {
+  if (!url) return PROD_PH;
+  const src = url + (url.includes('?') ? '&' : '?') + 'width=72';
+  return `<img class="fn-thumb" src="${esc(src)}" alt="" width="32" height="32" loading="lazy" onerror="this.style.visibility='hidden'">`;
+}
+
 export function funnelsBody(view) {
   const { analysis: a, checkout, window: win, error } = view || {};
   const range = rangeLabel(win);
@@ -887,7 +895,7 @@ export function funnelsBody(view) {
       ${cats.map((c) => `<div class="fn-cat">
         <div class="fn-cat-h">${esc(c.label)}</div>
         ${c.products && c.products.length
-          ? c.products.map((p, i) => `<div class="fn-prow"><span class="fn-rank">${i + 1}</span><span class="fn-pname">${esc(p.title)}</span><span class="fn-punits">${p.units}</span></div>`).join('')
+          ? c.products.map((p, i) => `<div class="fn-prow"><span class="fn-rank">${i + 1}</span>${prodThumb(p.img)}<span class="fn-pname">${esc(p.title)}</span><span class="fn-punits">${p.units}</span></div>`).join('')
           : '<div class="faint" style="font-size:12.5px;padding:10px 0">No sales in this category yet.</div>'}
       </div>`).join('')}
     </div></div>` : '';
@@ -940,8 +948,10 @@ export function funnelsBody(view) {
       .fn-conv-body{flex:1;min-width:190px}
       .fn-cats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 26px;padding-top:14px}
       .fn-cat-h{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:-.01em;color:var(--ink);padding-bottom:7px;margin-bottom:4px;border-bottom:1px solid var(--line)}
-      .fn-cat .fn-prow{padding:7px 0;font-size:12.5px;gap:9px}
+      .fn-cat .fn-prow{padding:8px 0;font-size:12.5px;gap:10px}
       .fn-cat .fn-pname{font-weight:450}
+      .fn-thumb{width:32px;height:32px;border-radius:7px;object-fit:cover;flex:none;border:1px solid var(--line);background:var(--surface-2)}
+      .fn-thumb.ph{display:grid;place-items:center;color:var(--faint)}
       @media (max-width:900px){.fn-cats{grid-template-columns:repeat(2,1fr)}}
       @media (max-width:520px){.fn-cats{grid-template-columns:1fr}}
       .fn-prow{display:flex;align-items:center;gap:12px;padding:9px 0;font-size:13.5px}

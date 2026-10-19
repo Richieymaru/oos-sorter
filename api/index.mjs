@@ -13,7 +13,7 @@ import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
 import { fetchOrders, fetchAbandonedCheckouts } from '../orders.mjs';
 import { analyzeFunnels, analyzeCheckout, checkoutInsights, resolveRange, topProductsByCategory } from '../funnels.mjs';
-import { fetchCollectionProductIds } from '../catalog.mjs';
+import { fetchCollectionProductIds, fetchProductImages } from '../catalog.mjs';
 import { ttlMemo } from '../cache.mjs';
 
 export const config = { maxDuration: 30 };
@@ -25,6 +25,7 @@ const cachedHandles = ttlMemo(fetchAllCollectionHandles, 300000);
 const cachedOrders = ttlMemo(fetchOrders, 120000);
 const cachedAbandoned = ttlMemo(fetchAbandonedCheckouts, 120000);
 const cachedCollectionIds = ttlMemo(fetchCollectionProductIds, 600000);
+const cachedProductImages = ttlMemo(fetchProductImages, 600000);
 
 // Funnels "top products by category" — collection membership per category.
 // Store-specific (GBU); move to settings if this ever ships to another store.
@@ -143,6 +144,10 @@ export default async function handler(req, res) {
       // Top 5 products per category, by collection membership.
       const categoryDefs = PRODUCT_CATEGORIES.map((c, i) => ({ label: c.label, ids: new Set(catIdSets[i] || []) }));
       const categories = topProductsByCategory(ordRes.orders, categoryDefs, 5);
+      // Attach a featured image to each shown product (for the category thumbnails).
+      const shownIds = [...new Set(categories.flatMap((c) => c.products.map((p) => p.id)))];
+      const imgs = shownIds.length ? await cachedProductImages(shownIds).catch(() => ({})) : {};
+      for (const c of categories) for (const p of c.products) p.img = imgs[p.id] || null;
       body = funnelsBody({ analysis, checkout, window: win, waitlist, categories });
     } catch (e) {
       console.error('funnels: fetch failed —', e.message);
