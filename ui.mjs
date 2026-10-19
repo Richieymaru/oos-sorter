@@ -8,7 +8,7 @@
  */
 
 /** Brand name shown across the UI + emails. Per-store: set APP_NAME in the env. */
-export const APP_NAME = process.env.APP_NAME || 'Topshelf';
+export const APP_NAME = process.env.APP_NAME || 'Orderly';
 
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
