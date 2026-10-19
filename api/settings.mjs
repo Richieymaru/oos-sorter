@@ -106,6 +106,38 @@ async function setupMonitor(req, res) {
   res.end(JSON.stringify({ ok: true, webhook: created ? 'created' : 'ready', webhooks: hooks.length, seeded: Object.keys(statuses).length }));
 }
 
+/**
+ * Upload an email logo to Vercel Blob (public URL, email-safe) and return its URL.
+ * Folded into this endpoint to stay under the 12-serverless-function cap. Body:
+ * { filename, contentType, data } where data is a base64 (or data:) image string.
+ */
+async function uploadLogo(res, body) {
+  const { filename, data, contentType } = body;
+  if (!data || !contentType) { res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Missing image.' })); return; }
+  if (!/^image\/(png|jpe?g|gif|webp|svg\+xml)$/.test(contentType)) {
+    res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Use a PNG, JPG, GIF, WEBP or SVG image.' })); return;
+  }
+  let buf;
+  try { buf = Buffer.from(String(data).replace(/^data:[^,]*,/, ''), 'base64'); }
+  catch { res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Could not read the image.' })); return; }
+  if (!buf.length || buf.length > 2_000_000) {
+    res.statusCode = 400; res.end(JSON.stringify({ ok: false, error: 'Image must be under 2 MB.' })); return;
+  }
+  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg' }[contentType] || 'png';
+  const safe = String(filename || 'logo').replace(/[^a-z0-9._-]+/gi, '-').slice(0, 40);
+  try {
+    const { put } = await import('@vercel/blob');
+    const r = await put(`oos-logo/${safe}.${ext}`, buf, { access: 'public', contentType, addRandomSuffix: true });
+    res.end(JSON.stringify({ ok: true, url: r.url }));
+  } catch (e) {
+    res.statusCode = 500;
+    const msg = /token|BLOB_READ_WRITE|blob store/i.test(String(e.message))
+      ? 'Logo storage isn’t set up yet. In Vercel → Storage, create a Blob store and connect it to this project, then redeploy.'
+      : ('Upload failed: ' + e.message);
+    res.end(JSON.stringify({ ok: false, error: msg }));
+  }
+}
+
 export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
@@ -117,6 +149,7 @@ export default async function handler(req, res) {
     try {
       const body = await readJson(req);
       if (body.action === 'setup-monitor') { await setupMonitor(req, res); return; }
+      if (body.action === 'upload-logo') { await uploadLogo(res, body); return; }
       const settings = normalizeSettings(body);
       await saveSettings(settings);
       res.end(JSON.stringify({ ok: true, settings }));

@@ -96,9 +96,17 @@ export function settingsBody(settings) {
     <input id="nudgeDays" type="number" min="1" max="14" value="${nudgeDays}" style="width:90px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
   </div>
   <div class="card pad" style="margin-top:14px">
-    <label class="rowtitle" for="emailLogoUrl">Email logo (optional)</label>
-    <p class="rowdesc" style="margin:3px 0 9px">Shown at the top of the shopper emails instead of your store name. Paste an image URL (https). Leave blank to use your store’s brand logo if set, otherwise the store name.</p>
-    <input id="emailLogoUrl" type="url" placeholder="https://cdn.shopify.com/…/logo.png" value="${esc(settings.emailLogoUrl || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <label class="rowtitle" for="logoFile">Email logo (optional)</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Shown at the top of the shopper emails instead of your store name. <strong>Upload an image</strong> (PNG/JPG/SVG, under 2 MB) or paste a hosted image URL. Leave blank to use your store’s brand logo if set, otherwise the store name.</p>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <input type="file" id="logoFile" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="font:12px var(--mono);max-width:100%">
+      <button type="button" class="ghost" id="logoUpload">Upload</button>
+      <span id="logoMsg" class="faint" style="font-size:12px"></span>
+    </div>
+    <div style="height:10px"></div>
+    <label class="rowtitle" for="emailLogoUrl" style="font-size:12.5px">Logo URL</label>
+    <input id="emailLogoUrl" type="url" placeholder="https://…/logo.png" value="${esc(settings.emailLogoUrl || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);margin-top:4px">
+    <div id="logoPrev" style="margin-top:10px;display:none"></div>
   </div>
   <div class="card pad" style="margin-top:14px">
     <label class="row" for="freeGiftEnabled" style="margin-bottom:6px">
@@ -198,6 +206,35 @@ export function settingsBody(settings) {
     else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
     function flash(t,err){ msg.textContent=t; msg.className=err?'err':''; if(!err) setTimeout(function(){ if(msg.textContent===t) msg.textContent=''; },2500); }
     function needAuth(){ if(embedded) return true; var v=(pw.value||'').trim(); if(!v){ flash('Enter the panel password',true); pw.focus(); return false; } return true; }
+    // Email logo: upload a file to Vercel Blob + live preview of the current URL.
+    var logoFile=document.getElementById('logoFile'), logoUpload=document.getElementById('logoUpload'), logoMsg=document.getElementById('logoMsg'), logoPrev=document.getElementById('logoPrev'), emailLogoUrl=document.getElementById('emailLogoUrl');
+    function renderLogoPrev(){
+      if(!logoPrev||!emailLogoUrl) return;
+      var u=(emailLogoUrl.value||'').trim();
+      logoPrev.textContent='';
+      if(!u){ logoPrev.style.display='none'; return; }
+      logoPrev.style.display='block';
+      var im=document.createElement('img'); im.src=u; im.alt='logo preview';
+      im.style.cssText='height:36px;max-height:44px;max-width:220px;border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fff';
+      im.onerror=function(){ logoPrev.textContent=''; var s=document.createElement('span'); s.className='faint'; s.style.fontSize='12px'; s.textContent="Couldn't load that image URL."; logoPrev.appendChild(s); };
+      logoPrev.appendChild(im);
+    }
+    if(emailLogoUrl){ emailLogoUrl.addEventListener('input', renderLogoPrev); renderLogoPrev(); }
+    if(logoUpload) logoUpload.addEventListener('click', async function(){
+      if(!needAuth()) return;
+      var f=logoFile && logoFile.files && logoFile.files[0];
+      if(!f){ logoMsg.textContent='Choose an image first'; return; }
+      if(f.size>2000000){ logoMsg.textContent='Image must be under 2 MB'; return; }
+      logoUpload.disabled=true; var old=logoUpload.textContent; logoUpload.textContent='Uploading\\u2026'; logoMsg.textContent='';
+      try{
+        var data=await new Promise(function(resolve,reject){ var fr=new FileReader(); fr.onload=function(){resolve(fr.result);}; fr.onerror=function(){reject(new Error('read'));}; fr.readAsDataURL(f); });
+        var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify({action:'upload-logo', filename:f.name, contentType:f.type, data:data})});
+        var j=await r.json().catch(function(){return{};});
+        if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } emailLogoUrl.value=j.url; renderLogoPrev(); logoMsg.textContent='Uploaded \\u2713 \\u2014 now click Save changes'; }
+        else logoMsg.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Upload failed'));
+      }catch(e){ logoMsg.textContent='Could not read the image'; }
+      logoUpload.disabled=false; logoUpload.textContent=old;
+    });
     // Gift fields: a Shopify product picker (inside the admin) + a live "added"
     // preview (thumbnail + name) so the owner can SEE the gift that's set, even on
     // reload. The picked product's image is stored so the email uses the exact photo.
