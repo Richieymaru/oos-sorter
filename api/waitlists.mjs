@@ -4,7 +4,6 @@ import { productsWithWaitlist, notifyOneProduct, resendOne, offerAltForProduct, 
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isVariantInStock, isInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
-import { loadState } from '../state.mjs';
 import { loadSettings } from '../settings.mjs';
 import { sendWaitlistReport } from '../notify.mjs';
 import { loadNotified, deriveStats, reconcileOrders } from '../notified.mjs';
@@ -16,7 +15,6 @@ export const config = { maxDuration: 30 };
 // reconcile (a 60-day scan) is the heaviest — cache it 2 min; the waitlist
 // product list and per-id stock 1 min. Cold starts fetch fresh and correct.
 const cachedWaitlist = ttlMemo(productsWithWaitlist, 60000);
-const cachedReconcile = ttlMemo(reconcileOrders, 120000);
 const cachedProductsByIds = ttlMemo(fetchProductsByIds, 60000);
 
 /**
@@ -57,6 +55,17 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
     try {
       const body = await readJson(req);
+
+      // Background order attribution (fired by the page after first paint, so the
+      // 60-day order scan never blocks render). Idempotent — matchOrders skips
+      // rows already marked ordered — so the page reloads at most once.
+      if (body.action === 'reconcile') {
+        let matched = 0, emailRedacted = false;
+        try { const at = await reconcileOrders({ days: 60 }); matched = at.matched || 0; emailRedacted = !!at.emailRedacted; }
+        catch (e) { console.error('reconcile (bg):', e.message); }
+        res.end(JSON.stringify({ ok: true, matched, emailRedacted }));
+        return;
+      }
 
       // Email the whole waitlist to the owner + notification recipients.
       if (body.action === 'emailReport') {
@@ -135,36 +144,41 @@ export default async function handler(req, res) {
   // "Ordered" status + waitlist revenue are fresh every time this page is opened
   // (GBU auto-chunks engine runs, so we can't rely on the full-sweep for this).
   const notifiedView = /[?&]view=notified\b/.test(req.url || '');
-  let attrNote = '';
-  try {
-    const at = await cachedReconcile({ days: 60 });
-    if (at.emailRedacted) attrNote = 'Order revenue needs Level 2 customer-data access — enable it in the Dev Dashboard to see who bought.';
-  } catch (e) { console.error('attribution (page):', e.message); }
 
-  const [items, state, notifiedLog, settings] = await Promise.all([
-    cachedWaitlist().catch(() => []),
-    loadState().catch(() => ({})),
+  // Fast metafield reads first — both views need these and they're cheap.
+  // (loadState was being fetched and discarded; dropped.)
+  const [notifiedLog, settings] = await Promise.all([
     loadNotified().catch(() => []),
     loadSettings().catch(() => ({})),
   ]);
-  void state;
-  const total = items.reduce((n, w) => n + w.list.length, 0);
   const recent = notifiedLog.slice(0, 100);
   const stats = deriveStats(notifiedLog);
-
-  // Two product lookups: (1) current stock for the distinct notified products so
-  // Resend is only offered when actually available (mirrors the server guard);
-  // (2) the waitlisted products' variants + stock, to show a real option name
-  // and offer in-stock options to shoppers still waiting (waitlists view only).
-  // Run them in parallel and cache so repeat opens skip the round trips.
   const recentIds = [...new Set(recent.map((r) => r.p))];
-  const wantItemProds = !notifiedView && items.length > 0;
-  const [recentProds, itemProds] = await Promise.all([
+
+  // The heavy fetches run in ONE parallel batch instead of a serial chain:
+  //  - current stock for the notified table's Resend buttons
+  //  - the waitlist product list — WAITLISTS view only (unused on Notified)
+  // The 60-day order reconcile ("Ordered" + waitlist revenue) is NOT here: it
+  // used to block first paint. It now runs in the background after render (see
+  // the reconcile fetch in the page script) and refreshes only if new orders
+  // were attributed — so the page shows instantly from the persisted log.
+  const [recentProds, items] = await Promise.all([
     recentIds.length ? cachedProductsByIds(recentIds).catch(() => []) : Promise.resolve([]),
-    wantItemProds ? cachedProductsByIds(items.map((w) => shortId(w.id))).catch(() => []) : Promise.resolve([]),
+    notifiedView ? Promise.resolve([]) : cachedWaitlist().catch(() => []),
   ]);
+  const attrNote = '';
+  const total = items.reduce((n, w) => n + w.list.length, 0);
   const stockById = new Map(recentProds.map((p) => [shortId(p.id), p]));
-  const prodById = new Map(itemProds.map((p) => [p.id, p]));
+
+  // The waitlisted products' variants + stock (option names / offer chips) —
+  // WAITLISTS view only; needs `items`, so it follows the batch above.
+  let prodById = new Map();
+  if (!notifiedView && items.length) {
+    try {
+      const prods = await cachedProductsByIds(items.map((w) => shortId(w.id)));
+      prodById = new Map(prods.map((p) => [p.id, p]));
+    } catch { /* leave dashes / no offer chips if the lookup fails */ }
+  }
   /** A product's in-stock, real-named variants as [{id, title}] — the options a
    *  merchant can offer to shoppers whose own option is still sold out. */
   const inStockOptions = (prod) => {
@@ -477,6 +491,17 @@ export default async function handler(req, res) {
         else { b.textContent=old; b.disabled=false; msg.textContent=(j.soldOut?'Sold out again \\u2014 nothing sent':(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not resend'))); }
       });
     });
+
+    // Freshen order attribution in the background so the 60-day order scan never
+    // blocks first paint. Reloads once if new orders were just attributed;
+    // reconcile is idempotent, so the reload can't loop.
+    setTimeout(function(){
+      authH().then(function(h){
+        return fetch('/api/waitlists',{method:'POST',headers:h,body:JSON.stringify({action:'reconcile'})});
+      }).then(function(r){ return r.json(); }).then(function(j){
+        if(j && j.ok && j.matched>0){ location.reload(); }
+      }).catch(function(){});
+    }, 600);
   </script>`;
   setPageHeaders(res);
   res.end(shell({ title: notifiedView ? 'Recently notified' : 'Waitlists', active: notifiedView ? 'notified' : 'waitlists', body }));
