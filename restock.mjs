@@ -110,10 +110,8 @@ async function resolveGiftImages(names) {
 async function giftImagesFor(settings) {
   if (!settings) return {};
   const names = [
-    ...(settings.freeGiftEnabled ? settings.freeGiftProducts || [] : []),
-    ...(settings.incentivesEnabled
-      ? [...(settings.incentiveMinorGiftProducts || []), ...(settings.incentiveMajorGiftProducts || [])]
-      : []),
+    ...(settings.freeGiftEnabled && settings.freeGiftProduct ? [settings.freeGiftProduct] : []),
+    ...(settings.incentivesEnabled ? [settings.incentiveMinorGift, settings.incentiveMajorGift].filter(Boolean) : []),
   ];
   if (!names.length) return {};
   return resolveGiftImages(names);
@@ -558,8 +556,8 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
   // Resend is a re-engagement send (to someone who didn't convert), so it carries
   // the same free-gift offer as the 2-day nudge — not just the first email.
-  const freeGift = settings && settings.freeGiftEnabled && (settings.freeGiftProducts || []).length
-    ? { products: settings.freeGiftProducts, code: settings.freeGiftCode || null }
+  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct
+    ? { products: [settings.freeGiftProduct] }
     : null;
   const vNode = variantsById(sp).get(String(vId));
   const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
@@ -607,8 +605,8 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
   // 2-day nudge free-gift offer (OFF by default; owner sets up fulfilment + enables it).
-  const freeGift = settings && settings.freeGiftEnabled && (settings.freeGiftProducts || []).length
-    ? { products: settings.freeGiftProducts, code: settings.freeGiftCode || null }
+  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct
+    ? { products: [settings.freeGiftProduct] }
     : null;
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
   const due = selectNudges(log, now, days, (p) => {

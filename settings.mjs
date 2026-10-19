@@ -47,6 +47,14 @@ export function normalizeSheetWebhook(input) {
   return /^https:\/\/script\.google\.com\/macros\//.test(v) ? v : '';
 }
 
+/** Pure: coerce to ONE trimmed product name (gifts are a single product). Accepts
+ *  a string, or the first entry of a legacy array, falling back to `def`. */
+export function normalizeSingle(input, def = '', maxLen = 120) {
+  const first = Array.isArray(input) ? input.find((x) => String(x ?? '').trim()) : input;
+  const v = String(first ?? '').trim().replace(/\s+/g, ' ').slice(0, maxLen);
+  return v || def;
+}
+
 /** Pure: parse a short free-text list (array, or a string split on
  *  newline/comma/semicolon) into clean, deduped items (max `max`, each `maxLen`). */
 export function normalizeStrList(input, max = 10, maxLen = 80) {
@@ -66,7 +74,6 @@ export function normalizeStrList(input, max = 10, maxLen = 80) {
  *  the nudge delay and the Buy-nothing "free gift" nudge offer. */
 export function normalizeSettings(obj) {
   const o = obj || {};
-  const freeGiftProducts = normalizeStrList(o.freeGiftProducts);
   return {
     sort: o.sort === true,
     notify: o.notify === true,
@@ -78,11 +85,11 @@ export function normalizeSettings(obj) {
     monitorSlackWebhook: normalizeSlackWebhook(o.monitorSlackWebhook),
     sheetWebhook: normalizeSheetWebhook(o.sheetWebhook),
     nudgeDays: clampInt(o.nudgeDays, 2, 1, 14),
-    // 2-day nudge free-gift offer. OFF by default so no "free product" promise goes
-    // out until the owner sets up fulfilment and turns it on. Defaults to "Free gels".
+    // 2-day nudge / resend free-gift offer. OFF by default so no "free product"
+    // promise goes out until the owner sets up fulfilment and turns it on. ONE
+    // product only (a single gift), defaulting to "Free gels". No discount code.
     freeGiftEnabled: o.freeGiftEnabled === true,
-    freeGiftProducts: freeGiftProducts.length ? freeGiftProducts : ['Free gels'],
-    freeGiftCode: String(o.freeGiftCode ?? '').trim().slice(0, 40),
+    freeGiftProduct: normalizeSingle(o.freeGiftProduct ?? o.freeGiftProducts, 'Free gels'),
     // Cross-variant offer. OFF by default: when a waitlisted shopper's variant is
     // still sold out but another variant of the same product is back, email them
     // the available option (once each). Only safe facts (real stock), no promise.
@@ -94,10 +101,10 @@ export function normalizeSettings(obj) {
     incentiveTier1: clampInt(o.incentiveTier1, 200, 0, 1000000),   // free shipping
     incentiveTier2: clampInt(o.incentiveTier2, 500, 0, 1000000),   // + minor gift
     incentiveTier3: clampInt(o.incentiveTier3, 1000, 0, 1000000),  // + major gift
-    // The actual product(s) offered as the minor/major gift — one or many, like the
-    // nudge free-gift list. Empty is fine (the email then just says "a free gift").
-    incentiveMinorGiftProducts: normalizeStrList(o.incentiveMinorGiftProducts),
-    incentiveMajorGiftProducts: normalizeStrList(o.incentiveMajorGiftProducts),
+    // The single product offered as the minor / major gift. Empty is fine (the
+    // email then just says "a free gift" / "a premium free gift").
+    incentiveMinorGift: normalizeSingle(o.incentiveMinorGift ?? o.incentiveMinorGiftProducts, ''),
+    incentiveMajorGift: normalizeSingle(o.incentiveMajorGift ?? o.incentiveMajorGiftProducts, ''),
   };
 }
 
@@ -110,8 +117,8 @@ export function incentiveFor(price, settings) {
   if (!s.incentivesEnabled) return null;
   const p = Number(price);
   if (!Number.isFinite(p)) return null;
-  const major = (s.incentiveMajorGiftProducts || []).length ? s.incentiveMajorGiftProducts : ['a premium free gift'];
-  const minor = (s.incentiveMinorGiftProducts || []).length ? s.incentiveMinorGiftProducts : ['a free gift'];
+  const major = s.incentiveMajorGift ? [s.incentiveMajorGift] : ['a premium free gift'];
+  const minor = s.incentiveMinorGift ? [s.incentiveMinorGift] : ['a free gift'];
   const tiers = [
     { min: Number(s.incentiveTier3), gift: major },
     { min: Number(s.incentiveTier2), gift: minor },

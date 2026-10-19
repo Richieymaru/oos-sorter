@@ -16,8 +16,8 @@ function previewSamples(settings, ctx) {
   const price = (n) => formatMoney(String(n), cur);
   const unsub = '#';
   const base = { handle: 'sample-product', image: null, storeHost: host };
-  const freeGift = settings.freeGiftEnabled && (settings.freeGiftProducts || []).length
-    ? { products: settings.freeGiftProducts, code: settings.freeGiftCode || null }
+  const freeGift = settings.freeGiftEnabled && settings.freeGiftProduct
+    ? { products: [settings.freeGiftProduct] }
     : null;
   const incAt = (n) => incentiveFor(n, settings);
 

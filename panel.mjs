@@ -101,17 +101,13 @@ export function settingsBody(settings) {
       <span class="track" aria-hidden="true"><span class="thumb"></span></span>
       <span class="rowtext">
         <span class="rowtitle">Offer a free gift in the follow-up nudge</span>
-        <span class="rowdesc">When a notified shopper still hasn’t clicked after the nudge delay, the follow-up email offers these products free. ⚠️ Set up the actual free-gift fulfilment in Shopify first (a free Buy-X-Get-Y automatic discount, a free-gift app, or a discount code) — this only writes the offer into the email. Off by default.</span>
+        <span class="rowdesc">When a notified shopper still hasn’t clicked after the nudge delay, the follow-up email (and any Resend) offers this product free. ⚠️ Set up the actual free-gift fulfilment in Shopify first (a free Buy-X-Get-Y automatic discount or a free-gift app) — this only writes the offer into the email. Off by default.</span>
       </span>
     </label>
     <div style="height:10px"></div>
-    <label class="rowtitle" for="freeGiftProducts">Free products to offer</label>
-    <p class="rowdesc" style="margin:3px 0 9px">One per line. Default is “Free gels” — add or change as you like.</p>
-    <textarea id="freeGiftProducts" rows="3" placeholder="Free gels" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc((settings.freeGiftProducts || []).join('\n'))}</textarea>
-    <div style="height:12px"></div>
-    <label class="rowtitle" for="freeGiftCode">Discount code (optional)</label>
-    <p class="rowdesc" style="margin:3px 0 9px">If a code applies the free gift, enter it and the email tells shoppers to use it at checkout. Leave blank if the gift is automatic.</p>
-    <input id="freeGiftCode" type="text" placeholder="e.g. FREEGEL" value="${esc(settings.freeGiftCode || '')}" style="width:220px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <label class="rowtitle" for="freeGiftProduct">Free product to offer</label>
+    <p class="rowdesc" style="margin:3px 0 9px">One product only. Default is “Free gels” — type the product name as it should read in the email.</p>
+    <input id="freeGiftProduct" type="text" placeholder="Free gels" value="${esc(settings.freeGiftProduct || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
   </div>
   <div class="card pad" style="margin-top:14px">
     <label class="row" for="offerAltVariant">
@@ -148,13 +144,14 @@ export function settingsBody(settings) {
       </div>
     </div>
     <div style="height:12px"></div>
-    <label class="rowtitle" for="incentiveMinorGiftProducts">Minor gift product(s)</label>
-    <p class="rowdesc" style="margin:3px 0 9px">Given at the “+ minor gift” tier. One per line. Leave blank to just say “a free gift”.</p>
-    <textarea id="incentiveMinorGiftProducts" rows="2" placeholder="e.g. Free gels (10,000pcs)" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc((settings.incentiveMinorGiftProducts || []).join('\n'))}</textarea>
+    <label class="rowtitle" for="incentiveMinorGift">Minor gift product</label>
+    <p class="rowdesc" style="margin:3px 0 9px">One product only, given at the “+ minor gift” tier. Leave blank to just say “a free gift”.</p>
+    <input id="incentiveMinorGift" type="text" placeholder="e.g. Free gels (10,000pcs)" value="${esc(settings.incentiveMinorGift || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
     <div style="height:12px"></div>
-    <label class="rowtitle" for="incentiveMajorGiftProducts">Major gift product(s)</label>
-    <p class="rowdesc" style="margin:3px 0 9px">Given at the “+ major gift” tier. One per line. Leave blank to just say “a premium free gift”.</p>
-    <textarea id="incentiveMajorGiftProducts" rows="2" placeholder="e.g. Gel blaster bundle" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">${esc((settings.incentiveMajorGiftProducts || []).join('\n'))}</textarea>
+    <label class="rowtitle" for="incentiveMajorGift">Major gift product</label>
+    <p class="rowdesc" style="margin:3px 0 9px">One product only, given at the “+ major gift” tier. Leave blank to just say “a premium free gift”.</p>
+    <input id="incentiveMajorGift" type="text" placeholder="e.g. Gel blaster bundle" value="${esc(settings.incentiveMajorGift || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <p class="rowdesc" style="margin:10px 2px 0">Perks apply when a product’s price is <strong>at or above</strong> a tier (e.g. “Free shipping from 200” = A$200 and up).</p>
   </div>
   <div class="card pad" style="margin-top:14px">
     <label class="rowtitle" for="monitorSlack">Slack — product changes</label>
@@ -190,7 +187,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProducts:document.getElementById('freeGiftProducts').value, freeGiftCode:document.getElementById('freeGiftCode').value, offerAltVariant:document.getElementById('offerAltVariant').checked, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGiftProducts:document.getElementById('incentiveMinorGiftProducts').value, incentiveMajorGiftProducts:document.getElementById('incentiveMajorGiftProducts').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, offerAltVariant:document.getElementById('offerAltVariant').checked, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

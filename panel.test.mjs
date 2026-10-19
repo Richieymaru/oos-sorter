@@ -12,13 +12,14 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProducts: ['Free gels'], freeGiftCode: '', offerAltVariant: false, incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGiftProducts: [], incentiveMajorGiftProducts: [] };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProduct: 'Free gels', offerAltVariant: false, incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMajorGift: '' };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
-eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProducts, ['Free gels']);
-eq('freeGift enable + custom products parsed', normalizeSettings({ freeGiftEnabled: true, freeGiftProducts: 'Gel balls\nStickers' }).freeGiftProducts, ['Gel balls', 'Stickers']);
-eq('freeGift empty list falls back to default', normalizeSettings({ freeGiftProducts: '' }).freeGiftProducts, ['Free gels']);
-eq('freeGift code trimmed', normalizeSettings({ freeGiftCode: '  FREEGEL  ' }).freeGiftCode, 'FREEGEL');
+eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProduct, 'Free gels');
+eq('freeGift is a single product (not a list)', normalizeSettings({ freeGiftProduct: '  Gel balls  ' }).freeGiftProduct, 'Gel balls');
+eq('freeGift empty falls back to default', normalizeSettings({ freeGiftProduct: '' }).freeGiftProduct, 'Free gels');
+eq('freeGift migrates from a legacy array (first item)', normalizeSettings({ freeGiftProducts: ['Old gels', 'Ignored'] }).freeGiftProduct, 'Old gels');
+eq('no discount code field anymore', 'freeGiftCode' in normalizeSettings({}), false);
 eq('offerAltVariant off by default', normalizeSettings({}).offerAltVariant, false);
 eq('offerAltVariant enables', normalizeSettings({ offerAltVariant: true }).offerAltVariant, true);
 eq('offerAltVariant string "true" is not true', normalizeSettings({ offerAltVariant: 'true' }).offerAltVariant, false);
@@ -26,12 +27,13 @@ eq('offerAltVariant string "true" is not true', normalizeSettings({ offerAltVari
 console.log('\n--- incentives (price-tier perks) ---');
 eq('incentives off by default', normalizeSettings({}).incentivesEnabled, false);
 eq('default thresholds 200/500/1000', [normalizeSettings({}).incentiveTier1, normalizeSettings({}).incentiveTier2, normalizeSettings({}).incentiveTier3], [200, 500, 1000]);
-eq('gift products default empty', [normalizeSettings({}).incentiveMinorGiftProducts, normalizeSettings({}).incentiveMajorGiftProducts], [[], []]);
+eq('gift products default empty', [normalizeSettings({}).incentiveMinorGift, normalizeSettings({}).incentiveMajorGift], ['', '']);
 eq('custom thresholds clamped to int', [normalizeSettings({ incentiveTier1: '150.7' }).incentiveTier1], [151]);
-eq('minor gift products parsed (one per line)', normalizeSettings({ incentiveMinorGiftProducts: 'Free gels\nSticker' }).incentiveMinorGiftProducts, ['Free gels', 'Sticker']);
+eq('minor gift is a single product', normalizeSettings({ incentiveMinorGift: '  Sticker pack ' }).incentiveMinorGift, 'Sticker pack');
+eq('gift migrates from a legacy array', normalizeSettings({ incentiveMajorGiftProducts: ['Blaster', 'x'] }).incentiveMajorGift, 'Blaster');
 // incentiveFor: off -> null
 eq('incentiveFor returns null when disabled', incentiveFor(999, normalizeSettings({})), null);
-const incOn = normalizeSettings({ incentivesEnabled: true, incentiveMinorGiftProducts: 'Sticker', incentiveMajorGiftProducts: 'Blaster' });
+const incOn = normalizeSettings({ incentivesEnabled: true, incentiveMinorGift: 'Sticker', incentiveMajorGift: 'Blaster' });
 eq('below tier1 -> null', incentiveFor(199, incOn), null);
 eq('tier1 (200) -> free shipping only', incentiveFor(200, incOn), { freeShipping: true, gift: null });
 eq('tier2 (500) -> free shipping + minor gift', incentiveFor(500, incOn), { freeShipping: true, gift: ['Sticker'] });
@@ -101,9 +103,10 @@ eq('prefills existing sheet webhook', settingsBody({ sheetWebhook: 'https://scri
 eq('renders the alt-variant toggle wired to the body', /id="offerAltVariant"/.test(sb) && sb.includes('offerAltVariant:'), true);
 eq('alt-variant toggle reflects saved on-state', /id="offerAltVariant"[^>]*checked/.test(settingsBody({ offerAltVariant: true })), true);
 eq('renders the incentives toggle + thresholds wired to the body', /id="incentivesEnabled"/.test(sb) && /id="incentiveTier1"/.test(sb) && sb.includes('incentivesEnabled:') && sb.includes('incentiveTier1:'), true);
-eq('renders the minor/major gift product fields', /id="incentiveMinorGiftProducts"/.test(sb) && /id="incentiveMajorGiftProducts"/.test(sb), true);
+eq('renders single minor/major gift fields', /id="incentiveMinorGift"/.test(sb) && /id="incentiveMajorGift"/.test(sb) && sb.includes('incentiveMinorGift:'), true);
+eq('free gift is a single input, no discount code field', /id="freeGiftProduct"/.test(sb) && !/id="freeGiftCode"/.test(sb) && !/id="freeGiftProducts"/.test(sb), true);
 eq('prefills saved thresholds', settingsBody({ incentiveTier1: 250 }).includes('value="250"'), true);
-eq('prefills saved gift products', settingsBody({ incentiveMajorGiftProducts: ['Mega Bundle'] }).includes('Mega Bundle'), true);
+eq('prefills saved gift product', settingsBody({ incentiveMajorGift: 'Mega Bundle' }).includes('Mega Bundle'), true);
 
 console.log('\n--- nudgeDays ---');
 eq('clamps + defaults nudgeDays', normalizeSettings({ nudgeDays: 99 }).nudgeDays, 14);
