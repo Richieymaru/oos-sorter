@@ -6,7 +6,7 @@ import { isVariantInStock, isInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
 import { loadSettings } from '../settings.mjs';
 import { sendWaitlistReport } from '../notify.mjs';
-import { loadNotified, deriveStats, reconcileOrders } from '../notified.mjs';
+import { loadNotified, deriveStats, reconcileOrders, reconcileCarts } from '../notified.mjs';
 import { ttlMemo } from '../cache.mjs';
 
 export const config = { maxDuration: 30 };
@@ -62,7 +62,10 @@ export default async function handler(req, res) {
       if (body.action === 'reconcile') {
         let matched = 0, emailRedacted = false;
         try { const at = await reconcileOrders({ days: 60 }); matched = at.matched || 0; emailRedacted = !!at.emailRedacted; }
-        catch (e) { console.error('reconcile (bg):', e.message); }
+        catch (e) { console.error('reconcile orders (bg):', e.message); }
+        // Also attribute abandoned carts (the "In cart" engagement signal).
+        try { const ct = await reconcileCarts({ days: 30 }); matched += ct.matched || 0; }
+        catch (e) { console.error('reconcile carts (bg):', e.message); }
         res.end(JSON.stringify({ ok: true, matched, emailRedacted }));
         return;
       }
@@ -243,10 +246,23 @@ export default async function handler(req, res) {
   const statusChip = (r) => {
     if (r.o) return chip('#e7f6ee', '#0e7a4b', 'Ordered' + (r.oa ? ' · ' + esc(money(r.oc, r.oa)) : ''));
     if (r.u) return chip('#eef1f6', '#8b95a3', 'Unsubscribed');
+    if (r.ca) return chip('#eef3ff', '#2b57c7', '🛒 In cart');
     if (r.c) return chip('#e7f6ee', '#0e7a4b', 'Clicked');
     if (r.k === 'alt') return chip('#eef2ff', '#4451c7', 'Offered option');
     if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged' + (r.ns > 1 ? ` &times;${r.ns}` : ''));
     return chip('#eef1f6', '#5f6875', 'Notified');
+  };
+  // What a still-interested shopper has in their cart/checkout — their OTHER
+  // products (what they're exploring), so the owner knows they're warm.
+  const cartHint = (r) => {
+    if (!r.ca || r.o) return '';
+    const items = (r.ca.items || []).filter(Boolean);
+    const others = items.filter((t) => t !== r.t);
+    const pool = others.length ? others : items;
+    if (!pool.length) return '';
+    const show = pool.slice(0, 3);
+    const more = pool.length - show.length;
+    return `<div class="faint" style="font-size:11px;margin-top:4px;line-height:1.35">considering: ${esc(show.join(', '))}${more > 0 ? ` +${more} more` : ''}</div>`;
   };
   const inStockNow = (r) => {
     const sp = stockById.get(r.p);
@@ -274,7 +290,7 @@ export default async function handler(req, res) {
         <td>${vName(r)}</td>
         <td class="when">${fmtShort(r.ts)}</td>
         <td class="when">${r.c ? fmtShort(r.c) : '<span class="faint">&mdash;</span>'}</td>
-        <td>${statusChip(r)}</td>
+        <td>${statusChip(r)}${cartHint(r)}</td>
         <td>${resendCell(r)}</td>
       </tr>`).join('')
     : `<tr><td colspan="7" class="faint">No one has been notified yet.</td></tr>`;

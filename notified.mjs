@@ -11,7 +11,7 @@
  */
 
 import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
-import { fetchOrdersForAttribution } from './orders.mjs';
+import { fetchOrdersForAttribution, fetchAbandonedForAttribution } from './orders.mjs';
 
 const CAP = 1000;           // max rows kept (also trimmed by byte size below)
 const LIMIT = 131072;       // Shopify metafield JSON value cap, in bytes
@@ -105,6 +105,35 @@ export function matchOrders(log, orders) {
       list[i] = { ...r, o: ord.createdAt, oa: Number(ord.amount) || 0, oc: ord.currency || null, oid: nid(ord.id) };
       matched += 1;
     }
+  }
+  return { log: list, matched };
+}
+
+/**
+ * Pure: mark notified rows whose shopper started a cart/checkout AFTER we
+ * notified them (an abandoned checkout with their email), for the "In cart"
+ * engagement signal. Stores `ca = { at, items:[title], amt, cur }` — what
+ * they're considering (incl. other products). Skips rows that already ordered
+ * (a stronger signal). Keeps the shopper's MOST RECENT cart per email.
+ */
+export function matchCarts(log, carts) {
+  const list = Array.isArray(log) ? log.slice() : [];
+  let matched = 0;
+  const byEmail = new Map();
+  for (const k of (Array.isArray(carts) ? carts : [])) {
+    const e = lc(k.email);
+    if (!e || !k.at) continue;
+    const prev = byEmail.get(e);
+    if (!prev || new Date(k.at).getTime() > new Date(prev.at).getTime()) byEmail.set(e, k);
+  }
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    if (r.o) continue; // ordered already — stronger than "in cart"
+    const k = byEmail.get(lc(r.e));
+    if (!k) continue;
+    if (new Date(k.at).getTime() < new Date(r.ts).getTime()) continue; // cart must come AFTER we notified
+    list[i] = { ...r, ca: { at: k.at, items: (k.items || []).slice(0, 6), amt: Number(k.amount) || 0, cur: k.currency || null } };
+    matched += 1;
   }
   return { log: list, matched };
 }
@@ -282,6 +311,23 @@ export async function reconcileOrders({ days = 60 } = {}) {
   if (denied) return { matched: 0, denied: true };
   if (emailRedacted) return { matched: 0, emailRedacted: true };
   const { log: next, matched } = matchOrders(log, orders);
+  if (matched) await saveNotified(next);
+  return { matched };
+}
+
+/**
+ * Attribute recent abandoned checkouts to notified shoppers (the "In cart"
+ * engagement signal). Only fetches when there are rows that could still gain a
+ * cart signal. Graceful when customer email is redacted (needs read_customers).
+ */
+export async function reconcileCarts({ days = 30 } = {}) {
+  const log = await loadNotified();
+  if (!log.length || !log.some((r) => !r.o)) return { matched: 0 };
+  const since = new Date(Date.now() - days * DAY).toISOString();
+  const { carts, emailRedacted, denied } = await fetchAbandonedForAttribution({ since });
+  if (denied) return { matched: 0, denied: true };
+  if (emailRedacted) return { matched: 0, emailRedacted: true };
+  const { log: next, matched } = matchCarts(log, carts);
   if (matched) await saveNotified(next);
   return { matched };
 }

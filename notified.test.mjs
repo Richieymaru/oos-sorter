@@ -2,7 +2,7 @@
 /** Pure tests for the notified-log helpers. node notified.test.mjs */
 import {
   notifiedRow, appendNotified, trimToFit, markClicked, markNudged,
-  markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId, matchOrders,
+  markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId, matchOrders, matchCarts,
   nudgeStage, MAX_NUDGES,
 } from './notified.mjs';
 
@@ -156,6 +156,30 @@ ok('orders counts DISTINCT orders', st.orders === 2);
 ok('revenue dedups by order (no double-count)', st.revenue === 439.99);
 ok('currency carried', st.currency === 'AUD');
 ok('empty log -> zero revenue', deriveStats([]).revenue === 0);
+
+console.log('\n--- matchCarts (In-cart engagement signal) ---');
+const cl = [
+  notifiedRow({ email: 'a@x.com', productId: '5', title: 'Pistol', ts: '2026-10-01T00:00:00Z' }),
+  notifiedRow({ email: 'b@x.com', productId: '6', title: 'Rifle', ts: '2026-10-01T00:00:00Z' }),
+  notifiedRow({ email: 'c@x.com', productId: '7', title: 'SMG', ts: '2026-10-01T00:00:00Z' }),
+];
+cl[2].o = '2026-10-02T00:00:00Z'; // c already ordered
+const carts = [
+  { email: 'A@X.com', at: '2026-10-03T00:00:00Z', amount: 90, currency: 'AUD', items: ['Pistol', 'Gel Balls', 'CO2'] },
+  { email: 'b@x.com', at: '2026-09-30T00:00:00Z', amount: 50, currency: 'AUD', items: ['Rifle'] }, // before notify
+  { email: 'c@x.com', at: '2026-10-05T00:00:00Z', amount: 80, currency: 'AUD', items: ['SMG'] },   // ordered -> skip
+];
+const mc = matchCarts(cl, carts);
+ok('matches a cart placed after notify', mc.log[0].ca && mc.log[0].ca.items.length === 3 && mc.log[0].ca.amt === 90);
+ok('cart before notify does not match', !mc.log[1].ca);
+ok('ordered row is skipped', !mc.log[2].ca);
+ok('matched count is 1', mc.matched === 1);
+ok('keeps most-recent cart per email', (() => {
+  const two = [{ email: 'd@x.com', at: '2026-10-02T00:00:00Z', items: ['Old'] }, { email: 'd@x.com', at: '2026-10-09T00:00:00Z', items: ['New'] }];
+  const r = matchCarts([notifiedRow({ email: 'd@x.com', productId: '9', title: 'X', ts: '2026-10-01T00:00:00Z' })], two);
+  return r.log[0].ca.items[0] === 'New';
+})());
+ok('no email -> no match', matchCarts([notifiedRow({ email: 'e@x.com', productId: '1', title: 'X', ts: '2026-10-01T00:00:00Z' })], [{ email: '', at: '2026-10-03T00:00:00Z', items: ['Y'] }]).matched === 0);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

@@ -228,6 +228,53 @@ export async function fetchOrdersForAttribution({ since = null, until = null, pa
 }
 
 /**
+ * Abandoned checkouts WITH the shopper's email + item titles, for the Notified
+ * page's "started a cart" engagement signal — we match these to notified
+ * shoppers. Email is Level-2 protected (read_customers); if it comes back
+ * redacted/denied we report it so the caller skips matching. Returns
+ * { carts:[{email, at, amount, currency, items:[title]}], emailRedacted, denied }.
+ */
+export async function fetchAbandonedForAttribution({ since = null, until = null, pageSize = 250, maxPages = 6 } = {}) {
+  const q = windowFilter(since, until);
+  const query = `query AbAttr($n: Int!, $q: String!, $c: String) {
+    abandonedCheckouts(first: $n, after: $c, sortKey: CREATED_AT, reverse: true, query: $q) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        createdAt
+        customer { defaultEmailAddress { emailAddress } }
+        totalPriceSet { shopMoney { amount currencyCode } }
+        lineItems(first: 10) { nodes { title quantity } }
+      }
+    }
+  }`;
+  try {
+    const carts = [];
+    let cursor = null, pages = 0, anyEmail = false;
+    do {
+      const d = await gql(query, { n: pageSize, q, c: cursor });
+      for (const n of (d.abandonedCheckouts?.nodes || [])) {
+        const email = n.customer?.defaultEmailAddress?.emailAddress || null;
+        if (email) anyEmail = true;
+        const money = n.totalPriceSet?.shopMoney || {};
+        carts.push({
+          email,
+          at: n.createdAt || null,
+          amount: Number(money.amount || 0),
+          currency: money.currencyCode || null,
+          items: (n.lineItems?.nodes || []).map((li) => li.title || '(untitled)'),
+        });
+      }
+      cursor = d.abandonedCheckouts?.pageInfo?.hasNextPage ? d.abandonedCheckouts.pageInfo.endCursor : null;
+      pages += 1;
+    } while (cursor && pages < maxPages);
+    return { carts, emailRedacted: carts.length > 0 && !anyEmail, denied: false };
+  } catch (e) {
+    if (isDenied(e)) return { carts: [], emailRedacted: false, denied: true };
+    throw e;
+  }
+}
+
+/**
  * Abandoned checkouts (reached checkout, didn't complete) in the last `days`.
  * read_orders covers this. Returns { abandoned, count, denied, days, since }.
  * `count` is Shopify's exact total for the window; `abandoned` is the fetched
