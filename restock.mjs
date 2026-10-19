@@ -76,6 +76,49 @@ function priceTextFor(variant, currency) {
   };
 }
 
+/** Resolve gift product NAMES (free text the merchant typed) to real product
+ *  images, best-effort, so the emails can show a photo. Returns { lowerName: url }.
+ *  Only attaches an image from a product whose title shares a meaningful word with
+ *  the gift name, so a loose search never pins a wildly wrong photo; otherwise the
+ *  email falls back to a gift-icon tile. */
+async function resolveGiftImages(names) {
+  const out = {};
+  const uniq = [...new Set((names || []).map((n) => String(n).trim()).filter(Boolean))];
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const words = (s) => norm(s).split(' ').filter((w) => w.length >= 3);
+  for (const name of uniq) {
+    const q = norm(name);
+    if (!q) continue;
+    try {
+      const d = await gql(
+        `query($q: String!) { products(first: 5, query: $q) { nodes { title featuredImage { url } } } }`,
+        { q }
+      );
+      const nodes = (d.products?.nodes || []).filter((p) => p.featuredImage?.url);
+      const nameWords = new Set(words(name));
+      const hit = nodes.find((p) => words(p.title).some((w) => nameWords.has(w)));
+      if (hit) out[name.toLowerCase()] = hit.featuredImage.url;
+    } catch (e) {
+      console.error(`  ! gift image lookup for "${name}" failed: ${e.message}`);
+    }
+  }
+  return out;
+}
+
+/** The gift names in play for the current settings (free-gift + perk gifts),
+ *  resolved to images once per run. {} when nothing applies (no extra API calls). */
+async function giftImagesFor(settings) {
+  if (!settings) return {};
+  const names = [
+    ...(settings.freeGiftEnabled ? settings.freeGiftProducts || [] : []),
+    ...(settings.incentivesEnabled
+      ? [...(settings.incentiveMinorGiftProducts || []), ...(settings.incentiveMajorGiftProducts || [])]
+      : []),
+  ];
+  if (!names.length) return {};
+  return resolveGiftImages(names);
+}
+
 async function bumpNotified(shoppers) {
   if (!shoppers) return;
   try {
@@ -104,7 +147,7 @@ async function bumpNotified(shoppers) {
  *   in-stock alternatives once each (deduped by an `altTs` stamp on the entry).
  * @returns {Promise<number>} how many emails actually sent
  */
-async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base, altOffer = null, settings = null }) {
+async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base, altOffer = null, settings = null, giftImages = {} }) {
   let sent = 0;
   const failed = [];
   const rows = [];
@@ -126,6 +169,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
       priceText,
       compareAtText,
       incentives: incentiveFor(variantNode?.price, settings),
+      giftImages,
       clickCartUrl: trackUrl(base, short, sub.email, relCart),
       clickProductUrl: trackUrl(base, short, sub.email, relProduct),
     };
@@ -158,6 +202,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
         storeHost: ctx.host,
         priceText: primary.priceText,
         incentives: incentiveFor(primary.price, settings),
+        giftImages,
         clickCartUrl: trackUrl(base, short, sub.email, `/cart/${primary.id}:1`),
         clickProductUrl: trackUrl(base, short, sub.email, product.handle ? `/products/${product.handle}` : '/'),
       };
@@ -233,6 +278,7 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
   // out when a DIFFERENT variant of the same product is back in stock.
   const settings = await loadSettings().catch(() => null);
   const offerAlt = !!settings?.offerAltVariant;
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
 
   let productsNotified = 0;
   let emailsSent = 0;
@@ -260,6 +306,7 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
       base,
       altOffer,
       settings,
+      giftImages,
     });
     if (notify.length) productsNotified++;
   }
@@ -287,6 +334,7 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
   const offerAlt = !!settings?.offerAltVariant;
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
 
   let productsNotified = 0;
   let emailsSent = 0;
@@ -312,6 +360,7 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
       base,
       altOffer,
       settings,
+      giftImages,
     });
     if (notify.length) productsNotified++;
   }
@@ -398,6 +447,7 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
   const list = await readWaitlist(productGid);
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
 
   const want = variantId == null ? null : String(variantId).replace(/\D/g, '');
   const { notify, waiting } = partitionByStock(list, (entryVariant) =>
@@ -416,6 +466,7 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
     dryRun,
     base,
     settings,
+    giftImages,
   });
 
   return { sent, title: p.title, total: list.length };
@@ -440,6 +491,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
   if (!sp) return { sent: 0, error: 'Product not found.' };
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
   const inStock = inStockVariantInfos(sp, ctx); // [{id,title,priceText,price}]
   const want = String(offerVariantId || '').replace(/\D/g, '');
   const offered = inStock.find((v) => String(v.id) === want) || null;
@@ -462,6 +514,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
       storeHost: ctx.host,
       priceText: offered.priceText,
       incentives: incentiveFor(offered.price, settings),
+      giftImages,
       clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1`),
       clickProductUrl: trackUrl(base, short, sub.email, sp.handle ? `/products/${sp.handle}` : '/'),
     };
@@ -502,6 +555,12 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
   const vId = vWant || (first?.id ? shortId(first.id) : null);
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
+  // Resend is a re-engagement send (to someone who didn't convert), so it carries
+  // the same free-gift offer as the 2-day nudge — not just the first email.
+  const freeGift = settings && settings.freeGiftEnabled && (settings.freeGiftProducts || []).length
+    ? { products: settings.freeGiftProducts, code: settings.freeGiftCode || null }
+    : null;
   const vNode = variantsById(sp).get(String(vId));
   const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
   const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
@@ -516,6 +575,8 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
     priceText,
     compareAtText,
     incentives: incentiveFor(vNode?.price, settings),
+    giftImages,
+    freeGift,
     clickCartUrl: trackUrl(base, short, email, relCart),
     clickProductUrl: trackUrl(base, short, email, relProduct),
   };
@@ -549,6 +610,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
   const freeGift = settings && settings.freeGiftEnabled && (settings.freeGiftProducts || []).length
     ? { products: settings.freeGiftProducts, code: settings.freeGiftCode || null }
     : null;
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
   const due = selectNudges(log, now, days, (p) => {
     const sp = spById.get(p);
     return sp ? isInStock(sp) : false;
@@ -572,6 +634,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
       priceText,
       compareAtText,
       incentives: incentiveFor(vNode?.price, settings),
+      giftImages,
       clickCartUrl: trackUrl(base, row.p, row.e, relCart),
       clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
     };

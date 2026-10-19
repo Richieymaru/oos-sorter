@@ -116,12 +116,25 @@ const perk = buildBackInStock(
   unsub
 );
 ok('perks box shows free shipping', perk.html.includes('Free shipping') && perk.html.toLowerCase().includes('your order perks'));
-ok('perks box lists the gift products', perk.html.includes('Gel blaster bundle, Target'));
+ok('perks box lists the gift products', perk.html.includes('Gel blaster bundle') && perk.html.includes('Target') && perk.html.includes('FREE'));
 ok('perks appear in plain text too', perk.text.includes('Free shipping') && perk.text.includes('Gel blaster bundle, Target'));
 const perkShipOnly = buildBackInStock({ title: 'X', handle: 'x', incentives: { freeShipping: true, gift: null } }, unsub);
 ok('free-shipping-only tier shows no gift line', perkShipOnly.html.includes('Free shipping') && !perkShipOnly.html.includes('Plus a free gift'));
 const noPerk = buildBackInStock({ title: 'Y', handle: 'y' }, unsub);
 ok('no perks box when none set', !noPerk.html.toLowerCase().includes('your order perks'));
+
+console.log('--- free gift on the back-in-stock payload (resend path) + gift images ---');
+const resend = buildBackInStock(
+  { title: 'Gel Kit', handle: 'gel-kit', variantId: '3',
+    freeGift: { products: ['Free gels'], code: 'FREEGEL' },
+    giftImages: { 'free gels': 'https://cdn.shopify.com/img/gels.png' } },
+  unsub
+);
+ok('resend-style email shows the free gift from the payload', resend.html.toLowerCase().includes('free gift if you order now') && resend.html.includes('Free gels'));
+ok('gift image renders as a thumbnail when resolved', resend.html.includes('cdn.shopify.com/img/gels.png') && resend.html.includes('<img'));
+ok('discount code still shown', resend.html.includes('FREEGEL'));
+const noImg = buildBackInStock({ title: 'Z', handle: 'z', freeGift: { products: ['Mystery box'] } }, unsub);
+ok('falls back to a gift icon tile when no image resolved', noImg.html.includes('Mystery box') && noImg.html.includes('&#127873;'));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

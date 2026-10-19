@@ -275,6 +275,33 @@ export function sendSoldOutAlert(items, opts) {
   return send(buildSoldOutAlert(items), opts);
 }
 
+/** A 48×48 gift thumbnail: the product's real photo when we resolved one
+ *  (`giftImages[name]`), otherwise a tasteful gift-icon tile so the row is never
+ *  empty. `tint` is the box's accent (green for the free gift, blue for perks). */
+function giftThumb(name, giftImages, tint) {
+  const url = giftImages && giftImages[String(name).toLowerCase()];
+  if (url) {
+    const src = url + (url.includes('?') ? '&' : '?') + 'width=120';
+    return `<img src="${esc(src)}" alt="${esc(name)}" width="48" height="48" style="width:48px;height:48px;border-radius:10px;object-fit:cover;border:1px solid rgba(0,0,0,.06);display:block">`;
+  }
+  return `<div style="width:48px;height:48px;border-radius:10px;background:#ffffff;border:1px solid ${tint}33;text-align:center;line-height:48px;font-size:24px">&#127873;</div>`;
+}
+
+/** One "gift item" row — thumbnail + name + a FREE pill — for the gift/perks box. */
+function giftRowsHtml(names, giftImages, tint) {
+  return (names || [])
+    .map(
+      (n) => `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:10px"><tr>
+        <td width="60" style="padding-right:12px;vertical-align:middle">${giftThumb(n, giftImages, tint)}</td>
+        <td style="vertical-align:middle">
+          <span style="font-size:14px;font-weight:600;color:#161b22">${esc(n)}</span>
+          <span style="display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;color:#fff;background:${tint};border-radius:999px;padding:2px 8px;margin-left:8px;vertical-align:middle">FREE</span>
+        </td>
+      </tr></table>`
+    )
+    .join('');
+}
+
 /** Shared builder for the two single-product restock emails (back-in-stock and
  *  the follow-up nudge). `opts` supplies the only differences: eyebrow label,
  *  subject text, the HTML lead sentence, and the plain-text intro line.
@@ -283,11 +310,17 @@ export function sendSoldOutAlert(items, opts) {
  *  (so we can record click-through); otherwise it falls back to direct links. */
 function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introText, freeGift = null, altVariants = null }) {
   const title = product.title ?? 'Your item';
+  // freeGift may come via opts (nudge) or ride on the payload (resend reuses the
+  // back-in-stock builder but should still show the offer).
+  freeGift = freeGift || product.freeGift || null;
   const hasGift = !!(freeGift && Array.isArray(freeGift.products) && freeGift.products.length);
   const hasAlts = Array.isArray(altVariants) && altVariants.length > 0;
   // Price-tiered order perks (free shipping / + gift), carried on the product payload.
   const inc = product.incentives && product.incentives.freeShipping ? product.incentives : null;
-  const incGift = inc && Array.isArray(inc.gift) && inc.gift.length ? inc.gift.join(', ') : (inc && inc.gift ? String(inc.gift) : '');
+  const incGiftList = inc && Array.isArray(inc.gift) ? inc.gift : (inc && inc.gift ? [String(inc.gift)] : []);
+  const incGift = incGiftList.join(', ');
+  // Resolved gift product images (lowercased name -> url), attached to the payload.
+  const giftImages = product.giftImages || {};
   // Single-variant products are literally titled "Default Title" — never show that.
   const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
   // Shopper-facing host: the store's primary/custom domain (gelballundercover.com.au),
@@ -328,15 +361,16 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
       }</div>`
     : '';
   const incentiveBlock = inc
-    ? `<tr><td style="padding:4px 24px 10px">
-         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:12px">
-           <tr><td style="padding:14px 16px">
-             <div style="font-size:12px;font-weight:700;letter-spacing:.05em;color:#1f6feb;text-transform:uppercase">&#128230; Your order perks</div>
-             <div style="font-size:14px;color:#161b22;margin-top:6px;line-height:1.6">
-               &#128666; <strong>Free shipping</strong> on this order${
-                 incGift ? `<br>&#127873; Plus a free gift: <strong>${esc(incGift)}</strong>` : ''
-               }
-             </div>
+    ? `<tr><td style="padding:4px 24px 12px">
+         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:14px">
+           <tr><td style="padding:16px 18px">
+             <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:#1f6feb;text-transform:uppercase">&#128230; Your order perks</div>
+             <div style="font-size:14px;color:#161b22;margin-top:8px;line-height:1.5">&#128666; <strong>Free shipping</strong> on this order</div>
+             ${
+               incGiftList.length
+                 ? `<div style="font-size:12px;font-weight:800;letter-spacing:.04em;color:#1f6feb;text-transform:uppercase;margin-top:12px">&#127873; Plus, free with your order</div>${giftRowsHtml(incGiftList, giftImages, '#1f6feb')}`
+                 : ''
+             }
            </td></tr>
          </table>
        </td></tr>`
@@ -347,12 +381,12 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
        </td></tr>`
     : '';
   const freeGiftBlock = hasGift
-    ? `<tr><td style="padding:4px 24px 10px">
-         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f0fbf6;border:1px solid #cdeede;border-radius:12px">
-           <tr><td style="padding:14px 16px">
-             <div style="font-size:12px;font-weight:700;letter-spacing:.05em;color:${ACCENT};text-transform:uppercase">&#127873; Free gift if you order now</div>
-             <div style="font-size:14px;color:#161b22;margin-top:5px;line-height:1.5">Get <strong>${freeGift.products.map(esc).join(', ')}</strong> free with your order.</div>
-             ${freeGift.code ? `<div style="font-size:13px;color:#5f6875;margin-top:4px">Use code <strong style="color:#161b22">${esc(freeGift.code)}</strong> at checkout.</div>` : ''}
+    ? `<tr><td style="padding:4px 24px 12px">
+         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f0fbf6;border:1px solid #cdeede;border-radius:14px">
+           <tr><td style="padding:16px 18px">
+             <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:${ACCENT};text-transform:uppercase">&#127873; Free gift if you order now</div>
+             ${giftRowsHtml(freeGift.products, giftImages, ACCENT)}
+             ${freeGift.code ? `<div style="font-size:13px;color:#5f6875;margin-top:12px;padding-top:12px;border-top:1px solid #cdeede">Use code <strong style="color:#161b22;background:#fff;border:1px dashed #9bd3b6;border-radius:6px;padding:2px 8px">${esc(freeGift.code)}</strong> at checkout.</div>` : ''}
            </td></tr>
          </table>
        </td></tr>`

@@ -223,7 +223,8 @@ const CSS = `
   .toolbar input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
   .empty{padding:44px 20px;text-align:center;color:var(--muted)}
   /* settings controls */
-  .rows .row{display:flex;align-items:flex-start;gap:14px;padding:16px 20px;cursor:pointer;margin:0}
+  .row{display:flex;align-items:flex-start;gap:14px;cursor:pointer;margin:0}
+  .rows .row{padding:16px 20px}
   .rows .row+.row{border-top:1px solid var(--line-2)}
   .sw{position:absolute;opacity:0;width:0;height:0}
   .track{flex:none;margin-top:2px;width:40px;height:24px;border-radius:999px;background:var(--line);position:relative;transition:background .18s ease}

@@ -103,10 +103,11 @@ export default async function handler(req, res) {
     if (at.emailRedacted) attrNote = 'Order revenue needs Level 2 customer-data access — enable it in the Dev Dashboard to see who bought.';
   } catch (e) { console.error('attribution (page):', e.message); }
 
-  const [items, state, notifiedLog] = await Promise.all([
+  const [items, state, notifiedLog, settings] = await Promise.all([
     productsWithWaitlist().catch(() => []),
     loadState().catch(() => ({})),
     loadNotified().catch(() => []),
+    loadSettings().catch(() => ({})),
   ]);
   void state;
   const total = items.reduce((n, w) => n + w.list.length, 0);
@@ -309,6 +310,13 @@ export default async function handler(req, res) {
     <span id="msgAll" class="faint" style="font-size:12.5px"></span>
   </div>
   ${cards}`}
+  ${notifiedView && (settings.freeGiftEnabled || settings.incentivesEnabled)
+    ? `<div class="callout" style="margin:-4px 0 16px"><div class="ct" style="font-size:12.5px">Every <strong>Resend</strong> (and the automatic 2-day nudge) includes ${
+        settings.freeGiftEnabled ? 'your <strong>free-gift offer</strong>' : ''
+      }${settings.freeGiftEnabled && settings.incentivesEnabled ? ' and ' : ''}${
+        settings.incentivesEnabled ? 'your <strong>order perks</strong> (free shipping / gifts)' : ''
+      }. <a href="/preview" style="color:var(--accent-ink);font-weight:600">Preview the emails &rarr;</a></div></div>`
+    : ''}
   ${notifiedView ? `<div class="card pad">
     <table>
       <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="num">Notified</th><th class="num">Clicked</th><th>Status</th><th></th></tr></thead>
