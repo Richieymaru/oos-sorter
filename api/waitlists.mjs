@@ -398,9 +398,16 @@ export default async function handler(req, res) {
   </div>
   <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,41,.55);z-index:1000;padding:18px;box-sizing:border-box">
     <div style="max-width:660px;height:100%;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);text-transform:uppercase">Email preview</span>
-        <span id="emSubject" style="font-size:12.5px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <span id="emSubject" style="font-size:12.5px;color:var(--ink);flex:1;min-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        ${settings && settings.freeGiftEnabled ? `<select id="emGift" title="Switch the free gift for this send" style="font:12.5px var(--sans);padding:7px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)">
+          <option value="auto">Gift: Auto (by category)</option>
+          <option value="default">Gift: Default gels</option>
+          <option value="gas">Gift: Gas &amp; custom gels</option>
+          <option value="none">Gift: No gift</option>
+        </select>` : ''}
+        <button type="button" class="primary" id="emSend" style="font-size:12.5px;padding:7px 14px">Send this email</button>
         <button type="button" class="ghost" id="emClose">Close</button>
       </div>
       <div id="emCart" style="display:none;padding:8px 16px;border-bottom:1px solid var(--line);background:#f7f9fc;font:12px var(--mono);color:#48506a;word-break:break-all"></div>
@@ -455,17 +462,37 @@ export default async function handler(req, res) {
       if(emCart){ if(cart){ emCart.textContent='🛒 Add to cart adds → '+cart+(cart.indexOf(',')>-1?'  ✓ gift included':'  (only this product — no gift added)'); emCart.style.display='block'; } else { emCart.style.display='none'; emCart.textContent=''; } }
       emFrame.srcdoc=html; emModal.style.display='block';
     }
-    async function doPreview(action, data, btn){
+    // The gift override selector + send-from-modal: switch the free gift in the
+    // preview and send the exact email you see, with that gift.
+    var emGift=document.getElementById('emGift'), emSend=document.getElementById('emSend');
+    var emCtx=null; // { kind:'resend'|'offer', data:{...} }
+    function giftVal(){ return emGift ? emGift.value : 'auto'; }
+    async function renderPreview(ctx, btn){
       if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
-      var old=btn.textContent; btn.disabled=true; btn.textContent='\\u2026';
-      var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(Object.assign({action:action}, data))});
+      var action = ctx.kind==='resend' ? 'previewResend' : 'previewOffer';
+      var old; if(btn){ old=btn.textContent; btn.disabled=true; btn.textContent='\\u2026'; }
+      var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(Object.assign({action:action, gift:giftVal()}, ctx.data))});
       var j=await r.json().catch(function(){return{};});
-      btn.disabled=false; btn.textContent=old;
+      if(btn){ btn.disabled=false; btn.textContent=old; }
       if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } showEmail(j.subject, j.html, j.cart); }
       else msg.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not preview'));
     }
-    document.querySelectorAll('.previewR').forEach(function(b){ b.addEventListener('click', function(){ doPreview('previewResend', {productId:b.dataset.id, email:b.dataset.email, variantId:b.dataset.variant}, b); }); });
-    document.querySelectorAll('.previewO').forEach(function(b){ b.addEventListener('click', function(){ doPreview('previewOffer', {productId:b.dataset.id, variantId:b.dataset.variant}, b); }); });
+    function openPreview(kind, data, btn){ emCtx={kind:kind, data:data}; if(emGift) emGift.value='auto'; renderPreview(emCtx, btn); }
+    if(emGift) emGift.addEventListener('change', function(){ if(emCtx) renderPreview(emCtx, null); });
+    if(emSend) emSend.addEventListener('click', async function(){
+      if(!emCtx) return;
+      if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
+      if(emCtx.kind==='offer' && !confirm('Send this offer email to everyone still waiting (with the selected gift)?')) return;
+      emSend.disabled=true; var old=emSend.textContent; emSend.textContent='Sending\\u2026';
+      var action = emCtx.kind==='resend' ? 'resend' : 'offerAlt';
+      var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(Object.assign({action:action, gift:giftVal()}, emCtx.data))});
+      var j=await r.json().catch(function(){return{};});
+      emSend.disabled=false; emSend.textContent=old;
+      if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } emSubject.textContent='Sent \\u2713'; setTimeout(function(){ closeEmail(); location.reload(); }, 900); }
+      else msg.textContent=(j.soldOut?'Sold out again \\u2014 nothing sent':(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send')));
+    });
+    document.querySelectorAll('.previewR').forEach(function(b){ b.addEventListener('click', function(){ openPreview('resend', {productId:b.dataset.id, email:b.dataset.email, variantId:b.dataset.variant}, b); }); });
+    document.querySelectorAll('.previewO').forEach(function(b){ b.addEventListener('click', function(){ openPreview('offer', {productId:b.dataset.id, variantId:b.dataset.variant}, b); }); });
     document.querySelectorAll('.offer').forEach(function(b){
       b.addEventListener('click', async function(){
         if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
