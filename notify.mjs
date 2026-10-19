@@ -368,21 +368,16 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   // inline-block (no media query) so it sits side-by-side on desktop and stacks
   // (image on top, text below) on narrow mobile widths — works in Gmail.
   const imgCol = product.image
-    ? `<div style="display:inline-block;vertical-align:top;width:100%;max-width:180px"><a href="${esc(cartUrl)}" style="text-decoration:none;display:block"><img src="${esc(product.image)}" alt="${esc(title)}" width="180" style="width:100%;height:auto;border-radius:12px;border:1px solid #eef1f6;display:block"></a></div>`
+    ? `<div style="display:inline-block;vertical-align:top;width:100%;max-width:200px"><a href="${esc(cartUrl)}" style="text-decoration:none;display:block"><img src="${esc(product.image)}" alt="${esc(title)}" width="200" style="width:100%;height:190px;object-fit:cover;border-radius:12px;border:1px solid #eef1f6;display:block"></a></div>`
     : '';
-  const textColMax = product.image ? 348 : 560;
+  const textColMax = product.image ? 340 : 560;
   const textColPad = product.image ? 'padding-left:16px;' : '';
   const incentiveBlock = inc
     ? `<tr><td style="padding:6px 20px 10px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:14px">
-           <tr><td style="padding:16px 18px">
-             <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:#1f6feb;text-transform:uppercase">&#128230; Your order perks</div>
-             <div style="font-size:14px;color:#0f1729;margin-top:8px;line-height:1.5">&#128666; <strong>Free shipping</strong> on this order</div>
-             ${
-               incGiftList.length
-                 ? `<div style="font-size:12px;font-weight:800;letter-spacing:.04em;color:#1f6feb;text-transform:uppercase;margin-top:12px">&#127873; Plus, free with your order</div>${giftRowsHtml(incGiftList, giftImages, '#1f6feb')}`
-                 : ''
-             }
+           <tr><td style="padding:14px 16px">
+             <div style="font-size:14px;color:#0f1729;line-height:1.5">&#128666; <strong>Free shipping</strong> on this order</div>
+             ${incGiftList.length ? giftRowsHtml(incGiftList, giftImages, '#1f6feb') : ''}
            </td></tr>
          </table>
        </td></tr>`
@@ -417,16 +412,16 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
               <div style="font-size:22px;line-height:1.25;font-weight:800;color:#0f1729;letter-spacing:-.02em;margin:12px 0 0">${esc(title)}</div>
               ${variantChip}
               ${priceBlock}
-              <p style="font-size:14px;color:#5b6472;line-height:1.55;margin:11px 0 0">${leadHtml}</p>
             </div>
           </div>
+          <p style="font-size:14px;color:#5b6472;line-height:1.55;margin:14px 0 0">${leadHtml}</p>
         </td></tr>
         ${freeGiftBlock}
+        ${incentiveBlock}
         <tr><td style="padding:16px 20px 4px" align="center">
           <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:15px 44px;border-radius:12px">Add to cart &rarr;</a>
           <div style="margin-top:9px"><a href="${esc(productUrl)}" style="color:#6b7280;text-decoration:underline;font-size:13px">or view the product</a></div>
         </td></tr>
-        ${incentiveBlock}
         <tr><td style="padding:16px 20px;border-top:1px solid #f1f3f7;font-size:11.5px;color:#9aa3b2;line-height:1.6">
           You asked ${esc(FROM_NAME)} to let you know when this was back in stock. <a href="${esc(unsub)}" style="color:#9aa3b2">Unsubscribe</a>.
         </td></tr>
