@@ -283,6 +283,7 @@ ${fontHead()}
     ${tab('/notified', 'notified', 'Notified')}
     ${tab('/funnels', 'funnels', 'Funnels')}
     ${tab('/settings', 'settings', 'Settings')}
+    ${tab('/preview', 'preview', 'Email preview')}
   </nav>
 </div></header>
 <main>${body}</main>
