@@ -1,0 +1,20 @@
+api_version = "2026-07"
+
+[[extensions]]
+type = "web_pixel_extension"
+name = "Waitlist browsing"
+handle = "waitlist-browsing"
+# Strict sandbox: standard events, consent-gated by Shopify.
+runtime_context = "strict"
+
+  # Only run when the visitor has granted analytics consent — browsing is
+  # recorded for engagement insight, never without permission.
+  [extensions.customer_privacy]
+  analytics = true
+  marketing = false
+  preferences = false
+  sale_of_data = "enabled"
+
+  # No merchant-configurable settings; the app endpoint is fixed.
+  [extensions.settings]
+  type = "object"

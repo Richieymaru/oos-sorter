@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Pure tests for the waitlist helpers. node waitlist.test.mjs */
-import { addEmail, removeEmail, signUnsub, verifyUnsub, partitionByStock, trackUrl, unsubSecret } from './waitlist.mjs';
+import { addEmail, removeEmail, signUnsub, verifyUnsub, partitionByStock, trackUrl, unsubSecret, wlToken } from './waitlist.mjs';
 
 let failures = 0, checks = 0;
 function ok(label, cond) {
@@ -76,6 +76,14 @@ ok('carries the product id', tu.searchParams.get('product') === '123');
 ok('carries the email', tu.searchParams.get('email') === 'a@x.com');
 ok('carries the relative destination', tu.searchParams.get('to') === '/cart/999:1');
 ok('signs with the unsubscribe HMAC', tu.searchParams.get('sig') === signUnsub('123', 'a@x.com', unsubSecret()));
+
+console.log('\n--- wlToken (browsing-pixel token) ---');
+const S = 'secret-123';
+ok('deterministic for same product+email', wlToken('55', 'a@x.com', S) === wlToken('55', 'A@X.com', S));
+ok('differs by product', wlToken('55', 'a@x.com', S) !== wlToken('66', 'a@x.com', S));
+ok('differs by email', wlToken('55', 'a@x.com', S) !== wlToken('55', 'b@x.com', S));
+ok('differs from the unsub sig (distinct purpose)', wlToken('55', 'a@x.com', S) !== signUnsub('55', 'a@x.com', S));
+ok('short + url-safe (<=24 base64url chars)', /^[A-Za-z0-9_-]{1,24}$/.test(wlToken('55', 'a@x.com', S)));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

@@ -12,6 +12,7 @@
 
 import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
 import { fetchOrdersForAttribution, fetchAbandonedForAttribution } from './orders.mjs';
+import { wlToken } from './waitlist.mjs';
 
 const CAP = 1000;           // max rows kept (also trimmed by byte size below)
 const LIMIT = 131072;       // Shopify metafield JSON value cap, in bytes
@@ -136,6 +137,44 @@ export function matchCarts(log, carts) {
     matched += 1;
   }
   return { log: list, matched };
+}
+
+/**
+ * Pure: merge a storefront browsing event (from the Web Pixel) into a row's
+ * `br = { last, viewed:[title…10], cart:bool }` — what the shopper has looked at
+ * since clicking, and whether they've added to cart / started checkout.
+ */
+export function mergeBrowseRow(row, event, titles, nowIso) {
+  const prev = (row && row.br) || { viewed: [], cart: false };
+  const seen = new Set(Array.isArray(prev.viewed) ? prev.viewed : []);
+  for (const t of (Array.isArray(titles) ? titles : [])) {
+    const s = String(t || '').trim().slice(0, 80);
+    if (s) seen.add(s);
+  }
+  const viewed = [...seen].slice(-10);
+  const cart = !!prev.cart || event === 'product_added_to_cart' || event === 'checkout_started';
+  return { ...row, br: { last: nowIso || new Date().toISOString(), viewed, cart } };
+}
+
+/**
+ * Record a browsing event against the notified shopper the pixel token points
+ * to. Matches rows by recomputing wlToken(product,email) — no email in the URL.
+ * Skips rows that already ordered. Impure (load/save); safe to call often.
+ */
+export async function applyBrowse(token, event, titles, secret) {
+  if (!token) return { matched: 0 };
+  const log = await loadNotified();
+  if (!log.length) return { matched: 0 };
+  const now = new Date().toISOString();
+  let matched = 0;
+  const next = log.map((r) => {
+    if (r.o) return r; // already ordered — the browse signal adds nothing
+    if (wlToken(r.p, r.e, secret) !== token) return r;
+    matched += 1;
+    return mergeBrowseRow(r, event, titles, now);
+  });
+  if (matched) await saveNotified(next);
+  return { matched };
 }
 
 /** Advance the nudge stage for ALL rows of (email, product) — records this send

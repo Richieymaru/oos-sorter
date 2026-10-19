@@ -104,6 +104,20 @@ export function verifyUnsub(productId, email, sig, secret) {
   return got.length === exp.length && crypto.timingSafeEqual(got, exp);
 }
 
+/**
+ * Short browsing-pixel token: HMAC('wl:'+product:email), base64url, truncated.
+ * Deterministic + unforgeable, and carries NO email in the storefront URL — the
+ * Web Pixel reads it off the landing link and sends it back so we can match the
+ * browsing session to a notified shopper without exposing their address.
+ */
+export function wlToken(productShortId, email, secret) {
+  return crypto
+    .createHmac('sha256', secret || '')
+    .update(`wl:${String(productShortId)}:${String(email ?? '').trim().toLowerCase()}`)
+    .digest('base64url')
+    .slice(0, 24);
+}
+
 /** Secret used to sign unsubscribe links — any stable app secret works. */
 export function unsubSecret() {
   return process.env.CLIENT_SECRET || process.env.WEBHOOK_TOKEN || process.env.RUN_TOKEN || '';

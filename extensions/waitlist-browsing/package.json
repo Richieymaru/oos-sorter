@@ -1,0 +1,9 @@
+{
+  "name": "waitlist-browsing",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Web Pixel: reports notified shoppers' browsing back to the app.",
+  "dependencies": {
+    "@shopify/web-pixels-extension": "^2.0.2"
+  }
+}

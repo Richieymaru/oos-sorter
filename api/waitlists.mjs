@@ -247,22 +247,34 @@ export default async function handler(req, res) {
     if (r.o) return chip('#e7f6ee', '#0e7a4b', 'Ordered' + (r.oa ? ' · ' + esc(money(r.oc, r.oa)) : ''));
     if (r.u) return chip('#eef1f6', '#8b95a3', 'Unsubscribed');
     if (r.ca) return chip('#eef3ff', '#2b57c7', '🛒 In cart');
+    if (r.br) return chip('#f1f4ff', '#5560c8', '👀 Browsing');
     if (r.c) return chip('#e7f6ee', '#0e7a4b', 'Clicked');
     if (r.k === 'alt') return chip('#eef2ff', '#4451c7', 'Offered option');
     if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged' + (r.ns > 1 ? ` &times;${r.ns}` : ''));
     return chip('#eef1f6', '#5f6875', 'Notified');
   };
-  // What a still-interested shopper has in their cart/checkout — their OTHER
-  // products (what they're exploring), so the owner knows they're warm.
-  const cartHint = (r) => {
-    if (!r.ca || r.o) return '';
-    const items = (r.ca.items || []).filter(Boolean);
-    const others = items.filter((t) => t !== r.t);
-    const pool = others.length ? others : items;
-    if (!pool.length) return '';
-    const show = pool.slice(0, 3);
-    const more = pool.length - show.length;
-    return `<div class="faint" style="font-size:11px;margin-top:4px;line-height:1.35">considering: ${esc(show.join(', '))}${more > 0 ? ` +${more} more` : ''}</div>`;
+  // What a still-interested shopper is exploring — the OTHER products in their
+  // cart (considering) or that they viewed while browsing — so the owner knows
+  // they're warm and can act.
+  const engHint = (r) => {
+    if (r.o) return '';
+    const line = (items) => {
+      const list = (items || []).filter(Boolean);
+      const others = list.filter((t) => t !== r.t);
+      const pool = others.length ? others : list;
+      if (!pool.length) return '';
+      const show = pool.slice(0, 3);
+      const more = pool.length - show.length;
+      return `${esc(show.join(', '))}${more > 0 ? ` +${more} more` : ''}`;
+    };
+    const wrap = (txt) => `<div class="faint" style="font-size:11px;margin-top:4px;line-height:1.35">${txt}</div>`;
+    if (r.ca) { const t = line(r.ca.items); if (t) return wrap('considering: ' + t); }
+    if (r.br && r.br.viewed && r.br.viewed.length) {
+      const t = line(r.br.viewed);
+      const seen = r.br.last ? ' · last seen ' + fmtShort(r.br.last) : '';
+      if (t) return wrap('viewed: ' + t + seen);
+    }
+    return '';
   };
   const inStockNow = (r) => {
     const sp = stockById.get(r.p);
@@ -290,7 +302,7 @@ export default async function handler(req, res) {
         <td>${vName(r)}</td>
         <td class="when">${fmtShort(r.ts)}</td>
         <td class="when">${r.c ? fmtShort(r.c) : '<span class="faint">&mdash;</span>'}</td>
-        <td>${statusChip(r)}${cartHint(r)}</td>
+        <td>${statusChip(r)}${engHint(r)}</td>
         <td>${resendCell(r)}</td>
       </tr>`).join('')
     : `<tr><td colspan="7" class="faint">No one has been notified yet.</td></tr>`;

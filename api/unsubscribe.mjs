@@ -3,11 +3,18 @@
  * signed (HMAC of product+email), so no login is needed and it can't be forged.
  *   /api/unsubscribe?product=<shortId>&email=<email>&sig=<hmac>
  */
-import { verifyUnsub, unsubscribe, unsubSecret, subscribe } from '../waitlist.mjs';
+import { verifyUnsub, unsubscribe, unsubSecret, subscribe, wlToken } from '../waitlist.mjs';
 import { longId, shortId } from '../shopify.mjs';
-import { safeRelPath, cartVariantId, applyClicked, applyUnsubscribed } from '../notified.mjs';
+import { safeRelPath, cartVariantId, applyClicked, applyUnsubscribed, applyBrowse } from '../notified.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isVariantInStock } from '../stock.mjs';
+
+async function readJson(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  let d = '';
+  for await (const c of req) d += c;
+  try { return JSON.parse(d || '{}'); } catch { return {}; }
+}
 
 function query(req) {
   if (req.query && typeof req.query === 'object') return req.query;
@@ -28,6 +35,27 @@ h1{font-size:1.3rem;margin:0 0 .5rem} p{color:#5f6875;line-height:1.5}</style>
 
 export default async function handler(req, res) {
   const q = query(req);
+
+  // --- Web Pixel browsing events (storefront Web Pixel → here), cross-origin. ---
+  // The pixel sends { wl, event, products:[{title}] }; we match wl to a notified
+  // shopper and record what they're viewing. Always 200s (never leaks a match).
+  if (String(q.pixel || '') === '1' || req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const body = await readJson(req);
+      const titles = (Array.isArray(body.products) ? body.products : [])
+        .slice(0, 12).map((p) => String((p && p.title) || '').slice(0, 80)).filter(Boolean);
+      await applyBrowse(String(body.wl || ''), String(body.event || ''), titles, unsubSecret());
+    } catch (e) { console.error('pixel event failed:', e.message); }
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   const product = String(q.product || '');
   const email = String(q.email || '');
   const sig = String(q.sig || '');
@@ -65,6 +93,12 @@ export default async function handler(req, res) {
       }
     }
 
+    // Tag the landing so the storefront Web Pixel can tie this shopper's
+    // browsing to their notified row (a signed token, not their email).
+    if (valid) {
+      const tok = wlToken(product, email, unsubSecret());
+      dest += (dest.indexOf('?') > -1 ? '&' : '?') + 'wl=' + encodeURIComponent(tok);
+    }
     res.statusCode = 302;
     res.setHeader('Location', dest);
     res.end();

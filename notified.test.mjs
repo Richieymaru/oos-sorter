@@ -3,7 +3,7 @@
 import {
   notifiedRow, appendNotified, trimToFit, markClicked, markNudged,
   markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId, matchOrders, matchCarts,
-  nudgeStage, MAX_NUDGES,
+  mergeBrowseRow, nudgeStage, MAX_NUDGES,
 } from './notified.mjs';
 
 let failures = 0, checks = 0;
@@ -180,6 +180,21 @@ ok('keeps most-recent cart per email', (() => {
   return r.log[0].ca.items[0] === 'New';
 })());
 ok('no email -> no match', matchCarts([notifiedRow({ email: 'e@x.com', productId: '1', title: 'X', ts: '2026-10-01T00:00:00Z' })], [{ email: '', at: '2026-10-03T00:00:00Z', items: ['Y'] }]).matched === 0);
+
+console.log('\n--- mergeBrowseRow (browsing signal) ---');
+const b0 = { e: 'a@x.com', p: '5', t: 'Pistol' };
+const b1 = mergeBrowseRow(b0, 'product_viewed', ['Rifle', 'Gel Balls'], '2026-10-10T00:00:00Z');
+ok('records viewed + last, cart false on view', b1.br && b1.br.viewed.length === 2 && b1.br.last === '2026-10-10T00:00:00Z' && b1.br.cart === false);
+const b2 = mergeBrowseRow(b1, 'product_added_to_cart', ['CO2'], '2026-10-10T01:00:00Z');
+ok('add-to-cart flips cart true + merges viewed', b2.br.cart === true && b2.br.viewed.includes('CO2') && b2.br.viewed.includes('Rifle'));
+const b3 = mergeBrowseRow(b2, 'product_viewed', ['Rifle'], '2026-10-10T02:00:00Z');
+ok('cart stays true across later views; dedupes', b3.br.cart === true && b3.br.viewed.filter((x) => x === 'Rifle').length === 1);
+ok('caps viewed at 10', (() => {
+  let r = { e: 'z@x.com', p: '1', t: 'X' };
+  for (let i = 0; i < 15; i++) r = mergeBrowseRow(r, 'product_viewed', ['P' + i], '2026-10-10T00:00:00Z');
+  return r.br.viewed.length === 10 && r.br.viewed[9] === 'P14';
+})());
+ok('checkout_started flips cart true', mergeBrowseRow(b0, 'checkout_started', ['Rifle'], 'n').br.cart === true);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);
