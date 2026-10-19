@@ -275,6 +275,15 @@ ${appBridgeHead()}
 ${fontHead()}
 <title>${esc(title)} · ${esc(APP_NAME)}</title>
 <style>${CSS}</style></head><body>
+<ui-nav-menu>
+  <a href="/" rel="home">Dashboard</a>
+  <a href="/collections">Collections</a>
+  <a href="/waitlists">Waitlists</a>
+  <a href="/notified">Notified</a>
+  <a href="/funnels">Funnels</a>
+  <a href="/settings">Settings</a>
+  <a href="/preview">Email preview</a>
+</ui-nav-menu>
 <header class="topbar"><div class="topinner">
   <span class="brand">${mark} ${esc(APP_NAME)}</span>
   <nav class="tabs">
@@ -289,6 +298,12 @@ ${fontHead()}
 </div></header>
 <main>${body}</main>
 ${chatWidget()}
+<script>
+  // Inside the Shopify admin, the nav lives in Shopify's own sidebar (ui-nav-menu
+  // above), so hide our in-app top bar to avoid a duplicate. Standalone (direct
+  // URL / password) keeps the top bar as the only nav.
+  try{ if(typeof shopify!=='undefined' && shopify.idToken){ var t=document.querySelector('.topbar'); if(t) t.style.display='none'; } }catch(e){}
+</script>
 </body></html>`;
 }
 
