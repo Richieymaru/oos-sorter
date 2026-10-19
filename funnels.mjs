@@ -260,16 +260,21 @@ export function checkoutInsights(c) {
     out.push({
       tone: c.abandonRate >= 70 ? 'danger' : 'warn',
       text: `${c.abandonRate}% of shoppers who reached checkout didn't finish — about ${c.currency} ${c.valueLost} left in abandoned carts. This is your biggest, most fixable leak.`,
-    });
-    out.push({
-      tone: 'neutral',
-      text: `Fastest wins for checkout drop-off: show shipping cost earlier, offer express/Shop Pay, and turn on an abandoned-cart email (Shopify → Marketing → Automations) to recover a slice automatically.`,
+      fix: [
+        'Show shipping cost before checkout so it is not a surprise at the end.',
+        'Offer express checkout — enable Shop Pay, Apple Pay and Google Pay.',
+        'Turn on an abandoned-cart email in Shopify admin → Marketing → Automations to recover a slice automatically.',
+      ],
     });
     if (c.topAbandoned.length) {
       const p = c.topAbandoned[0];
       out.push({
         tone: 'neutral',
-        text: `Most-abandoned item: “${p.title}” (in ${p.checkouts} abandoned checkout${p.checkouts === 1 ? '' : 's'}). Check its price, shipping and stock — friction on a popular item costs the most.`,
+        text: `Most-abandoned item: “${p.title}” (in ${p.checkouts} abandoned checkout${p.checkouts === 1 ? '' : 's'}). Friction on a popular item costs the most.`,
+        fix: [
+          `Check “${p.title}” for a price, shipping or stock issue that makes shoppers hesitate.`,
+          'If it keeps selling out, keep it discoverable so shoppers can join the back-in-stock waitlist instead of leaving.',
+        ],
       });
     }
   } else {
@@ -287,17 +292,35 @@ export function buildInsights(a) {
     out.push({
       tone: 'warn',
       text: `${top.label} drives ${top.share}% of revenue — strong, but concentrated. A dip there hits hard; worth diversifying where buyers come from.`,
+      fix: [
+        'Run a campaign on a second channel (email/SMS, or a marketplace) to build a backup source.',
+        'Grow an owned audience (email/SMS list) so you are not dependent on one platform.',
+      ],
     });
   } else if (top) {
     out.push({ tone: 'pos', text: `Revenue is spread across sources — ${top.label} leads at ${top.share}%. No single point of failure.` });
   }
   if (a.referrers && a.referrers.length) {
     const r = a.referrers[0];
-    out.push({ tone: 'neutral', text: `Top external referrer: ${r.label} (${r.orders} order${r.orders === 1 ? '' : 's'}). Double down where the traffic already converts.` });
+    out.push({
+      tone: 'neutral',
+      text: `Top external referrer: ${r.label} (${r.orders} order${r.orders === 1 ? '' : 's'}). Double down where the traffic already converts.`,
+      fix: [
+        `Post more where it works — ${r.label} is already sending buyers.`,
+        'Add UTM tags to your links so you can see exactly which posts drive sales.',
+      ],
+    });
   }
   if (a.products && a.products.length) {
     const p = a.products[0];
-    out.push({ tone: 'pos', text: `Best seller: “${p.title}” — ${p.units} unit${p.units === 1 ? '' : 's'} across recent orders. Keep it in stock and featured.` });
+    out.push({
+      tone: 'pos',
+      text: `Best seller: “${p.title}” — ${p.units} unit${p.units === 1 ? '' : 's'} across recent orders. Keep it in stock and featured.`,
+      fix: [
+        `Keep “${p.title}” visible — the sorter keeps in-stock products at the top, and the back-in-stock waitlist emails shoppers the moment it returns.`,
+        'Create a bundle around it to lift average order value.',
+      ],
+    });
   }
   if (a.avgDaysToConvert != null) {
     const fast = a.avgDaysToConvert <= 1;
@@ -306,8 +329,21 @@ export function buildInsights(a) {
       text: fast
         ? `Buyers convert fast — about ${a.avgDaysToConvert} day(s) from first visit. Your funnel isn't the bottleneck.`
         : `Buyers take ~${a.avgDaysToConvert} days from first visit to purchase. A back-in-stock or reminder nudge in that window could lift conversion.`,
+      ...(fast ? {} : {
+        fix: [
+          'Capture emails on sold-out products so you can nudge during that deciding window — the back-in-stock waitlist does this automatically.',
+          'Add a reminder or retargeting touch in the first few days after a visit.',
+        ],
+      }),
     });
   }
-  out.push({ tone: 'neutral', text: `Average order value is ${a.currency} ${a.aov}. Bundles or a free-shipping threshold above it can raise it.` });
+  out.push({
+    tone: 'neutral',
+    text: `Average order value is ${a.currency} ${a.aov}. Bundles or a free-shipping threshold above it can raise it.`,
+    fix: [
+      `Set a free-shipping threshold just above ${a.currency} ${a.aov} to nudge bigger baskets.`,
+      'Offer an order gift or bundle at that threshold — set it up in Settings → order perks.',
+    ],
+  });
   return out;
 }

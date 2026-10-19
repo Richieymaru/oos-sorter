@@ -66,7 +66,12 @@ export function areaChart(series, { w = 600, h = 176, pad = 20 } = {}) {
   const line = 'M' + coords.join(' L');
   const area = `${line} L${x(n - 1).toFixed(1)},${base} L${x(0).toFixed(1)},${base} Z`;
   const last = pts[n - 1];
-  const fmtD = (s) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  // Axis labels: format ISO dates nicely; pass through any other label as-is
+  // (the Funnels trend already labels its buckets, e.g. "Oct 5" or "Oct").
+  const fmtD = (s) => {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? String(s) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
   return `<svg class="area" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Sold-out products per day over time.">
     <defs><linearGradient id="areafill" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="var(--accent)" stop-opacity=".26"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
@@ -78,6 +83,24 @@ export function areaChart(series, { w = 600, h = 176, pad = 20 } = {}) {
     <text class="axis" x="${pad}" y="${h - 6}">${esc(fmtD(pts[0].d))}</text>
     <text class="axis" x="${w - pad}" y="${h - 6}" text-anchor="end">${esc(fmtD(last.d))}</text>
   </svg>`;
+}
+
+/**
+ * A conversion donut: a single accent arc over a faint track, with a big centre
+ * label and a small caption. Animates (draw-in) via the global load script.
+ * `percent` 0–100. Reusable across Dashboard + Funnels.
+ */
+export function ring(percent, centerBig, centerSmall, { size = 128 } = {}) {
+  const p = Math.min(100, Math.max(0, Number(percent) || 0));
+  const CIRC = 326.7; // 2πr, r=52
+  const arc = `${(p / 100 * CIRC).toFixed(1)} ${CIRC}`;
+  return `<div class="ring" style="width:${size}px;height:${size}px">
+    <svg width="${size}" height="${size}" viewBox="0 0 132 132" aria-hidden="true">
+      <circle cx="66" cy="66" r="52" fill="none" stroke="var(--line)" stroke-width="13"/>
+      <circle class="rarc" cx="66" cy="66" r="52" fill="none" stroke="var(--accent)" stroke-width="13" stroke-linecap="round" transform="rotate(-90 66 66)" style="--arc:${arc}"/>
+    </svg>
+    <div class="cx"><b class="tnum">${esc(centerBig)}</b><span>${esc(centerSmall)}</span></div>
+  </div>`;
 }
 
 /** A section header: a title with optional right-aligned meta/action. */
@@ -733,30 +756,40 @@ export function funnelsBody(view) {
   const cur = a.currency;
   const days = (win && win.days) || 30;
   const rangeText = win ? win.label.toLowerCase() : `last ${days} days`;
-  const cards = `<div class="grid c4">
+  const cards = `<div class="grid c4 rise">
     ${statCard({ value: money(cur, a.totalRevenue), label: 'Revenue', sub: `${a.totalOrders} orders · ${rangeText}`, tone: a.totalRevenue ? 'pos' : '' })}
-    ${statCard({ value: a.totalOrders, label: 'Orders', sub: 'completed & paid' })}
+    ${statCard({ value: `<span class="count" data-to="${a.totalOrders}">0</span>`, label: 'Orders', sub: 'completed & paid' })}
     ${statCard({ value: money(cur, a.aov), label: 'Avg order value', sub: 'per order' })}
     ${checkout && checkout.reached
-      ? statCard({ value: `${checkout.completionRate}%`, label: 'Checkout completion', sub: `${checkout.abandoned} abandoned`, tone: checkout.completionRate >= 60 ? 'pos' : 'warn' })
+      ? statCard({ value: `<span class="count" data-to="${checkout.completionRate}">0</span>%`, label: 'Checkout completion', sub: `${checkout.abandoned} abandoned`, tone: checkout.completionRate >= 60 ? 'pos' : 'warn' })
       : statCard({ value: a.avgDaysToConvert == null ? '—' : a.avgDaysToConvert, label: 'Days to convert', sub: a.tier === 'full' ? 'first visit → purchase' : 'needs customer-data access' })}
   </div>`;
 
   // "Where to focus" — checkout leaks first (biggest lever), then order insights.
+  // Each insight carries its own `fix` (concrete next steps) rendered as a list.
   const focusList = [...((checkout && checkout.insights) || []), ...(a.insights || [])];
   const insights = focusList.length ? `<div class="card">
-    <div class="card-h"><h2>Where to focus</h2><span class="faint">${esc(rangeText)}</span></div>
-    <div class="pad" style="padding-top:12px;display:flex;flex-direction:column;gap:10px">
-      ${focusList.map((i) => `<div class="fn-insight t-${esc(i.tone)}"><span class="fn-dot"></span><span>${esc(i.text)}</span></div>`).join('')}
+    <div class="card-h"><h2>Where to focus</h2><span class="faint">problem &rarr; how to fix it</span></div>
+    <div class="pad" style="padding-top:14px;display:flex;flex-direction:column;gap:16px">
+      ${focusList.map((i) => `<div class="fn-insight t-${esc(i.tone)}">
+        <span class="fn-dot"></span>
+        <div class="fn-itext">
+          <div class="fn-iline">${esc(i.text)}</div>
+          ${i.fix && i.fix.length ? `<ul class="fn-fix">${i.fix.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
+        </div>
+      </div>`).join('')}
     </div></div>` : '';
 
   // Checkout drop-off funnel: reached checkout -> completed, with the abandoned gap.
   const checkoutCard = checkout && checkout.reached ? `<div class="card">
     <div class="card-h"><h2>Checkout funnel</h2><span class="faint">reached checkout → completed</span></div>
     <div class="pad" style="padding-top:16px">
-      <div class="fn-funnel">
-        <div class="fn-stage"><div class="fn-stage-top"><span>Reached checkout</span><b>${checkout.reached}</b></div><div class="fn-stage-bar"><span style="width:100%"></span></div></div>
-        <div class="fn-stage"><div class="fn-stage-top"><span>Completed the purchase</span><b>${checkout.completed} · ${checkout.completionRate}%</b></div><div class="fn-stage-bar"><span class="done" style="width:${Math.max(3, checkout.completionRate)}%"></span></div></div>
+      <div class="fn-conv">
+        ${ring(checkout.completionRate, checkout.completionRate + '%', 'completed', { size: 116 })}
+        <div class="fn-funnel">
+          <div class="fn-stage"><div class="fn-stage-top"><span>Reached checkout</span><b>${checkout.reached}</b></div><div class="fn-stage-bar"><span style="width:100%"></span></div></div>
+          <div class="fn-stage"><div class="fn-stage-top"><span>Completed the purchase</span><b>${checkout.completed} · ${checkout.completionRate}%</b></div><div class="fn-stage-bar"><span class="done" style="width:${Math.max(3, checkout.completionRate)}%"></span></div></div>
+        </div>
       </div>
       <div class="fn-leak">
         <div><div class="fn-leak-n danger">${checkout.abandoned}</div><div class="fn-leak-l">abandoned (${checkout.abandonRate}%)</div></div>
@@ -779,9 +812,20 @@ export function funnelsBody(view) {
       ${checkout.carts.length > 15 ? `<div class="faint" style="padding:11px 0 2px;font-size:12px">Showing the 15 most recent of ${checkout.abandoned} abandoned carts.</div>` : ''}
     </div></div>` : '';
 
-  const trendCard = `<div class="card">
-    <div class="card-h"><h2>Order trend</h2><span class="faint">orders / ${esc(a.trendUnit || 'day')}</span></div>
-    <div class="pad" style="padding-top:16px">${trendSpark(a.trend)}</div></div>`;
+  // Order trend — a labelled area chart with a clear headline, so it reads at a
+  // glance (the bare bars didn't say what they meant).
+  const trendPts = (a.trend || []).map((d) => ({ d: d.label, n: d.orders }));
+  const peak = (a.trend || []).reduce((m, d) => (d.orders > m.orders ? d : m), { orders: -1, label: '' });
+  const unit = a.trendUnit || 'day';
+  const trendCard = `<div class="card hero">
+    <div class="card-h"><h2>Order trend</h2><span class="faint">orders per ${esc(unit)}</span></div>
+    <div class="pad" style="padding-top:16px">
+      <div class="trend-top">
+        <div><div class="trend-big"><span class="count" data-to="${a.totalOrders}">0</span></div><div class="trend-lab">orders · ${esc(rangeText)}</div></div>
+        ${peak.orders > 0 ? `<div class="trend-note">Busiest ${esc(unit)}: <b style="color:var(--ink)">${esc(peak.label)}</b> — ${peak.orders} order${peak.orders === 1 ? '' : 's'}</div>` : ''}
+      </div>
+      ${areaChart(trendPts) || trendSpark(a.trend)}
+    </div></div>`;
 
   const channelsCard = `<div class="card">
     <div class="card-h"><h2>Sales channels</h2><span class="faint">by revenue</span></div>
@@ -811,10 +855,34 @@ export function funnelsBody(view) {
     <b>Traffic-source insights are off.</b> Revenue, channels and products work with <code>read_orders</code>. To see <i>where buyers come from</i> (Facebook, Instagram, search, direct) and days-to-convert, turn on <b>protected customer data</b> (Level 1) in the Dev Dashboard.
   </div></div>` : '';
 
+  // Back-in-stock revenue — what the waitlist emails earned (the app's own
+  // value, not generic analytics). From the notified log's order attribution.
+  const w = view && view.waitlist;
+  const waitlistCard = w && w.notified ? (() => {
+    const pctOrdered = w.notified ? Math.round((w.ordered / w.notified) * 100) : 0;
+    const wcur = w.currency || cur;
+    return `<div class="card">
+      <div class="card-h"><h2>Back-in-stock revenue</h2><span class="faint">from waitlist emails</span></div>
+      <div class="pad" style="padding-top:16px">
+        <div class="fn-conv">
+          ${ring(w.clickRate, w.clickRate + '%', 'clicked', { size: 116 })}
+          <div class="fn-conv-body">
+            <div class="fn-leak-n" style="color:var(--accent-ink);font-size:26px">${w.revenue ? esc(money(wcur, w.revenue)) : '—'}</div>
+            <div class="fn-leak-l" style="margin-bottom:14px">from ${w.orders || 0} order${w.orders === 1 ? '' : 's'} by notified shoppers</div>
+            <div class="fn-funnel">
+              <div class="fn-stage"><div class="fn-stage-top"><span>Notified</span><b>${w.notified}</b></div><div class="fn-stage-bar"><span style="width:100%"></span></div></div>
+              <div class="fn-stage"><div class="fn-stage-top"><span>Clicked through</span><b>${w.clicked} · ${w.clickRate}%</b></div><div class="fn-stage-bar"><span style="width:${Math.max(3, w.clickRate)}%"></span></div></div>
+              <div class="fn-stage"><div class="fn-stage-top"><span>Ordered</span><b>${w.ordered} · ${pctOrdered}%</b></div><div class="fn-stage-bar"><span class="done" style="width:${Math.max(3, pctOrdered)}%"></span></div></div>
+            </div>
+          </div>
+        </div>
+      </div></div>`;
+  })() : '';
+
   return head + baseNote + cards + `
     <div class="layout" style="margin-top:18px">
-      <div class="grid" style="gap:16px">${insights}${checkoutCard}${cartsList}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
-      <div class="grid" style="gap:16px">${trendCard}${productsCard}</div>
+      <div class="grid rise" style="gap:16px">${insights}${checkoutCard}${cartsList}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
+      <div class="grid rise" style="gap:16px;--d:120ms">${waitlistCard}${trendCard}${productsCard}</div>
     </div>
     <style>
       .fn-range{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:5px 11px;border-radius:999px}
@@ -849,6 +917,14 @@ export function funnelsBody(view) {
       .fn-insight{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.5;color:var(--ink)}
       .fn-dot{flex:none;width:8px;height:8px;border-radius:50%;margin-top:6px;background:var(--muted)}
       .fn-insight.t-pos .fn-dot{background:var(--accent)}.fn-insight.t-warn .fn-dot{background:var(--warn,#c2851b)}.fn-insight.t-danger .fn-dot{background:var(--danger)}
+      .fn-itext{min-width:0;flex:1}
+      .fn-iline{font-size:13.5px;line-height:1.5;color:var(--ink)}
+      .fn-fix{list-style:none;margin:9px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+      .fn-fix li{position:relative;padding-left:22px;font-size:12.5px;color:var(--muted);line-height:1.45}
+      .fn-fix li::before{content:"";position:absolute;left:4px;top:3px;width:5px;height:9px;border:solid var(--accent-ink);border-width:0 2px 2px 0;transform:rotate(45deg)}
+      .fn-conv{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:6px}
+      .fn-conv .fn-funnel{flex:1;min-width:190px}
+      .fn-conv-body{flex:1;min-width:190px}
       .fn-prow{display:flex;align-items:center;gap:12px;padding:9px 0;font-size:13.5px}
       .fn-prow+.fn-prow{border-top:1px solid var(--line-2)}
       .fn-rank{flex:none;width:20px;height:20px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}

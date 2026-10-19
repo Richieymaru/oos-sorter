@@ -117,14 +117,18 @@ export default async function handler(req, res) {
     let body;
     try {
       const win = resolveRange(param(req, 'range') || '30d');
-      const [ordRes, abRes] = await Promise.all([
+      const [ordRes, abRes, notifiedLog, settings] = await Promise.all([
         cachedOrders({ since: win.since, until: win.until }),
         cachedAbandoned({ since: win.since, until: win.until }).catch(() => ({ abandoned: [], count: 0 })),
+        loadNotified().catch(() => []),
+        loadSettings().catch(() => ({})),
       ]);
       const analysis = analyzeFunnels(ordRes.orders, { tier: ordRes.tier, since: win.since, until: win.until });
       const checkout = analyzeCheckout(ordRes.orders, abRes.abandoned, abRes.count, { currency: analysis.currency });
       checkout.insights = checkoutInsights(checkout);
-      body = funnelsBody({ analysis, checkout, window: win });
+      // Back-in-stock revenue card — the app's own value, from the notified log.
+      const waitlist = settings.waitlist ? deriveStats(notifiedLog) : null;
+      body = funnelsBody({ analysis, checkout, window: win, waitlist });
     } catch (e) {
       console.error('funnels: fetch failed —', e.message);
       body = funnelsBody({ error: 'Order data is temporarily unavailable. If this persists, check that read_orders is granted on the store.' });
