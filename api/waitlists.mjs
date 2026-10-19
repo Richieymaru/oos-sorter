@@ -1,6 +1,6 @@
 import { requireAuth } from './_auth.mjs';
 import { shell, setPageHeaders, esc, statCard } from '../ui.mjs';
-import { productsWithWaitlist, notifyOneProduct, resendOne, offerAltForProduct } from '../restock.mjs';
+import { productsWithWaitlist, notifyOneProduct, resendOne, offerAltForProduct, previewResendEmail, previewOfferEmail } from '../restock.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isVariantInStock, isInStock } from '../stock.mjs';
 import { shortId, longId } from '../shopify.mjs';
@@ -63,6 +63,22 @@ export default async function handler(req, res) {
         const rr = await resendOne(rgid, String(body.email), { variantId: body.variantId || null });
         if (rr.soldOut) { res.end(JSON.stringify({ ok: false, soldOut: true, error: 'Sold out again — nothing sent.' })); return; }
         res.end(JSON.stringify({ ok: true, sent: rr.sent }));
+        return;
+      }
+
+      // Render (don't send) the exact email a Resend or an Offer would produce, so
+      // the owner can preview it before/after sending.
+      if (body.action === 'previewResend' || body.action === 'previewOffer') {
+        const ps = String(body.productId || '');
+        const pn = ps.replace(/\D/g, '');
+        const pgid = ps.startsWith('gid://') ? ps : (pn ? longId(pn) : null);
+        if (!pgid) { res.end(JSON.stringify({ ok: false, error: 'Missing product.' })); return; }
+        const pbase = `https://${req.headers['x-forwarded-host'] || req.headers['host'] || ''}`;
+        const pr = body.action === 'previewResend'
+          ? await previewResendEmail(pgid, String(body.email || ''), { variantId: body.variantId || null, base: pbase })
+          : await previewOfferEmail(pgid, { offerVariantId: body.variantId, base: pbase });
+        if (pr.error) { res.end(JSON.stringify({ ok: false, error: pr.error })); return; }
+        res.end(JSON.stringify({ ok: true, subject: pr.subject, html: pr.html, soldOut: pr.soldOut || false, option: pr.option || null }));
         return;
       }
 
@@ -205,8 +221,9 @@ export default async function handler(req, res) {
   };
   const resendCell = (r) => {
     if (r.u) return `<span class="faint" style="font-size:12px">&mdash;</span>`;
-    if (!inStockNow(r)) return `<span class="faint" style="font-size:12px">Sold out again</span>`;
-    return `<button class="ghost resend" data-id="${esc(r.p)}" data-email="${esc(r.e)}" data-variant="${esc(r.v || '')}">Resend</button>`;
+    const prev = `<button class="ghost previewR" data-id="${esc(r.p)}" data-email="${esc(r.e)}" data-variant="${esc(r.v || '')}">Preview</button>`;
+    if (!inStockNow(r)) return `<span class="faint" style="font-size:12px;margin-right:8px">Sold out again</span>${prev}`;
+    return `<button class="ghost resend" data-id="${esc(r.p)}" data-email="${esc(r.e)}" data-variant="${esc(r.v || '')}">Resend</button> ${prev}`;
   };
   const vName = (r) => (r.vt && r.vt !== 'Default Title') ? esc(r.vt) : (r.v ? `#${esc(r.v)}` : '&mdash;');
   const recentRows = recent.length
@@ -242,7 +259,10 @@ export default async function handler(req, res) {
                  ${options
                    .map(
                      (v) =>
-                       `<button class="ghost offer" data-id="${esc(shortId(w.id))}" data-variant="${esc(v.id)}" data-option="${esc(v.title)}" data-count="${waitingForAlt.length}">${esc(v.title)}</button>`
+                       `<span style="display:inline-flex;align-items:center;gap:3px;margin:0 4px 4px 0">
+                          <button class="ghost offer" data-id="${esc(shortId(w.id))}" data-variant="${esc(v.id)}" data-option="${esc(v.title)}" data-count="${waitingForAlt.length}">${esc(v.title)}</button>
+                          <button class="ghost previewO" data-id="${esc(shortId(w.id))}" data-variant="${esc(v.id)}" data-option="${esc(v.title)}" title="Preview the email" style="padding:6px 9px;font-size:12px">Preview</button>
+                        </span>`
                    )
                    .join('')}
                </div>`
@@ -334,6 +354,16 @@ export default async function handler(req, res) {
     <input type="password" id="pw" placeholder="to send" autocomplete="current-password">
     <span id="msg" class="faint" style="margin-left:6px"></span>
   </div>
+  <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,41,.55);z-index:1000;padding:18px;box-sizing:border-box">
+    <div style="max-width:660px;height:100%;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);text-transform:uppercase">Email preview</span>
+        <span id="emSubject" style="font-size:12.5px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button type="button" class="ghost" id="emClose">Close</button>
+      </div>
+      <iframe id="emFrame" title="Email preview" style="flex:1;width:100%;border:0;background:#eef1f6"></iframe>
+    </div>
+  </div>
   <script>
     var pw=document.getElementById('pw'), msg=document.getElementById('msg');
     var embedded=(typeof shopify!=='undefined' && !!shopify.idToken);
@@ -370,6 +400,24 @@ export default async function handler(req, res) {
         else { msg.textContent=r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not send'); b.disabled=false; b.textContent=old; }
       });
     });
+    // Email preview modal — render the exact email without sending it.
+    var emModal=document.getElementById('emailModal'), emFrame=document.getElementById('emFrame'), emSubject=document.getElementById('emSubject'), emClose=document.getElementById('emClose');
+    function closeEmail(){ if(emModal){ emModal.style.display='none'; emFrame.srcdoc=''; } }
+    if(emClose) emClose.addEventListener('click', closeEmail);
+    if(emModal) emModal.addEventListener('click', function(e){ if(e.target===emModal) closeEmail(); });
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeEmail(); });
+    function showEmail(subject, html){ emSubject.textContent=subject?('Subject: '+subject):''; emFrame.srcdoc=html; emModal.style.display='block'; }
+    async function doPreview(action, data, btn){
+      if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }
+      var old=btn.textContent; btn.disabled=true; btn.textContent='\\u2026';
+      var r=await fetch('/api/waitlists',{method:'POST',headers:await authH(),body:JSON.stringify(Object.assign({action:action}, data))});
+      var j=await r.json().catch(function(){return{};});
+      btn.disabled=false; btn.textContent=old;
+      if(r.ok&&j.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } showEmail(j.subject, j.html); }
+      else msg.textContent=(r.status===401?(embedded?'Not authorized':'Wrong password'):(j.error||'Could not preview'));
+    }
+    document.querySelectorAll('.previewR').forEach(function(b){ b.addEventListener('click', function(){ doPreview('previewResend', {productId:b.dataset.id, email:b.dataset.email, variantId:b.dataset.variant}, b); }); });
+    document.querySelectorAll('.previewO').forEach(function(b){ b.addEventListener('click', function(){ doPreview('previewOffer', {productId:b.dataset.id, variantId:b.dataset.variant}, b); }); });
     document.querySelectorAll('.offer').forEach(function(b){
       b.addEventListener('click', async function(){
         if(!embedded){ var p=(pw.value||'').trim(); if(!p){ msg.textContent='Enter the panel password'; pw.focus(); return; } }

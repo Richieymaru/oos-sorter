@@ -17,7 +17,7 @@ import { gql, shortId, getShopContext } from './shopify.mjs';
 import { fetchProductsByIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
-import { sendBackInStock, sendSoldOutAlert, sendNudge, sendAltVariant, formatMoney } from './notify.mjs';
+import { sendBackInStock, sendSoldOutAlert, sendNudge, sendAltVariant, formatMoney, buildBackInStock, buildAltVariant } from './notify.mjs';
 import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 import { loadSettings, incentiveFor } from './settings.mjs';
@@ -483,6 +483,64 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
     try { await recordNotified(rows); } catch (e) { console.error(`  ! offer log write failed: ${e.message}`); }
   }
   return { sent, title: sp.title, option: offered.title };
+}
+
+/** Render (don't send) the exact back-in-stock email a Resend would produce for
+ *  this shopper + product + variant, so the owner can preview it. @returns
+ *  {{subject, html, soldOut}} or {{error}}. */
+export async function previewResendEmail(productGid, email, { variantId = null, base = null } = {}) {
+  const short = shortId(productGid);
+  const [sp] = await fetchProductsByIds([short]);
+  if (!sp) return { error: 'Product not found.' };
+  const ctx = await getShopContext();
+  const settings = await loadSettings().catch(() => null);
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
+  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct ? { products: [settings.freeGiftProduct] } : null;
+  const vWant = variantId ? String(variantId).replace(/\D/g, '') : null;
+  const first = sp.variants?.nodes?.[0];
+  const vId = vWant || (first?.id ? shortId(first.id) : null);
+  const vNode = variantsById(sp).get(String(vId));
+  const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
+  const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
+  const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
+  const payload = {
+    title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
+    variantId: vId, variantTitle: vNode?.title && vNode.title !== 'Default Title' ? vNode.title : null,
+    storeHost: ctx.host, priceText, compareAtText,
+    incentives: incentiveFor(vNode?.price, settings), giftImages, freeGift,
+    brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
+    clickCartUrl: trackUrl(base, short, email, relCart),
+    clickProductUrl: trackUrl(base, short, email, relProduct),
+  };
+  const { subject, html } = buildBackInStock(payload, unsubUrl(base, short, email));
+  return { subject, html, soldOut: vId ? !isVariantInStock(sp, vId) : !isInStock(sp) };
+}
+
+/** Render (don't send) the exact "a different option is in stock" email that an
+ *  Offer would produce for this product + offered variant. @returns
+ *  {{subject, html, option}} or {{error}}. */
+export async function previewOfferEmail(productGid, { offerVariantId, email = 'preview@example.com', base = null } = {}) {
+  const short = shortId(productGid);
+  const [sp] = await fetchProductsByIds([short]);
+  if (!sp) return { error: 'Product not found.' };
+  const ctx = await getShopContext();
+  const settings = await loadSettings().catch(() => null);
+  const giftImages = await giftImagesFor(settings).catch(() => ({}));
+  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct ? { products: [settings.freeGiftProduct] } : null;
+  const inStock = inStockVariantInfos(sp, ctx);
+  const want = String(offerVariantId || '').replace(/\D/g, '');
+  const offered = inStock.find((v) => String(v.id) === want) || null;
+  if (!offered) return { error: 'That option isn’t in stock right now.' };
+  const payload = {
+    title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
+    variantId: offered.id, variantTitle: offered.title, storeHost: ctx.host, priceText: offered.priceText,
+    incentives: incentiveFor(offered.price, settings), giftImages, freeGift,
+    brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
+    clickCartUrl: trackUrl(base, short, email, `/cart/${offered.id}:1`),
+    clickProductUrl: trackUrl(base, short, email, sp.handle ? `/products/${sp.handle}` : '/'),
+  };
+  const { subject, html } = buildAltVariant(payload, unsubUrl(base, short, email));
+  return { subject, html, option: offered.title };
 }
 
 /**
