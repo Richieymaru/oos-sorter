@@ -6,7 +6,7 @@ import { loadMonitorLog, monitorTag, fetchSheetActivity } from '../monitor-log.m
 import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
-  shell, setPageHeaders, statCard, badge, activityFeed, funnelsBody,
+  shell, setPageHeaders, statCard, badge, activityFeed, funnelsBody, areaChart,
   relTime, esc, notConnectedBody, shopOf, APP_NAME,
 } from '../ui.mjs';
 import { requireAuth } from './_auth.mjs';
@@ -144,13 +144,59 @@ export default async function handler(req, res) {
   const wl = deriveStats(notified);
   const ICON_BELL = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M10 3a4 4 0 0 0-4 4c0 4-1.4 5-1.4 5h10.8S14 11 14 7a4 4 0 0 0-4-4Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8.4 15a1.6 1.6 0 0 0 3.2 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 
-  // --- stat cards ---
-  const stats = `<div class="grid c4">
-    ${statCard({ value: soldOut, label: 'Sold out now', sub: 'kept at the bottom', tone: soldOut ? 'warn' : '', icon: ICON_BOX })}
-    ${statCard({ value: handles.length || '—', label: 'Collections', sub: settings.sort ? 'auto-sorted' : 'sorting off', icon: ICON_LAYERS })}
-    ${statCard({ value: settings.waitlist ? wl.notified : '—', label: 'Waitlist notified', sub: settings.waitlist ? `${wl.clickRate}% clicked through` : 'waitlist off', tone: settings.waitlist && wl.clicked ? 'pos' : '', icon: ICON_BELL })}
-    ${statCard({ value: settings.monitor ? changesToday : '—', label: 'Changes today', sub: settings.monitor ? 'tracked by the monitor' : 'monitor off', tone: settings.monitor && changesToday ? 'pos' : '', icon: ICON_PULSE })}
+  // --- stat cards (numbers count up on load) ---
+  const count = (n) => `<span class="count" data-to="${Number(n) || 0}">0</span>`;
+  const stats = `<div class="grid c4 rise" style="--d:60ms">
+    ${statCard({ value: count(soldOut), label: 'Sold out now', sub: 'kept at the bottom', tone: soldOut ? 'warn' : '', icon: ICON_BOX })}
+    ${statCard({ value: handles.length ? count(handles.length) : '—', label: 'Collections', sub: settings.sort ? 'auto-sorted' : 'sorting off', icon: ICON_LAYERS })}
+    ${statCard({ value: settings.waitlist ? count(wl.notified) : '—', label: 'Waitlist notified', sub: settings.waitlist ? `${wl.clickRate}% clicked through` : 'waitlist off', tone: settings.waitlist && wl.clicked ? 'pos' : '', icon: ICON_BELL })}
+    ${statCard({ value: settings.monitor ? count(changesToday) : '—', label: 'Changes today', sub: settings.monitor ? 'tracked by the monitor' : 'monitor off', tone: settings.monitor && changesToday ? 'pos' : '', icon: ICON_PULSE })}
   </div>`;
+
+  // --- sold-out trend (real 30-day history from state; builds up over days) ---
+  const history = Array.isArray(state.soldOutHistory) ? state.soldOutHistory : [];
+  const trendCard = history.length >= 2
+    ? `<div class="card hero rise" style="--d:150ms">
+        <div class="card-h"><h2>Sold-out trend</h2><span class="faint">last ${history.length} day${history.length === 1 ? '' : 's'}</span></div>
+        <div class="pad" style="padding-top:16px">
+          <div class="trend-top">
+            <div><div class="trend-big">${count(soldOut)}</div><div class="trend-lab">sold out right now</div></div>
+            <div class="trend-note">${soldOut ? 'The sorter keeps these off the front pages.' : 'Nothing is sold out — in-stock products stay up front.'}</div>
+          </div>
+          ${areaChart(history)}
+        </div></div>`
+    : `<div class="card rise" style="--d:150ms">
+        <div class="card-h"><h2>Sold-out trend</h2><span class="faint">building</span></div>
+        <div class="pad"><p class="muted" style="margin:0;font-size:13.5px">Your daily sold-out trend appears here once there are a couple of days of data — one point is recorded on each full run.</p></div></div>`;
+
+  // --- waitlist conversion ring (real: notified → clicked → ordered) ---
+  const CIRC = 326.7; // 2πr, r=52
+  const arc = `${(Math.min(100, Math.max(0, wl.clickRate)) / 100 * CIRC).toFixed(1)} ${CIRC}`;
+  const orderedLabel = wl.ordered
+    ? (wl.revenue ? `${wl.currency ? wl.currency + ' ' : ''}${wl.revenue.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : `${wl.orders} order${wl.orders === 1 ? '' : 's'}`)
+    : '—';
+  const ringCard = `<div class="card">
+    <div class="card-h"><h2>Waitlist</h2>${badge(settings.waitlist ? 'On' : 'Off', settings.waitlist ? 'ok' : 'idle')}</div>
+    <div class="pad" style="padding-top:18px">
+      ${settings.waitlist
+        ? `<div class="ring-wrap">
+            <div class="ring" style="width:132px;height:132px">
+              <svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true">
+                <circle cx="66" cy="66" r="52" fill="none" stroke="var(--line)" stroke-width="13"/>
+                <circle class="rarc" cx="66" cy="66" r="52" fill="none" stroke="var(--accent)" stroke-width="13" stroke-linecap="round" transform="rotate(-90 66 66)" style="--arc:${arc}"/>
+              </svg>
+              <div class="cx"><b class="tnum">${wl.clickRate}%</b><span>clicked</span></div>
+            </div>
+            <div class="legend">
+              <div class="leg"><span class="sw" style="background:var(--accent)"></span>Notified <b class="tnum">${wl.notified}</b><span class="ll">people</span></div>
+              <div class="leg"><span class="sw" style="background:var(--accent-300)"></span>Clicked <b class="tnum">${wl.clicked}</b><span class="ll">${wl.clickRate}%</span></div>
+              <div class="leg"><span class="sw" style="background:var(--line)"></span>Ordered <b class="tnum">${wl.ordered}</b><span class="ll">${esc(orderedLabel)}</span></div>
+            </div>
+          </div>
+          <a href="/waitlists" style="text-decoration:none"><button class="ghost" style="margin-top:18px">View waitlists</button></a>`
+        : `<p class="muted" style="margin:0 0 12px;font-size:13px">Let shoppers get an email when a sold-out product returns — with click-through tracking and auto-nudges.</p>
+           <a href="/settings" style="text-decoration:none"><button class="ghost">Turn on in Settings</button></a>`}
+    </div></div>`;
 
   // --- Assistant hero (the new AI feature) — opens the floating chat widget. ---
   const heroChip = (q) => `<button type="button" class="ahero-chip" onclick="window.oosChat&&window.oosChat.ask(${JSON.stringify(q)})">${esc(q)}</button>`;
@@ -176,10 +222,18 @@ export default async function handler(req, res) {
     { on: settings.monitor, label: 'Product change monitor' },
     { on: settings.draft, label: 'Draft sold-out products' },
   ];
+  const featSub = {
+    'Sort sold-out to bottom': 'Keeps in-stock up front',
+    'Sold-out email alerts': 'Tells you when stock hits zero',
+    'Back-in-stock waitlist': 'Auto-emails shoppers on restock',
+    'Product change monitor': 'Logs who changed what',
+    'Draft sold-out products': 'Hide them from the storefront',
+  };
+  const onCount = feat.filter((f) => f.on).length;
   const featRows = feat.map((f) =>
-    `<div class="autorow"><span class="autodot ${f.on ? 'on' : ''}"></span>
-      <span class="autoname">${esc(f.label)}</span>
-      ${badge(f.on ? 'On' : 'Off', f.on ? 'ok' : 'idle')}</div>`
+    `<div class="arow"><span class="atog ${f.on ? 'on' : ''}" aria-hidden="true"></span>
+      <span class="amain"><span class="aname">${esc(f.label)}</span><span class="asub">${esc(featSub[f.label] || '')}</span></span>
+      <span class="astat ${f.on ? '' : 'off'}"><span class="d"></span>${f.on ? 'On' : 'Off'}</span></div>`
   ).join('');
 
   const monitorSinks = [];
@@ -199,23 +253,12 @@ export default async function handler(req, res) {
     </div>
   </div>`;
 
-  const waitlistCard = `<div class="card">
-    <div class="card-h"><h2>Waitlist</h2>${badge(settings.waitlist ? 'On' : 'Off', settings.waitlist ? 'ok' : 'idle')}</div>
-    <div class="pad" style="padding-top:16px">
-      ${settings.waitlist
-        ? `<p class="muted" style="margin:0 0 12px;font-size:13px"><b style="color:var(--ink)">${wl.notified}</b> notified recently · <b style="color:var(--ink)">${wl.clicked}</b> clicked (${wl.clickRate}%) · <b style="color:var(--ink)">${wl.nudged}</b> nudged.</p>
-           <a href="/waitlists" style="text-decoration:none"><button class="ghost">View waitlists</button></a>`
-        : `<p class="muted" style="margin:0 0 12px;font-size:13px">Let shoppers get an email when a sold-out product returns — with click-through tracking and auto-nudges.</p>
-           <a href="/settings" style="text-decoration:none"><button class="ghost">Turn on in Settings</button></a>`}
-    </div>
-  </div>`;
-
   const rail = `
     <div class="card">
-      <div class="card-h"><h2>Automations</h2><a href="/settings" class="faint" style="text-decoration:none">Manage</a></div>
-      <div class="pad" style="padding-top:8px;padding-bottom:8px">${featRows}</div>
+      <div class="card-h"><h2>Automations</h2><span class="faint">${onCount} of ${feat.length} on</span></div>
+      <div class="auto">${featRows}</div>
     </div>
-    ${waitlistCard}
+    ${ringCard}
     ${monitorCard}`;
 
   const onboarding = settings.sort ? '' : `<div class="callout" style="margin-bottom:18px"><div class="ct">
@@ -233,34 +276,40 @@ export default async function handler(req, res) {
       : `<div class="empty">The change monitor is off.<div class="faint" style="margin-top:6px">Turn it on in Settings to see who changes, adds, or deletes products and collections — right here.</div></div>`}
   </div>`;
 
-  const enginePill = `<span class="engine-pill"><span class="d"></span> Engine running · last run ${esc(relTime(state.lastRun))}</span>`;
+  const enginePill = `<span class="livechip"><span class="d"></span><span class="t">Engine running &middot; last run <b>${esc(relTime(state.lastRun))}</b></span></span>`;
 
   const body = `
-  <div class="pagehead">
+  <div class="pagehead rise">
     <h1>Dashboard</h1>
     <p>Everything ${esc(APP_NAME)} is doing for your store — sorting, back-in-stock, the change monitor, and your AI assistant.</p>
     ${enginePill}
   </div>
   ${onboarding}
-  ${assistantHero}
+  <div class="rise">${assistantHero}</div>
   ${stats}
   <div class="layout">
-    <div>${activityCard}</div>
-    <div class="grid" style="gap:16px">${rail}</div>
+    <div class="grid rise" style="gap:18px;--d:230ms">${trendCard}${activityCard}</div>
+    <div class="grid rise" style="gap:18px;--d:300ms">${rail}</div>
   </div>
 
   <style>
-    .autorow{display:flex;align-items:center;gap:10px;padding:9px 0}
-    .autorow+.autorow{border-top:1px solid var(--line-2)}
-    .autoname{font-size:13.5px;font-weight:500;flex:1}
-    .autodot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
-    .autodot.on{background:var(--accent)}
-    .engine-pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);margin-top:9px}
-    .engine-pill .d{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+    .auto{display:flex;flex-direction:column;margin:-4px 0}
+    .arow{display:flex;align-items:center;gap:13px;padding:14px 26px}
+    .arow+.arow{border-top:1px solid var(--line-2)}
+    .atog{width:36px;height:21px;border-radius:999px;flex:none;position:relative;background:var(--line);transition:background .2s}
+    .atog::after{content:"";position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .25s cubic-bezier(.2,.7,.2,1)}
+    .atog.on{background:var(--accent)} .atog.on::after{transform:translateX(15px)}
+    .amain{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+    .arow .aname{font-size:13.5px;font-weight:550}
+    .arow .asub{font-size:11.5px;color:var(--faint)}
+    .astat{margin-left:auto;font-size:11px;font-weight:650;color:var(--accent-ink);display:inline-flex;align-items:center;gap:5px}
+    .astat.off{color:var(--faint)}
+    .astat .d{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+    .astat.off .d{background:var(--faint)}
     .ahero{display:flex;gap:20px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(120deg,var(--accent-wash),var(--surface) 72%);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow-sm)}
     .ahero-eyebrow{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--accent-ink);text-transform:uppercase;margin-bottom:7px}
     .ahero-txt{min-width:250px;flex:1}
-    .ahero-txt h2{margin:0 0 5px;font-size:19px;letter-spacing:-.02em}
+    .ahero-txt h2{font-family:var(--display);margin:0 0 5px;font-size:20px;font-weight:700;letter-spacing:-.02em}
     .ahero-txt p{margin:0 0 12px;color:var(--muted);font-size:13.5px;max-width:58ch}
     .ahero-chips{display:flex;flex-wrap:wrap;gap:8px}
     .ahero-chip{font:inherit;font-size:12.5px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);text-decoration:none;cursor:pointer;transition:background .15s,color .15s}

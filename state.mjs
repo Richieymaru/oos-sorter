@@ -17,7 +17,26 @@ import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
 const NAMESPACE = 'oos_sort';
 const KEY = 'state';
 
-const EMPTY = () => ({ soldOut: [], drafted: [], pending: [], lastDigest: null, lastRun: null, sweepCursor: 0, waitlistNotified: 0, waitlistProducts: 0 });
+const EMPTY = () => ({ soldOut: [], drafted: [], pending: [], lastDigest: null, lastRun: null, sweepCursor: 0, waitlistNotified: 0, waitlistProducts: 0, soldOutHistory: [] });
+
+/**
+ * Append (or update) today's sold-out count in a rolling 30-day daily series,
+ * for the dashboard trend chart. One point per calendar day — the latest run of
+ * the day wins. Pure: returns a new array, takes the clock as an argument.
+ */
+export function recordSoldOutHistory(history, count, iso) {
+  const day = (iso ? new Date(iso) : new Date()).toISOString().slice(0, 10);
+  const byDay = new Map(
+    (Array.isArray(history) ? history : [])
+      .filter((p) => p && p.d)
+      .map((p) => [String(p.d), Number(p.n) || 0])
+  );
+  byDay.set(day, Number(count) || 0);
+  return [...byDay.entries()]
+    .map(([d, n]) => ({ d, n }))
+    .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0))
+    .slice(-30);
+}
 
 export async function loadState() {
   const d = await gql(
@@ -51,6 +70,7 @@ export async function saveState(state) {
     sweepCursor: state.sweepCursor ?? 0,
     waitlistNotified: state.waitlistNotified ?? 0,
     waitlistProducts: state.waitlistProducts ?? 0,
+    soldOutHistory: Array.isArray(state.soldOutHistory) ? state.soldOutHistory.slice(-30) : [],
   };
   // pending (rich {id,title,collections} objects) is the heaviest — trim it first,
   // then soldOut (bare ids), leaving a safety margin under the 128KB cap.

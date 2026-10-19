@@ -54,7 +54,7 @@ import {
 } from './features.mjs';
 import { isInStock } from './stock.mjs';
 import { findCollection, fetchCollectionProducts } from './catalog.mjs';
-import { loadState, saveState } from './state.mjs';
+import { loadState, saveState, recordSoldOutHistory } from './state.mjs';
 import { loadSettings } from './settings.mjs';
 import { restoreRestocked, applyDrafts } from './draft.mjs';
 import { sendDigest } from './notify.mjs';
@@ -507,6 +507,7 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: onlyParam =
   // FULL run — a targeted run's soldOutNow covers only a few collections and
   // would clobber the store-wide list the status line and notify diff rely on).
   if (!only) state.soldOut = [...ctx.soldOutNow];
+  if (!only) state.soldOutHistory = recordSoldOutHistory(state.soldOutHistory, ctx.soldOutNow.size);
   state.drafted = [...draftedSet];
   state.lastRun = new Date().toISOString();
   if (DRY_RUN) {

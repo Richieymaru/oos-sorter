@@ -38,6 +38,37 @@ export function statCard({ value, label, sub = '', tone = '', icon = '' }) {
   </div>`;
 }
 
+/**
+ * A server-rendered SVG area chart with a draw-in animation. `series` is
+ * [{ d: 'YYYY-MM-DD', n: number }]. Returns '' for fewer than 2 points so the
+ * caller can show a "collecting data" state instead. Real data only — no fill.
+ */
+export function areaChart(series, { w = 600, h = 176, pad = 20 } = {}) {
+  const pts = (series || []).filter((p) => p && p.d != null && Number.isFinite(Number(p.n)));
+  if (pts.length < 2) return '';
+  const n = pts.length;
+  const max = Math.max(...pts.map((p) => Number(p.n)), 1);
+  const base = h - 36, top = 20;
+  const x = (i) => pad + (i * (w - 2 * pad)) / (n - 1);
+  const y = (v) => base - (Number(v) / max) * (base - top);
+  const coords = pts.map((p, i) => `${x(i).toFixed(1)},${y(p.n).toFixed(1)}`);
+  const line = 'M' + coords.join(' L');
+  const area = `${line} L${x(n - 1).toFixed(1)},${base} L${x(0).toFixed(1)},${base} Z`;
+  const last = pts[n - 1];
+  const fmtD = (s) => new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `<svg class="area" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Sold-out products per day over time.">
+    <defs><linearGradient id="areafill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--accent)" stop-opacity=".26"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <line x1="${pad}" y1="${base}" x2="${w - pad}" y2="${base}" stroke="var(--line)" stroke-width="1"/>
+    <path class="afill" d="${area}" fill="url(#areafill)"/>
+    <path class="aline" d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle class="aend" cx="${x(n - 1).toFixed(1)}" cy="${y(last.n).toFixed(1)}" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+    <text class="axis" x="${pad}" y="${h - 6}">${esc(fmtD(pts[0].d))}</text>
+    <text class="axis" x="${w - pad}" y="${h - 6}" text-anchor="end">${esc(fmtD(last.d))}</text>
+  </svg>`;
+}
+
 /** A section header: a title with optional right-aligned meta/action. */
 export function sectionHead(title, meta = '') {
   return `<div class="sechead"><h2>${esc(title)}</h2>${meta ? `<div class="sechead-meta">${meta}</div>` : ''}</div>`;
@@ -117,6 +148,7 @@ const CSS = `
     --ring:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent);
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
     --sans:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --display:"Bricolage Grotesque","Hanken Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;
   }
   @media (prefers-color-scheme:dark){:root{
     --bg:#0d1014; --surface:#161b22; --surface-2:#1a2029; --ink:#e8edf3; --muted:#9aa4b1; --faint:#6b7684;
@@ -139,7 +171,7 @@ const CSS = `
   .muted{color:var(--muted)} .faint{color:var(--faint)}
   /* top bar */
   .topbar{background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:saturate(1.6) blur(14px);-webkit-backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid var(--line);box-shadow:0 1px 0 color-mix(in srgb,var(--accent) 9%,transparent);position:sticky;top:0;z-index:5}
-  .topinner{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;gap:18px;height:60px}
+  .topinner{max-width:1460px;margin:0 auto;padding:0 28px;display:flex;align-items:center;gap:18px;height:60px}
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.02em;font-size:15.5px}
   .brand .mark{display:block;border-radius:7px}
   nav.tabs{display:flex;gap:2px;margin-left:auto}
@@ -147,9 +179,9 @@ const CSS = `
   nav.tabs a:hover{background:var(--hover);color:var(--ink)}
   nav.tabs a.on{background:var(--accent-wash);color:var(--accent-ink);font-weight:600}
   /* page */
-  main{max-width:1100px;margin:0 auto;padding:36px 24px 80px}
+  main{max-width:1460px;margin:0 auto;padding:40px 28px 88px}
   .pagehead{margin:0 0 26px}
-  .pagehead h1{font-size:29px;font-weight:760;letter-spacing:-.035em;margin:0}
+  .pagehead h1{font-family:var(--display);font-size:30px;font-weight:700;letter-spacing:-.03em;margin:0}
   .pagehead p{margin:7px 0 0;color:var(--muted);font-size:14.5px;max-width:60ch}
   /* grids */
   .grid{display:grid;gap:18px}
@@ -162,13 +194,13 @@ const CSS = `
   .card{background:var(--surface);border:1px solid transparent;border-radius:var(--radius);box-shadow:var(--shadow-sm)}
   .pad{padding:26px}
   .card-h{display:flex;align-items:center;gap:10px;padding:20px 26px;border-bottom:1px solid var(--line-2)}
-  .card-h h2{font-size:15.5px;font-weight:650;margin:0;letter-spacing:-.01em}
+  .card-h h2{font-family:var(--display);font-size:16px;font-weight:600;margin:0;letter-spacing:-.01em}
   .card-h .faint{margin-left:auto;font-size:12.5px}
   /* stat cards */
   .stat{padding:26px;position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
   .stat:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
   .stat-ico{position:absolute;top:20px;right:20px;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--accent-50);color:var(--accent-ink);opacity:1}
-  .statval{font-size:42px;font-weight:770;letter-spacing:-.045em;line-height:1;font-variant-numeric:tabular-nums}
+  .statval{font-family:var(--display);font-size:44px;font-weight:700;letter-spacing:-.045em;line-height:1;font-variant-numeric:tabular-nums}
   .statlabel{color:var(--muted);font-size:13.5px;margin-top:9px;font-weight:540}
   .statsub{color:var(--faint);font-size:12px;margin-top:9px}
   .stat.t-pos{border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
@@ -248,6 +280,47 @@ const CSS = `
   .pw label{font-size:12px;color:var(--faint)}
   a:focus-visible,button:focus-visible,.feed-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
   input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;border-color:var(--accent)!important;box-shadow:var(--ring)}
+  .tnum{font-variant-numeric:tabular-nums}
+  /* a prominent card for the hero viz */
+  .card.hero{box-shadow:var(--shadow-lg)}
+  /* ---- orchestrated page-load reveal (one sequence, reduced-motion safe) ---- */
+  .rise{opacity:0;transform:translateY(14px)}
+  body.go .rise{opacity:1;transform:none;transition:opacity .6s cubic-bezier(.2,.7,.2,1),transform .6s cubic-bezier(.2,.7,.2,1);transition-delay:var(--d,0ms)}
+  /* ---- sold-out trend (server-rendered SVG area) ---- */
+  svg.area{display:block;width:100%;height:auto}
+  .axis{font-family:var(--mono);font-size:9.5px;fill:var(--faint)}
+  .aline{stroke-dasharray:var(--len,1);stroke-dashoffset:var(--len,1)}
+  body.go .aline{stroke-dashoffset:0;transition:stroke-dashoffset 1.3s cubic-bezier(.3,.7,.2,1) .25s}
+  .afill{opacity:0} body.go .afill{opacity:1;transition:opacity .8s ease .9s}
+  .aend{opacity:0} body.go .aend{opacity:1;transition:opacity .4s ease 1.4s}
+  .trend-top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:6px}
+  .trend-big{font-family:var(--display);font-weight:700;font-size:38px;letter-spacing:-.035em;line-height:1;font-variant-numeric:tabular-nums}
+  .trend-lab{color:var(--muted);font-size:12.5px;margin-top:4px}
+  .trend-note{text-align:right;font-size:12px;color:var(--faint);max-width:46%}
+  /* ---- conversion ring (donut) ---- */
+  .ring-wrap{display:flex;align-items:center;gap:22px}
+  .ring{position:relative;flex:none}
+  .ring .cx{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+  .ring .cx b{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:-.02em;display:block;line-height:1}
+  .ring .cx span{color:var(--muted);font-size:11px}
+  .rarc{stroke-dasharray:0 999}
+  body.go .rarc{stroke-dasharray:var(--arc,0 999);transition:stroke-dasharray 1.1s cubic-bezier(.3,.7,.2,1) .5s}
+  .legend{display:flex;flex-direction:column;gap:12px;min-width:0;flex:1}
+  .leg{display:flex;align-items:center;gap:9px;font-size:13px}
+  .leg .sw{width:9px;height:9px;border-radius:3px;flex:none}
+  .leg b{font-weight:650;font-family:var(--display);letter-spacing:-.01em;margin-left:2px}
+  .leg .ll{color:var(--muted);margin-left:auto;padding-left:14px;font-size:12px}
+  /* ---- live status chip ---- */
+  .livechip{display:inline-flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px 8px 12px;box-shadow:var(--shadow-sm);font-size:12.5px;font-weight:600;color:var(--ink);margin-top:12px}
+  .livechip .d{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+  .livechip .t{color:var(--muted);font-weight:500}.livechip .t b{color:var(--ink);font-weight:600}
+  @media (prefers-reduced-motion:no-preference){.livechip .d{animation:pulse 2.6s ease-out infinite}}
+  @media (max-width:560px){.ring-wrap{flex-direction:column;align-items:flex-start}}
+  @media (prefers-reduced-motion:reduce){
+    .rise{opacity:1!important;transform:none!important;transition:none!important}
+    .aline{stroke-dashoffset:0!important}.afill,.aend{opacity:1!important}
+    .rarc{stroke-dasharray:var(--arc,0 999)!important}
+  }
 `;
 
 /** App Bridge tags so pages opened inside the Shopify admin can fetch a session
@@ -258,11 +331,12 @@ export function appBridgeHead() {
 <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>`;
 }
 
-/** Fonts: Hanken Grotesk with a system fallback (degrades cleanly if blocked). */
+/** Fonts: Hanken Grotesk (body) + Bricolage Grotesque (display — headings, big
+ *  numbers). System fallback degrades cleanly if the CDN is blocked. */
 function fontHead() {
   return `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">`;
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">`;
 }
 
 /** Full HTML document with the shared shell. `active` = 'home'|'collections'|'waitlists'|'settings'. */
@@ -303,6 +377,30 @@ ${chatWidget()}
   // above), so hide our in-app top bar to avoid a duplicate. Standalone (direct
   // URL / password) keeps the top bar as the only nav.
   try{ if(typeof shopify!=='undefined' && shopify.idToken){ var t=document.querySelector('.topbar'); if(t) t.style.display='none'; } }catch(e){}
+</script>
+<script>
+  // One orchestrated load sequence: reveal .rise blocks, count up .count numbers,
+  // and draw in any .aline chart. Respects prefers-reduced-motion.
+  (function(){
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try{ document.querySelectorAll('.aline').forEach(function(l){ l.style.setProperty('--len', l.getTotalLength()); }); }catch(e){}
+    function fmt(v, dec){ return dec ? v.toFixed(dec) : Math.round(v).toLocaleString('en-US'); }
+    function counts(){
+      document.querySelectorAll('.count').forEach(function(el){
+        var to = parseFloat(el.getAttribute('data-to')) || 0;
+        var dec = parseInt(el.getAttribute('data-dec') || '0', 10);
+        if(reduce || !to){ el.textContent = fmt(to, dec); return; }
+        var start = performance.now(), dur = 1000;
+        function step(now){
+          var p = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - p, 3);
+          el.textContent = fmt(to * e, dec);
+          if(p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      });
+    }
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ document.body.classList.add('go'); counts(); }); });
+  })();
 </script>
 </body></html>`;
 }
