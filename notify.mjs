@@ -378,7 +378,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
     ? `<tr><td style="padding:18px 20px 4px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
            <td width="36%" valign="top" style="padding-right:14px">
-             <a href="${esc(cartUrl)}" style="text-decoration:none;display:block"><img src="${esc(product.image)}" alt="${esc(title)}" style="width:100%;height:auto;border-radius:12px;border:1px solid #eef1f6;display:block"></a>
+             <a href="${esc(cartUrl)}" style="text-decoration:none;display:block"><img src="${esc(product.image)}" alt="${esc(title)}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:12px;border:1px solid #eef1f6;display:block"></a>
            </td>
            <td valign="top">${heroText}</td>
          </tr></table>

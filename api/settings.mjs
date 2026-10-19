@@ -17,7 +17,7 @@ function previewSamples(settings, ctx, giftImages = {}) {
   const price = (n) => formatMoney(String(n), cur);
   const unsub = '#';
   const sampleImg = 'data:image/svg+xml;utf8,' + encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360"><rect width="600" height="360" fill="#eef1f6"/><rect x="210" y="96" width="180" height="150" rx="14" fill="#dfe4ec"/><rect x="210" y="96" width="180" height="46" rx="14" fill="#cdd4df"/><text x="300" y="286" font-family="Arial,Helvetica,sans-serif" font-size="18" fill="#9aa3b2" text-anchor="middle">Your product photo appears here</text></svg>`
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#eef1f6"/><rect x="120" y="120" width="160" height="130" rx="14" fill="#dfe4ec"/><rect x="120" y="120" width="160" height="42" rx="14" fill="#cdd4df"/><text x="200" y="296" font-family="Arial,Helvetica,sans-serif" font-size="15" fill="#9aa3b2" text-anchor="middle">Your product photo appears here</text></svg>`
   );
   const brandLogo = settings.emailLogoUrl || ctx.brandLogo || null;
   const base = { handle: 'sample-product', image: sampleImg, storeHost: host, giftImages, brandLogo };
