@@ -33,12 +33,11 @@ function previewSamples(settings, ctx, giftImages = {}) {
   const s3 = buildNudge(
     { ...base, title: 'Hydro Gel Balls — 10,000pcs', variantId: '501', variantTitle: 'Blue', priceText: price(149.99), incentives: incAt(149.99), clickCartUrl: `https://${host}/cart/501:1` },
     unsub,
-    { freeGift, altVariants: [{ title: 'Green', priceText: price(149.99), url: `https://${host}/cart/502:1` }] }
+    { freeGift }
   );
   const s4 = buildAltVariant(
     { ...base, title: 'Hydro Gel Balls — 10,000pcs', variantId: '502', variantTitle: 'Green', priceText: price(149.99), incentives: incAt(149.99), clickCartUrl: `https://${host}/cart/502:1` },
-    unsub,
-    { altVariants: [{ title: 'Orange', priceText: price(149.99), url: `https://${host}/cart/503:1` }] }
+    unsub
   );
   // Manual "Resend" (and the 2-day nudge) re-use the back-in-stock layout but also
   // carry the free-gift offer — so shoppers who didn't convert get the sweetener.

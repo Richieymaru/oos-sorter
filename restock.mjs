@@ -29,25 +29,6 @@ function variantsById(sp) {
   return new Map((sp?.variants?.nodes || []).map((v) => [shortId(v.id), v]));
 }
 
-/** In-stock variants of this product OTHER than the one the shopper waited for,
- *  each as { title, priceText, url } with a tracked cart link. Capped at 4; skips
- *  single-variant ("Default Title") products. Used to offer alternatives in the nudge. */
-function altInStockVariants(sp, waitedVariantId, ctx, base, productShort, email) {
-  const nodes = sp?.variants?.nodes || [];
-  if (nodes.length < 2) return [];
-  const out = [];
-  for (const v of nodes) {
-    const vid = shortId(v.id);
-    if (String(vid) === String(waitedVariantId)) continue;
-    if (!v.title || v.title === 'Default Title') continue;
-    if (!isVariantInStock(sp, vid)) continue;
-    const { priceText } = priceTextFor(v, ctx.currency);
-    out.push({ title: v.title, priceText, url: trackUrl(base, productShort, email, `/cart/${vid}:1`) });
-    if (out.length >= 4) break;
-  }
-  return out;
-}
-
 /** Every in-stock, real (non-"Default Title") variant of a product, as
  *  { id, title, priceText }. These are the alternatives we can offer a shopper
  *  whose own waited variant is still sold out. Empty for single-variant products. */
@@ -465,7 +446,6 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
     const subVar = sub.variantId ? String(sub.variantId).replace(/\D/g, '') : null;
     if (subVar && subVar === String(offered.id)) continue; // their own option IS the offered one — that's a normal restock
     if (subVar && isVariantInStock(sp, subVar)) continue;  // their own option is already back — no need to offer an alternative
-    const rest = inStock.filter((v) => String(v.id) !== String(offered.id) && String(v.id) !== String(subVar));
     const payload = {
       title: sp.title,
       handle: sp.handle,
@@ -479,13 +459,8 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
       clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1`),
       clickProductUrl: trackUrl(base, short, sub.email, sp.handle ? `/products/${sp.handle}` : '/'),
     };
-    const altVariants = rest.map((a) => ({
-      title: a.title,
-      priceText: a.priceText,
-      url: trackUrl(base, short, sub.email, `/cart/${a.id}:1`),
-    }));
     try {
-      await sendAltVariant(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun, altVariants });
+      await sendAltVariant(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun });
       sent++;
       if (!dryRun) { sub.altTs = new Date().toISOString(); stamped = true; }
     } catch (e) {
@@ -599,9 +574,8 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
       clickCartUrl: trackUrl(base, row.p, row.e, relCart),
       clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
     };
-    const altVariants = altInStockVariants(sp, row.v, ctx, base, row.p, row.e);
     try {
-      await sendNudge(row.e, payload, unsubUrl(base, row.p, row.e), { dryRun, freeGift, altVariants });
+      await sendNudge(row.e, payload, unsubUrl(base, row.p, row.e), { dryRun, freeGift });
       if (!dryRun) await applyNudged(row.e, row.p, now);
       nudged++;
     } catch (e) {

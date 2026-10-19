@@ -308,13 +308,12 @@ function giftRowsHtml(names, giftImages, tint) {
  *  product: { title, handle, image, variantId, clickCartUrl?, clickProductUrl? }.
  *  When the tracked click URLs are present they replace the raw storefront links
  *  (so we can record click-through); otherwise it falls back to direct links. */
-function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introText, freeGift = null, altVariants = null }) {
+function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introText, freeGift = null }) {
   const title = product.title ?? 'Your item';
   // freeGift may come via opts (nudge) or ride on the payload (resend reuses the
   // back-in-stock builder but should still show the offer).
   freeGift = freeGift || product.freeGift || null;
   const hasGift = !!(freeGift && Array.isArray(freeGift.products) && freeGift.products.length);
-  const hasAlts = Array.isArray(altVariants) && altVariants.length > 0;
   // Price-tiered order perks (free shipping / + gift), carried on the product payload.
   const inc = product.incentives && product.incentives.freeShipping ? product.incentives : null;
   const incGiftList = inc && Array.isArray(inc.gift) ? inc.gift : (inc && inc.gift ? [String(inc.gift)] : []);
@@ -331,14 +330,13 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   // A /cart/<variantId>:1 permalink adds the item and lands the shopper on the cart.
   const cartUrl = product.clickCartUrl
     || (product.variantId && host ? `https://${host}/cart/${product.variantId}:1` : productUrl);
+
+  // ---- plain-text version ----
   const priceLine = product.priceText
     ? `${product.priceText}${product.compareAtText ? `  (was ${product.compareAtText})` : ''}\n`
     : '';
   const freeGiftText = hasGift
     ? `\nFREE gift if you order now: ${freeGift.products.join(', ')} free with your order.${freeGift.code ? ` Use code ${freeGift.code} at checkout.` : ''}\n`
-    : '';
-  const altText = hasAlts
-    ? `\nOther options in stock:\n${altVariants.map((v) => `  - ${v.title}${v.priceText ? ` (${v.priceText})` : ''}: ${v.url}`).join('\n')}\n`
     : '';
   const incText = inc
     ? `\nThis order qualifies for:\n  - Free shipping${incGift ? `\n  - Plus a free gift: ${incGift}` : ''}\n`
@@ -350,22 +348,33 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
     `Add it to your cart: ${cartUrl}\n` +
     `Or view the product: ${productUrl}\n` +
     freeGiftText +
-    altText +
     `\n— ${FROM_NAME}\n\n` +
     `Don't want these emails? Unsubscribe: ${unsub}`;
+
+  // ---- HTML version (premium, single-column, conversion-focused) ----
   const priceBlock = product.priceText
-    ? `<div style="font-size:18px;font-weight:700;color:#161b22;margin:10px 0 2px">${esc(product.priceText)}${
+    ? `<div style="margin:16px 0 0">
+         <span style="font-size:24px;font-weight:800;color:#0f1729;letter-spacing:-.01em">${esc(product.priceText)}</span>${
         product.compareAtText
-          ? `<span style="font-size:14px;font-weight:500;color:#8b95a3;text-decoration:line-through;margin-left:8px">${esc(product.compareAtText)}</span>`
+          ? `<span style="font-size:15px;font-weight:600;color:#9aa3b2;text-decoration:line-through;margin-left:10px">${esc(product.compareAtText)}</span>`
           : ''
-      }</div>`
+      }
+       </div>`
+    : '';
+  const variantChip = variant
+    ? `<div style="margin:14px 0 0"><span style="display:inline-block;font-size:12.5px;color:#48506a;background:#f2f4f8;border:1px solid #e6eaf0;border-radius:8px;padding:5px 11px">Option: <strong style="color:#0f1729">${esc(variant)}</strong></span></div>`
+    : '';
+  const heroImage = product.image
+    ? `<tr><td style="padding:0">
+         <a href="${esc(cartUrl)}" style="display:block;text-decoration:none"><img src="${esc(product.image)}" alt="${esc(title)}" width="600" style="width:100%;height:auto;display:block;border:0"></a>
+       </td></tr>`
     : '';
   const incentiveBlock = inc
-    ? `<tr><td style="padding:4px 24px 12px">
+    ? `<tr><td style="padding:6px 28px 10px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:14px">
            <tr><td style="padding:16px 18px">
              <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:#1f6feb;text-transform:uppercase">&#128230; Your order perks</div>
-             <div style="font-size:14px;color:#161b22;margin-top:8px;line-height:1.5">&#128666; <strong>Free shipping</strong> on this order</div>
+             <div style="font-size:14px;color:#0f1729;margin-top:8px;line-height:1.5">&#128666; <strong>Free shipping</strong> on this order</div>
              ${
                incGiftList.length
                  ? `<div style="font-size:12px;font-weight:800;letter-spacing:.04em;color:#1f6feb;text-transform:uppercase;margin-top:12px">&#127873; Plus, free with your order</div>${giftRowsHtml(incGiftList, giftImages, '#1f6feb')}`
@@ -375,13 +384,8 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
          </table>
        </td></tr>`
     : '';
-  const imageBlock = product.image
-    ? `<tr><td style="padding:0 24px 4px" align="center">
-         <a href="${esc(cartUrl)}"><img src="${esc(product.image)}" alt="${esc(title)}" width="512" style="width:100%;max-width:512px;height:auto;border-radius:12px;border:1px solid #eef1f6;display:block"></a>
-       </td></tr>`
-    : '';
   const freeGiftBlock = hasGift
-    ? `<tr><td style="padding:4px 24px 12px">
+    ? `<tr><td style="padding:6px 28px 10px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f0fbf6;border:1px solid #cdeede;border-radius:14px">
            <tr><td style="padding:16px 18px">
              <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:${ACCENT};text-transform:uppercase">&#127873; Free gift if you order now</div>
@@ -391,37 +395,36 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
          </table>
        </td></tr>`
     : '';
-  const altBlock = hasAlts
-    ? `<tr><td style="padding:4px 24px 12px">
-         <div style="font-size:12px;font-weight:700;letter-spacing:.05em;color:#5f6875;text-transform:uppercase;margin-bottom:8px">Other options in stock</div>
-         ${altVariants.map((v) => `<a href="${esc(v.url)}" style="display:block;text-decoration:none;border:1px solid #eef1f6;border-radius:10px;padding:10px 12px;margin-bottom:6px;color:#161b22;font-size:14px">
-             <span style="font-weight:600">${esc(v.title)}</span>${v.priceText ? `<span style="color:#5f6875"> &mdash; ${esc(v.priceText)}</span>` : ''} <span style="color:${ACCENT};font-weight:600">&rarr;</span>
-           </a>`).join('')}
-       </td></tr>`
-    : '';
-  const html = `<!doctype html><html><body style="margin:0;background:#eef1f6">
-  <div style="background:#eef1f6;padding:28px 16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+  <body style="margin:0;padding:0;background:#eef1f6">
+  <div style="background:#eef1f6;padding:26px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
-      <table width="560" cellpadding="0" cellspacing="0" role="presentation" style="max-width:560px;width:100%;background:#fff;border:1px solid #e4e8ef;border-radius:16px;overflow:hidden">
-        <tr><td style="padding:24px 24px 12px">
-          <div style="font-size:12px;font-weight:700;letter-spacing:.06em;color:${ACCENT};text-transform:uppercase">${esc(eyebrow)}</div>
-          <div style="font-size:20px;font-weight:700;color:#161b22;margin:8px 0 6px">${esc(title)}</div>
-          ${variant ? `<div style="font-size:13px;color:#5f6875;margin:-2px 0 6px">Option: <strong style="color:#161b22">${esc(variant)}</strong></div>` : ''}
+      <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6eaf0;border-radius:18px;overflow:hidden">
+        <tr><td style="height:4px;background:${ACCENT};font-size:0;line-height:0">&nbsp;</td></tr>
+        <tr><td style="padding:16px 28px;border-bottom:1px solid #f1f3f7">
+          <span style="font-size:15px;font-weight:800;color:#0f1729;letter-spacing:-.01em">${esc(FROM_NAME)}</span>
+        </td></tr>
+        ${heroImage}
+        <tr><td style="padding:24px 28px 4px">
+          <span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.09em;color:#ffffff;background:${ACCENT};border-radius:999px;padding:6px 13px;text-transform:uppercase">${esc(eyebrow)}</span>
+          <div style="font-size:24px;line-height:1.25;font-weight:800;color:#0f1729;letter-spacing:-.02em;margin:14px 0 0">${esc(title)}</div>
+          ${variantChip}
           ${priceBlock}
-          <div style="font-size:14px;color:#5f6875;line-height:1.5">${leadHtml}</div>
+          <p style="font-size:15px;color:#5b6472;line-height:1.6;margin:14px 0 0">${leadHtml}</p>
         </td></tr>
         ${incentiveBlock}
-        ${imageBlock}
         ${freeGiftBlock}
-        <tr><td style="padding:16px 24px 24px">
-          <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#fff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 22px;border-radius:10px">Add to Cart</a>
-          <a href="${esc(productUrl)}" style="display:inline-block;margin-left:6px;color:${ACCENT};text-decoration:none;font-size:14px;font-weight:600;padding:12px 10px">View product</a>
+        <tr><td style="padding:22px 28px 6px" align="center">
+          <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:16px 46px;border-radius:12px">Add to cart &rarr;</a>
         </td></tr>
-        ${altBlock}
-        <tr><td style="padding:16px 24px;border-top:1px solid #eef1f6;font-size:11px;color:#8b95a3;line-height:1.5">
-          You asked ${esc(FROM_NAME)} to notify you when this came back. <a href="${esc(unsub)}" style="color:#8b95a3">Unsubscribe</a>.
+        <tr><td style="padding:0 28px 26px" align="center">
+          <a href="${esc(productUrl)}" style="color:#6b7280;text-decoration:underline;font-size:13px">or view the product</a>
+        </td></tr>
+        <tr><td style="padding:18px 28px;border-top:1px solid #f1f3f7;font-size:11.5px;color:#9aa3b2;line-height:1.6">
+          You asked ${esc(FROM_NAME)} to let you know when this was back in stock. <a href="${esc(unsub)}" style="color:#9aa3b2">Unsubscribe</a>.
         </td></tr>
       </table>
+      <div style="font-size:11px;color:#9aa3b2;margin-top:14px">${esc(FROM_NAME)}${host ? ` &middot; ${esc(host)}` : ''}</div>
     </td></tr></table>
   </div></body></html>`;
   return { subject, text, html };
@@ -442,8 +445,8 @@ export function buildBackInStock(product, unsub) {
 }
 
 /** Pure: build the one-shot follow-up "still available" nudge for one shopper.
- *  Optionally carries a free-gift offer and a list of alternative in-stock variants. */
-export function buildNudge(product, unsub, { freeGift = null, altVariants = null } = {}) {
+ *  Optionally carries a free-gift offer. */
+export function buildNudge(product, unsub, { freeGift = null } = {}) {
   const title = product.title ?? 'Your item';
   const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
   const named = variant ? `${title} — ${variant}` : title;
@@ -457,22 +460,21 @@ export function buildNudge(product, unsub, { freeGift = null, altVariants = null
       : `Still in stock on ${esc(host)} — don't miss it before it's gone again.`,
     introText: `Still in stock: "${named}" is available on ${host}.`,
     freeGift,
-    altVariants,
   });
 }
 
 /** Pure: build the "a different variant is in stock" email. `product` carries the
- *  PRIMARY in-stock alternative (its variantId/price), and `altVariants` any others.
- *  Sent to a shopper whose own waited variant is still sold out. */
-export function buildAltVariant(product, unsub, { altVariants = null } = {}) {
+ *  in-stock option being offered (its variantId/price). Sent to a shopper whose
+ *  own waited variant is still sold out. */
+export function buildAltVariant(product, unsub) {
   const title = product.title ?? 'Your item';
+  const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
   const host = product.storeHost || SHOP;
   return buildRestockEmail(product, unsub, {
     eyebrow: 'A different option is in stock',
-    subject: `A different option for ${title} is available`,
-    leadHtml: `The option you were waiting for is still sold out on ${esc(host)} — but these are in stock right now. Grab one before they go.`,
-    introText: `The option you wanted for "${title}" is still sold out, but other options are in stock on ${host}.`,
-    altVariants,
+    subject: variant ? `${variant} is in stock for ${title}` : `A different option for ${title} is available`,
+    leadHtml: `The option you were waiting for is still sold out on ${esc(host)}${variant ? ` — but <strong>${esc(variant)}</strong> is available right now` : ' — but another option is available right now'}. Grab it before it's gone.`,
+    introText: `The option you wanted for "${title}" is still sold out, but ${variant ? `"${variant}"` : 'another option'} is in stock on ${host}.`,
   });
 }
 
@@ -547,8 +549,8 @@ export async function sendBackInStock(email, product, unsub, { dryRun } = {}) {
 }
 
 /** Send a one-shot "still available" nudge to a single shopper. */
-export async function sendNudge(email, product, unsub, { dryRun, freeGift = null, altVariants = null } = {}) {
-  const { subject, text, html } = buildNudge(product, unsub, { freeGift, altVariants });
+export async function sendNudge(email, product, unsub, { dryRun, freeGift = null } = {}) {
+  const { subject, text, html } = buildNudge(product, unsub, { freeGift });
   if (dryRun) {
     console.log(`  [dry run] would nudge ${email}: "${subject}"`);
     return { dryRun: true };
@@ -563,8 +565,8 @@ export async function sendNudge(email, product, unsub, { dryRun, freeGift = null
 
 /** Send a one-shot "a different option is in stock" email to a single shopper
  *  whose own waited variant is still sold out. */
-export async function sendAltVariant(email, product, unsub, { dryRun, altVariants = null } = {}) {
-  const { subject, text, html } = buildAltVariant(product, unsub, { altVariants });
+export async function sendAltVariant(email, product, unsub, { dryRun } = {}) {
+  const { subject, text, html } = buildAltVariant(product, unsub);
   if (dryRun) {
     console.log(`  [dry run] would offer alternatives to ${email}: "${subject}"`);
     return { dryRun: true };

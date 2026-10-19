@@ -20,7 +20,7 @@ const full = buildBackInStock(
 ok('subject names the product', full.subject === 'Chef Knife is back in stock');
 ok('renders the product image', full.html.includes('src="https://cdn.shopify.com/knife.jpg"'));
 ok('Add to Cart uses cart permalink', full.html.includes('https://demo.myshopify.com/cart/999:1'));
-ok('has an Add to Cart button label', full.html.includes('>Add to Cart<'));
+ok('has an Add to cart button', full.html.includes('Add to cart'));
 ok('still links the product page', full.html.includes('https://demo.myshopify.com/products/chef-knife'));
 ok('text has the cart link', full.text.includes('cart/999:1'));
 ok('text has the unsubscribe link', full.text.includes(unsub));
@@ -72,8 +72,8 @@ ok('honors the EMAIL_FROM_NAME override', fromName('x.myshopify.com', 'My Brand'
 ok('falls back to the app name on an empty domain', fromName('') === 'OOS Sorter');
 // SHOP_DOMAIN is demo.myshopify.com in this test, so FROM_NAME derives to "Demo".
 ok('back-in-stock email is signed with the store name, not the app name', full.text.includes('— Demo'));
-ok('back-in-stock footer credits the store name', full.html.includes('You asked Demo to notify you'));
-ok('nudge email is branded with the store name', buildNudge({ title: 'Widget', handle: 'widget' }, unsub).html.includes('You asked Demo to notify you'));
+ok('back-in-stock footer credits the store name', full.html.includes('You asked Demo to let you know'));
+ok('nudge email is branded with the store name', buildNudge({ title: 'Widget', handle: 'widget' }, unsub).html.includes('You asked Demo to let you know'));
 
 console.log('--- formatMoney ---');
 ok('formats a USD amount', formatMoney('129.00', 'USD') === '$129.00');
@@ -93,20 +93,20 @@ ok('price also appears in the plain text', priced.text.includes('A$129.00'));
 const noSale = buildBackInStock({ title: 'X', handle: 'x', priceText: '$50.00' }, unsub);
 ok('no strike-through when there is no compare-at', !noSale.html.includes('line-through') && noSale.html.includes('$50.00'));
 const noPrice = buildBackInStock({ title: 'Y', handle: 'y' }, unsub);
-ok('omits the price block when no priceText', !noPrice.html.includes('font-size:18px;font-weight:700'));
+ok('omits the price block when no priceText', !noPrice.html.includes('font-size:24px;font-weight:800'));
+ok('shows the large price block when priced', priced.html.includes('font-size:24px;font-weight:800'));
 
 console.log('--- buildAltVariant (a different option is in stock) ---');
 const alt = buildAltVariant(
-  { title: 'Hydro Gel Balls', handle: 'hydro-gel', variantId: '501', variantTitle: 'Blue', storeHost: 'gelballundercover.com.au', priceText: 'A$19.00',
-    clickCartUrl: 'https://gelballundercover.com.au/cart/501:1' },
-  unsub,
-  { altVariants: [{ title: 'Green', priceText: 'A$19.00', url: 'https://gelballundercover.com.au/cart/502:1' }] }
+  { title: 'Hydro Gel Balls', handle: 'hydro-gel', variantId: '502', variantTitle: 'Green', storeHost: 'gelballundercover.com.au', priceText: 'A$19.00',
+    clickCartUrl: 'https://gelballundercover.com.au/cart/502:1' },
+  unsub
 );
-ok('alt subject names the product', alt.subject === 'A different option for Hydro Gel Balls is available');
+ok('alt subject names the available option', alt.subject === 'Green is in stock for Hydro Gel Balls');
 ok('alt eyebrow reads "a different option is in stock"', alt.html.toLowerCase().includes('a different option is in stock'));
-ok('alt lead says their option is still sold out', alt.html.includes('still sold out'));
-ok('alt primary option is the in-stock one (cart link)', alt.html.includes('/cart/501:1'));
-ok('alt lists the other in-stock option', alt.html.includes('Green') && alt.html.includes('/cart/502:1'));
+ok('alt lead says their option is still sold out + names the available one', alt.html.includes('still sold out') && alt.html.includes('Green'));
+ok('alt CTA adds the offered in-stock option', alt.html.includes('/cart/502:1'));
+ok('alt no longer lists "other options in stock"', !alt.html.toLowerCase().includes('other options in stock'));
 ok('alt keeps the unsubscribe link', alt.text.includes(unsub));
 
 console.log('--- order perks (price-tier incentives) ---');
