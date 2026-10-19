@@ -354,6 +354,7 @@ ${fontHead()}
   <a href="/collections">Collections</a>
   <a href="/waitlists">Waitlists</a>
   <a href="/notified">Notified</a>
+  <a href="/activity">Activity</a>
   <a href="/funnels">Funnels</a>
   <a href="/settings">Settings</a>
   <a href="/preview">Email preview</a>
@@ -365,6 +366,7 @@ ${fontHead()}
     ${tab('/collections', 'collections', 'Collections')}
     ${tab('/waitlists', 'waitlists', 'Waitlists')}
     ${tab('/notified', 'notified', 'Notified')}
+    ${tab('/activity', 'activity', 'Activity')}
     ${tab('/funnels', 'funnels', 'Funnels')}
     ${tab('/settings', 'settings', 'Settings')}
     ${tab('/preview', 'preview', 'Email preview')}

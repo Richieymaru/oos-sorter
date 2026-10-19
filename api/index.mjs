@@ -13,12 +13,55 @@ import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
 import { fetchOrders, fetchAbandonedCheckouts } from '../orders.mjs';
 import { analyzeFunnels, analyzeCheckout, checkoutInsights, resolveRange } from '../funnels.mjs';
+import { ttlMemo } from '../cache.mjs';
 
 export const config = { maxDuration: 30 };
+
+// Per-instance caches so navigating between pages / reopening is near-instant.
+// The collection handle list changes rarely (5 min); orders a little more often
+// (2 min). Cold starts miss and fetch fresh — correctness never depends on these.
+const cachedHandles = ttlMemo(fetchAllCollectionHandles, 300000);
+const cachedOrders = ttlMemo(fetchOrders, 120000);
+const cachedAbandoned = ttlMemo(fetchAbandonedCheckouts, 120000);
 
 const ICON_BOX = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M10 2.5 3.5 6v8l6.5 3.5L16.5 14V6L10 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
 const ICON_LAYERS = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M10 3 3 6.5 10 10l7-3.5L10 3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 10 10 13.3 16.5 10" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
 const ICON_PULSE = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M2 10h3l2-5 3 10 2.5-7L17 10h1" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+
+/**
+ * The recent-activity items for the monitor feed. Prefers the Google Sheet (the
+ * FULL rich history the merchant also sees in the Sheet/Slack), falls back to
+ * the in-app metafield log, then to Shopify's bare live event log. `limit`
+ * bounds every source. Returns [] when the monitor is off.
+ */
+async function loadActivityItems(settings, monitorTitles, limit) {
+  if (!settings || !settings.monitor) return [];
+  let items = settings.sheetWebhook
+    ? await fetchSheetActivity(settings.sheetWebhook, limit).catch(() => null)
+    : null;
+  if (!items || !items.length) {
+    const logged = await loadMonitorLog().catch(() => []);
+    if (logged.length) {
+      const shop = process.env.SHOP_DOMAIN;
+      items = logged.slice(0, limit).map((r) => {
+        const { label, tone } = monitorTag(r.f, r.to);
+        return {
+          type: r.ty,
+          title: r.t,
+          href: r.h && shop ? `https://${shop}/${r.p || 'products'}/${r.h}` : null,
+          who: r.w,
+          iso: r.ts,
+          label,
+          tone,
+          stock: r.s,
+        };
+      });
+    } else {
+      items = await recentActivity(limit, monitorTitles || {}).catch(() => []);
+    }
+  }
+  return items;
+}
 
 const isToday = (iso) => {
   const d = new Date(iso);
@@ -75,8 +118,8 @@ export default async function handler(req, res) {
     try {
       const win = resolveRange(param(req, 'range') || '30d');
       const [ordRes, abRes] = await Promise.all([
-        fetchOrders({ since: win.since, until: win.until }),
-        fetchAbandonedCheckouts({ since: win.since, until: win.until }).catch(() => ({ abandoned: [], count: 0 })),
+        cachedOrders({ since: win.since, until: win.until }),
+        cachedAbandoned({ since: win.since, until: win.until }).catch(() => ({ abandoned: [], count: 0 })),
       ]);
       const analysis = analyzeFunnels(ordRes.orders, { tier: ordRes.tier, since: win.since, until: win.until });
       const checkout = analyzeCheckout(ordRes.orders, abRes.abandoned, abRes.count, { currency: analysis.currency });
@@ -91,47 +134,42 @@ export default async function handler(req, res) {
     return;
   }
 
+  // --- Activity page (GET /activity) — the full change history, so the dashboard
+  //     can show just the latest few and link here for the rest. ---
+  if (param(req, 'view') === 'activity') {
+    let settings, monitor;
+    try {
+      [settings, monitor] = await Promise.all([loadSettings(), loadMonitorState().catch(() => ({ titles: {} }))]);
+    } catch (e) {
+      setPageHeaders(res);
+      res.end(shell({ title: 'Activity', active: 'activity', body: notConnectedBody(shopOf(req)) }));
+      return;
+    }
+    const items = await loadActivityItems(settings, monitor.titles, 100);
+    const body = `<div class="pagehead rise"><h1>Activity</h1><p>Every product and collection change ${esc(APP_NAME)} has tracked — who changed what, and when.</p></div>
+      <div class="card rise" style="--d:80ms">
+        <div class="card-h"><h2>All activity</h2><span class="faint">${items.length ? `${items.length} most recent` : ''}</span></div>
+        ${settings.monitor
+          ? activityFeed(items)
+          : `<div class="empty">The change monitor is off.<div class="faint" style="margin-top:6px">Turn it on in Settings to track who changes, adds, or deletes products and collections.</div></div>`}
+      </div>`;
+    setPageHeaders(res);
+    res.end(shell({ title: 'Activity', active: 'activity', body }));
+    return;
+  }
+
   let settings, state, handles, monitor, notified, activity;
   try {
     [settings, state, handles, monitor, notified] = await Promise.all([
       loadSettings(),
       loadState(),
-      fetchAllCollectionHandles().catch(() => []),
+      cachedHandles().catch(() => []),
       loadMonitorState().catch(() => ({ titles: {} })),
       loadNotified().catch(() => []),
     ]);
-    if (settings.monitor) {
-      // Prefer the Google Sheet — it holds the FULL rich history (old AND new),
-      // the same data the merchant sees in the Sheet/Slack. Fall back to the
-      // in-app metafield log, then to Shopify's bare live event log.
-      let items = settings.sheetWebhook
-        ? await fetchSheetActivity(settings.sheetWebhook, 18).catch(() => null)
-        : null;
-      if (!items || !items.length) {
-        const logged = await loadMonitorLog().catch(() => []);
-        if (logged.length) {
-          const shop = process.env.SHOP_DOMAIN;
-          items = logged.slice(0, 18).map((r) => {
-            const { label, tone } = monitorTag(r.f, r.to);
-            return {
-              type: r.ty,
-              title: r.t,
-              href: r.h && shop ? `https://${shop}/${r.p || 'products'}/${r.h}` : null,
-              who: r.w,
-              iso: r.ts,
-              label,
-              tone,
-              stock: r.s,
-            };
-          });
-        } else {
-          items = await recentActivity(18, monitor.titles || {}).catch(() => []);
-        }
-      }
-      activity = items;
-    } else {
-      activity = [];
-    }
+    // Load more than we display so "Changes today" is counted accurately; the
+    // feed card itself shows only the latest 10 and links to /activity.
+    activity = await loadActivityItems(settings, monitor.titles, 50);
   } catch (e) {
     console.error('index: not connected —', e.message);
     setPageHeaders(res);
@@ -198,21 +236,8 @@ export default async function handler(req, res) {
            <a href="/settings" style="text-decoration:none"><button class="ghost">Turn on in Settings</button></a>`}
     </div></div>`;
 
-  // --- Assistant hero (the new AI feature) — opens the floating chat widget. ---
-  const heroChip = (q) => `<button type="button" class="ahero-chip" onclick="window.oosChat&&window.oosChat.ask(${JSON.stringify(q)})">${esc(q)}</button>`;
-  const assistantHero = `<div class="ahero">
-    <div class="ahero-txt">
-      <div class="ahero-eyebrow">✨ New · AI Assistant</div>
-      <h2>Ask your store anything</h2>
-      <p>It knows the app and sees your live data — sold-out, waitlists, and who changed what. Ask it what to focus on — the chat button is always in the corner.</p>
-      <div class="ahero-chips">
-        ${heroChip('How many products are sold out?')}
-        ${heroChip('Who changed product statuses recently?')}
-        ${heroChip('What should I focus on this week?')}
-      </div>
-    </div>
-    <button type="button" class="ahero-cta primary" onclick="window.oosChat&&window.oosChat.open()">Open Assistant →</button>
-  </div>`;
+  // The AI assistant is reachable any time from the floating chat button (added
+  // by shell() on every page), so the dashboard no longer needs a hero card.
 
   // --- automations rail ---
   const feat = [
@@ -266,13 +291,13 @@ export default async function handler(req, res) {
   </div></div>`;
 
   const feedMeta = settings.monitor
-    ? `${activity.length ? 'live from your store' : ''}`
+    ? (activity.length ? `<a href="/activity" style="text-decoration:none;color:var(--accent-ink);font-weight:600">View all &rarr;</a>` : '')
     : `<a href="/settings" style="text-decoration:none;color:var(--accent-ink);font-weight:600">Turn on monitoring</a>`;
 
   const activityCard = `<div class="card">
     <div class="card-h">${'<h2>Recent activity</h2>'}<span class="faint">${feedMeta}</span></div>
     ${settings.monitor
-      ? activityFeed(activity)
+      ? activityFeed(activity.slice(0, 10))
       : `<div class="empty">The change monitor is off.<div class="faint" style="margin-top:6px">Turn it on in Settings to see who changes, adds, or deletes products and collections — right here.</div></div>`}
   </div>`;
 
@@ -285,7 +310,6 @@ export default async function handler(req, res) {
     ${enginePill}
   </div>
   ${onboarding}
-  <div class="rise">${assistantHero}</div>
   ${stats}
   <div class="layout">
     <div class="grid rise" style="gap:18px;--d:230ms">${trendCard}${activityCard}</div>
@@ -306,15 +330,6 @@ export default async function handler(req, res) {
     .astat.off{color:var(--faint)}
     .astat .d{width:6px;height:6px;border-radius:50%;background:var(--accent)}
     .astat.off .d{background:var(--faint)}
-    .ahero{display:flex;gap:20px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:linear-gradient(120deg,var(--accent-wash),var(--surface) 72%);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow-sm)}
-    .ahero-eyebrow{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--accent-ink);text-transform:uppercase;margin-bottom:7px}
-    .ahero-txt{min-width:250px;flex:1}
-    .ahero-txt h2{font-family:var(--display);margin:0 0 5px;font-size:20px;font-weight:700;letter-spacing:-.02em}
-    .ahero-txt p{margin:0 0 12px;color:var(--muted);font-size:13.5px;max-width:58ch}
-    .ahero-chips{display:flex;flex-wrap:wrap;gap:8px}
-    .ahero-chip{font:inherit;font-size:12.5px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);text-decoration:none;cursor:pointer;transition:background .15s,color .15s}
-    .ahero-chip:hover{background:var(--hover);color:var(--ink)}
-    .ahero-cta{flex:none;text-decoration:none;cursor:pointer}
   </style>`;
 
   setPageHeaders(res);

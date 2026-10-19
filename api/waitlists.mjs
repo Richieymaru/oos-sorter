@@ -8,8 +8,16 @@ import { loadState } from '../state.mjs';
 import { loadSettings } from '../settings.mjs';
 import { sendWaitlistReport } from '../notify.mjs';
 import { loadNotified, deriveStats, reconcileOrders } from '../notified.mjs';
+import { ttlMemo } from '../cache.mjs';
 
 export const config = { maxDuration: 30 };
+
+// Per-instance caches so the page renders fast on repeat opens. The order
+// reconcile (a 60-day scan) is the heaviest — cache it 2 min; the waitlist
+// product list and per-id stock 1 min. Cold starts fetch fresh and correct.
+const cachedWaitlist = ttlMemo(productsWithWaitlist, 60000);
+const cachedReconcile = ttlMemo(reconcileOrders, 120000);
+const cachedProductsByIds = ttlMemo(fetchProductsByIds, 60000);
 
 /**
  * A display-only variant name for entries that recorded no variant (they signed
@@ -129,12 +137,12 @@ export default async function handler(req, res) {
   const notifiedView = /[?&]view=notified\b/.test(req.url || '');
   let attrNote = '';
   try {
-    const at = await reconcileOrders({ days: 60 });
+    const at = await cachedReconcile({ days: 60 });
     if (at.emailRedacted) attrNote = 'Order revenue needs Level 2 customer-data access — enable it in the Dev Dashboard to see who bought.';
   } catch (e) { console.error('attribution (page):', e.message); }
 
   const [items, state, notifiedLog, settings] = await Promise.all([
-    productsWithWaitlist().catch(() => []),
+    cachedWaitlist().catch(() => []),
     loadState().catch(() => ({})),
     loadNotified().catch(() => []),
     loadSettings().catch(() => ({})),
@@ -144,28 +152,19 @@ export default async function handler(req, res) {
   const recent = notifiedLog.slice(0, 100);
   const stats = deriveStats(notifiedLog);
 
-  // Current stock for the distinct products shown, so Resend is only offered when
-  // the product is actually available now (mirrors the server-side guard).
+  // Two product lookups: (1) current stock for the distinct notified products so
+  // Resend is only offered when actually available (mirrors the server guard);
+  // (2) the waitlisted products' variants + stock, to show a real option name
+  // and offer in-stock options to shoppers still waiting (waitlists view only).
+  // Run them in parallel and cache so repeat opens skip the round trips.
   const recentIds = [...new Set(recent.map((r) => r.p))];
-  let stockById = new Map();
-  if (recentIds.length) {
-    try {
-      const prods = await fetchProductsByIds(recentIds);
-      stockById = new Map(prods.map((p) => [shortId(p.id), p]));
-    } catch { /* leave stock unknown -> Resend disabled, never blocks the page */ }
-  }
-
-  // Pull the waitlisted products' variants + stock so we can (a) show a real
-  // option name instead of a dash, and (b) offer the in-stock options to the
-  // people still waiting. Only on the waitlists view (the notified view doesn't
-  // render product cards), and bounded to products that actually have a waitlist.
-  let prodById = new Map();
-  if (!notifiedView && items.length) {
-    try {
-      const prods = await fetchProductsByIds(items.map((w) => shortId(w.id)));
-      prodById = new Map(prods.map((p) => [p.id, p]));
-    } catch { /* leave dashes / no offer chips if the lookup fails — never blocks the page */ }
-  }
+  const wantItemProds = !notifiedView && items.length > 0;
+  const [recentProds, itemProds] = await Promise.all([
+    recentIds.length ? cachedProductsByIds(recentIds).catch(() => []) : Promise.resolve([]),
+    wantItemProds ? cachedProductsByIds(items.map((w) => shortId(w.id))).catch(() => []) : Promise.resolve([]),
+  ]);
+  const stockById = new Map(recentProds.map((p) => [shortId(p.id), p]));
+  const prodById = new Map(itemProds.map((p) => [p.id, p]));
   /** A product's in-stock, real-named variants as [{id, title}] — the options a
    *  merchant can offer to shoppers whose own option is still sold out. */
   const inStockOptions = (prod) => {
@@ -182,6 +181,13 @@ export default async function handler(req, res) {
     return prod ? !isVariantInStock(prod, v) : true;
   });
   const fmt = (ts) => esc(String(ts || '').replace('T', ' ').slice(0, 16));
+  // A compact, single-line date for narrow table columns: "Oct 19, 10:10".
+  // Derived from the ISO string parts so it never shifts the stored time zone.
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const fmtShort = (ts) => {
+    const m = String(ts || '').match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+    return m ? `${MONTHS[+m[2] - 1]} ${+m[3]}, ${m[4]}:${m[5]}` : esc(String(ts || '').slice(0, 16));
+  };
   const money = (cur, amt) => `${cur ? cur + ' ' : ''}${(Number(amt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const thumb = (u) =>
     u
@@ -252,8 +258,8 @@ export default async function handler(req, res) {
         <td class="mono">${esc(r.e)}</td>
         <td>${esc(r.t)}</td>
         <td>${vName(r)}</td>
-        <td class="num">${fmt(r.ts)}</td>
-        <td class="num">${r.c ? fmt(r.c) : '<span class="faint">&mdash;</span>'}</td>
+        <td class="when">${fmtShort(r.ts)}</td>
+        <td class="when">${r.c ? fmtShort(r.c) : '<span class="faint">&mdash;</span>'}</td>
         <td>${statusChip(r)}</td>
         <td>${resendCell(r)}</td>
       </tr>`).join('')
@@ -366,9 +372,10 @@ export default async function handler(req, res) {
     : ''}
   ${notifiedView ? `<div class="card pad">
     <table>
-      <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="num">Notified</th><th class="num">Clicked</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="when">Notified</th><th class="when">Clicked</th><th>Status</th><th></th></tr></thead>
       <tbody>${recentRows}</tbody>
     </table>
+    <style>.when{text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}thead th.when{color:var(--faint)}</style>
   </div>` : ''}
   <div class="pw" style="margin-top:16px">
     <label for="pw">Panel password</label>

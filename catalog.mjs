@@ -69,7 +69,7 @@ export async function fetchAllCollections() {
     const d = await gql(
       `query($c: String){ collections(first: 250, after: $c){
          pageInfo { hasNextPage endCursor }
-         nodes { handle title sortOrder productsCount { count } }
+         nodes { handle title sortOrder productsCount { count } image { url } }
        } }`,
       { c: cursor }
     );
