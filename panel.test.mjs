@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProduct: 'Free gels', offerAltVariant: false, incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMajorGift: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', offerAltVariant: false, incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMajorGift: '', incentiveMajorGiftImage: '' };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProduct, 'Free gels');
@@ -107,6 +107,10 @@ eq('renders single minor/major gift fields', /id="incentiveMinorGift"/.test(sb) 
 eq('free gift is a single input, no discount code field', /id="freeGiftProduct"/.test(sb) && !/id="freeGiftCode"/.test(sb) && !/id="freeGiftProducts"/.test(sb), true);
 eq('each gift field has a Choose-product picker button', (sb.match(/class="ghost pickgift"/g) || []).length === 3 && sb.includes('data-target="freeGiftProduct"') && sb.includes('data-target="incentiveMinorGift"') && sb.includes('data-target="incentiveMajorGift"'), true);
 eq('picker wired to the Shopify resource picker', sb.includes('shopify.resourcePicker'), true);
+eq('stores the picked product image (hidden inputs)', /id="freeGiftImage"/.test(sb) && /id="incentiveMinorGiftImage"/.test(sb) && /id="incentiveMajorGiftImage"/.test(sb), true);
+eq('renders a gift preview container per field', (sb.match(/class="giftprev"/g) || []).length === 3, true);
+eq('only valid https image urls are stored', normalizeSettings({ freeGiftImage: 'javascript:alert(1)' }).freeGiftImage === '' && normalizeSettings({ freeGiftImage: 'https://cdn.shopify.com/x.png' }).freeGiftImage === 'https://cdn.shopify.com/x.png', true);
+eq('prefills a saved gift image into the hidden input', settingsBody({ freeGiftImage: 'https://cdn.shopify.com/gels.png' }).includes('https://cdn.shopify.com/gels.png'), true);
 eq('prefills saved thresholds', settingsBody({ incentiveTier1: 250 }).includes('value="250"'), true);
 eq('prefills saved gift product', settingsBody({ incentiveMajorGift: 'Mega Bundle' }).includes('Mega Bundle'), true);
 

@@ -7,15 +7,16 @@ import { fetchAllStatuses } from '../monitor.mjs';
 import { loadMonitorState, saveMonitorState } from '../monitor-state.mjs';
 import { buildBackInStock, buildNudge, buildAltVariant, formatMoney } from '../notify.mjs';
 import { getShopContext } from '../shopify.mjs';
+import { giftImagesFor } from '../restock.mjs';
 
 /** Build the "what shoppers actually receive" samples from the CURRENT settings,
  *  so the preview reflects the free-gift, perks and alt-variant toggles live. */
-function previewSamples(settings, ctx) {
+function previewSamples(settings, ctx, giftImages = {}) {
   const host = ctx.host || process.env.SHOP_DOMAIN || 'your-store.myshopify.com';
   const cur = ctx.currency || 'AUD';
   const price = (n) => formatMoney(String(n), cur);
   const unsub = '#';
-  const base = { handle: 'sample-product', image: null, storeHost: host };
+  const base = { handle: 'sample-product', image: null, storeHost: host, giftImages };
   const freeGift = settings.freeGiftEnabled && settings.freeGiftProduct
     ? { products: [settings.freeGiftProduct] }
     : null;
@@ -139,8 +140,9 @@ export default async function handler(req, res) {
   if (previewView) {
     let ctx = {};
     try { ctx = await getShopContext(); } catch { /* preview with defaults if context unavailable */ }
+    const giftImages = await giftImagesFor(settings).catch(() => ({}));
     setPageHeaders(res);
-    res.end(shell({ title: 'Email preview', active: 'preview', body: previewBody(previewSamples(settings, ctx)) }));
+    res.end(shell({ title: 'Email preview', active: 'preview', body: previewBody(previewSamples(settings, ctx, giftImages)) }));
     return;
   }
 

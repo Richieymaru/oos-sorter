@@ -105,16 +105,27 @@ async function resolveGiftImages(names) {
   return out;
 }
 
-/** The gift names in play for the current settings (free-gift + perk gifts),
- *  resolved to images once per run. {} when nothing applies (no extra API calls). */
-async function giftImagesFor(settings) {
+/** Map of gift name -> image for the current settings (free-gift + perk gifts).
+ *  Uses the image the merchant PICKED (exact, stored in settings) when present,
+ *  and only falls back to a title lookup for gifts that were typed by hand.
+ *  {} when nothing applies (no extra API calls). Exported so the Email preview
+ *  page can show the same photos. */
+export async function giftImagesFor(settings) {
   if (!settings) return {};
-  const names = [
-    ...(settings.freeGiftEnabled && settings.freeGiftProduct ? [settings.freeGiftProduct] : []),
-    ...(settings.incentivesEnabled ? [settings.incentiveMinorGift, settings.incentiveMajorGift].filter(Boolean) : []),
-  ];
-  if (!names.length) return {};
-  return resolveGiftImages(names);
+  const map = {};
+  const toResolve = [];
+  const add = (name, image) => {
+    if (!name) return;
+    if (image) map[name.toLowerCase()] = image;
+    else toResolve.push(name);
+  };
+  if (settings.freeGiftEnabled) add(settings.freeGiftProduct, settings.freeGiftImage);
+  if (settings.incentivesEnabled) {
+    add(settings.incentiveMinorGift, settings.incentiveMinorGiftImage);
+    add(settings.incentiveMajorGift, settings.incentiveMajorGiftImage);
+  }
+  if (toResolve.length) Object.assign(map, await resolveGiftImages(toResolve));
+  return map;
 }
 
 async function bumpNotified(shoppers) {

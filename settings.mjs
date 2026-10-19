@@ -33,6 +33,12 @@ export function normalizeEmails(input) {
   return out;
 }
 
+/** Pure: accept an https image URL (a picked product's photo), else ''. */
+export function normalizeImageUrl(input, maxLen = 600) {
+  const v = String(input ?? '').trim().slice(0, maxLen);
+  return /^https:\/\//.test(v) ? v : '';
+}
+
 /** Pure: accept a Slack Incoming Webhook URL, else ''. Guards against pasting
  *  a random string — only real Slack hook URLs are stored. */
 export function normalizeSlackWebhook(input) {
@@ -90,6 +96,7 @@ export function normalizeSettings(obj) {
     // product only (a single gift), defaulting to "Free gels". No discount code.
     freeGiftEnabled: o.freeGiftEnabled === true,
     freeGiftProduct: normalizeSingle(o.freeGiftProduct ?? o.freeGiftProducts, 'Free gels'),
+    freeGiftImage: normalizeImageUrl(o.freeGiftImage),
     // Cross-variant offer. OFF by default: when a waitlisted shopper's variant is
     // still sold out but another variant of the same product is back, email them
     // the available option (once each). Only safe facts (real stock), no promise.
@@ -104,7 +111,9 @@ export function normalizeSettings(obj) {
     // The single product offered as the minor / major gift. Empty is fine (the
     // email then just says "a free gift" / "a premium free gift").
     incentiveMinorGift: normalizeSingle(o.incentiveMinorGift ?? o.incentiveMinorGiftProducts, ''),
+    incentiveMinorGiftImage: normalizeImageUrl(o.incentiveMinorGiftImage),
     incentiveMajorGift: normalizeSingle(o.incentiveMajorGift ?? o.incentiveMajorGiftProducts, ''),
+    incentiveMajorGiftImage: normalizeImageUrl(o.incentiveMajorGiftImage),
   };
 }
 
