@@ -135,25 +135,29 @@ async function resolveGiftVariants(names) {
   return out;
 }
 
-/** Of the given numeric variant ids, the Set that can actually be bought via a
- *  cart permalink. Uses Shopify's own `availableForSale` — the single source of
- *  truth: it's true when the variant is in stock OR oversellable ("sell when out
- *  of stock") AND the product is published/purchasable, and false for draft,
- *  unpublished, or truly-out-of-stock variants. Skipping the rest keeps the cart
- *  link from failing with "one or more items are no longer available". On a lookup
- *  error the id is kept (optimistic) so a transient failure never drops a gift. */
+/** Of the given numeric variant ids, the Set a cart PERMALINK will actually accept.
+ *  Unlike the live storefront, a cart permalink does NOT honour "sell when out of
+ *  stock" (oversell) — a tracked variant with 0/negative inventory is rejected with
+ *  "one or more items are no longer available", breaking the whole cart. So a gift
+ *  is kept only when its product is not Draft/Archived AND it is untracked OR has a
+ *  positive available quantity. Keeps the cart link from ever failing (an
+ *  out-of-stock gift is simply skipped). On a lookup error the id is kept. */
 async function availableVariants(ids) {
   const uniq = [...new Set((ids || []).map((id) => String(id).replace(/\D/g, '')).filter(Boolean))];
   if (!uniq.length) return new Set();
   const gids = uniq.map((id) => `gid://shopify/ProductVariant/${id}`);
   try {
     const d = await gql(
-      `query($ids: [ID!]!) { nodes(ids: $ids) { __typename ... on ProductVariant { id availableForSale } } }`,
+      `query($ids: [ID!]!) { nodes(ids: $ids) { __typename ... on ProductVariant { id inventoryQuantity product { status } inventoryItem { tracked } } } }`,
       { ids: gids }
     );
     const out = new Set();
     for (const n of d.nodes || []) {
-      if (n && n.__typename === 'ProductVariant' && n.availableForSale) out.add(String(n.id).replace(/\D/g, ''));
+      if (!n || n.__typename !== 'ProductVariant') continue;
+      const status = n.product?.status;
+      if (status === 'DRAFT' || status === 'ARCHIVED') continue;
+      const addable = n.inventoryItem?.tracked === false || (n.inventoryQuantity || 0) > 0;
+      if (addable) out.add(String(n.id).replace(/\D/g, ''));
     }
     return out;
   } catch (e) {
