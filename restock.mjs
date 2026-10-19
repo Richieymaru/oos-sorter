@@ -135,36 +135,75 @@ async function resolveGiftVariants(names) {
   return out;
 }
 
-/** Map gift name -> variant id for gifts that have NO stored variant (typed, not
- *  picked), so they can still be added to the cart. {} unless "Add gifts to cart"
- *  is on and some gift lacks a variant. */
+/** Of the given numeric variant ids, the Set that can actually be bought via a
+ *  cart permalink: the product isn't Draft/Archived and the variant is in stock,
+ *  oversellable, or untracked. Used to skip an unavailable gift so the cart link
+ *  never fails with "one or more items are no longer available". On error, the id
+ *  is kept (optimistic) so a transient lookup never drops a valid gift. */
+async function availableVariants(ids) {
+  const uniq = [...new Set((ids || []).map((id) => String(id).replace(/\D/g, '')).filter(Boolean))];
+  if (!uniq.length) return new Set();
+  const gids = uniq.map((id) => `gid://shopify/ProductVariant/${id}`);
+  try {
+    const d = await gql(
+      `query($ids: [ID!]!) { nodes(ids: $ids) { __typename ... on ProductVariant { id inventoryPolicy inventoryQuantity product { status } inventoryItem { tracked } } } }`,
+      { ids: gids }
+    );
+    const out = new Set();
+    for (const n of d.nodes || []) {
+      if (!n || n.__typename !== 'ProductVariant') continue;
+      const vid = String(n.id).replace(/\D/g, '');
+      const status = n.product?.status;
+      if (status === 'DRAFT' || status === 'ARCHIVED') continue;
+      const buyable = n.inventoryItem?.tracked === false || n.inventoryPolicy === 'CONTINUE' || (n.inventoryQuantity || 0) > 0;
+      if (buyable) out.add(vid);
+    }
+    return out;
+  } catch (e) {
+    console.error('gift variant availability check failed:', e.message);
+    return new Set(uniq); // optimistic: don't drop gifts over a lookup failure
+  }
+}
+
+/** Map gift name -> an AVAILABLE variant id, for every configured gift. Uses the
+ *  variant the merchant PICKED (stored in settings) or resolves it by name, then
+ *  keeps only variants that can actually be added to a cart. {} when none apply. */
 export async function giftVariantsFor(settings) {
   if (!settings) return {};
-  const need = [];
-  if (settings.freeGiftEnabled && settings.freeGiftProduct && !settings.freeGiftVariantId) need.push(settings.freeGiftProduct);
+  const cand = []; // { name, variantId|null }
+  const add = (name, storedId) => { if (name) cand.push({ name, variantId: storedId ? String(storedId).replace(/\D/g, '') : null }); };
+  if (settings.freeGiftEnabled) add(settings.freeGiftProduct, settings.freeGiftVariantId);
   if (settings.incentivesEnabled) {
-    if (settings.incentiveMinorGift && !settings.incentiveMinorGiftVariantId) need.push(settings.incentiveMinorGift);
-    if (settings.incentiveMajorGift && !settings.incentiveMajorGiftVariantId) need.push(settings.incentiveMajorGift);
+    add(settings.incentiveMinorGift, settings.incentiveMinorGiftVariantId);
+    add(settings.incentiveMajorGift, settings.incentiveMajorGiftVariantId);
   }
-  if (!need.length) return {};
-  return resolveGiftVariants(need);
+  if (!cand.length) return {};
+  // Resolve variant ids for gifts that were typed (no stored id).
+  const toResolve = cand.filter((c) => !c.variantId).map((c) => c.name);
+  const resolved = toResolve.length ? await resolveGiftVariants(toResolve) : {};
+  for (const c of cand) if (!c.variantId) c.variantId = resolved[c.name.toLowerCase()] || null;
+  // Keep only variants that can actually be bought (so the cart link never errors).
+  const avail = await availableVariants(cand.map((c) => c.variantId).filter(Boolean));
+  const out = {};
+  for (const c of cand) if (c.variantId && avail.has(String(c.variantId))) out[c.name.toLowerCase()] = c.variantId;
+  return out;
 }
 
 /** Extra cart-permalink segments that add the free gift(s) to the cart, so they
- *  check out free ($0 gift products, or a Buy-X-Get-Y automatic discount). Uses
- *  the PICKED variant id (stored in settings) or, for typed gifts, the one
- *  resolved by name in `giftVariants`. `incentives` = incentiveFor(...)'s result;
- *  `includeFreeGift` adds the nudge/resend free gift too (not on the first email). */
+ *  check out free ($0 gift products, or a Buy-X-Get-Y automatic discount). Only
+ *  AVAILABLE gift variants are included (`giftVariants` is already filtered), so
+ *  the cart never fails. `incentives` = incentiveFor(...)'s result; `includeFreeGift`
+ *  adds the nudge/resend free gift too (not on the first back-in-stock email). */
 function cartGiftSuffix(settings, incentives, includeFreeGift, giftVariants = {}) {
   if (!settings) return '';
-  const pick = (name, storedId) => storedId || (name ? giftVariants[String(name).toLowerCase()] : '') || '';
+  const pick = (name) => (name ? giftVariants[String(name).toLowerCase()] : '') || '';
   const ids = [];
   if (includeFreeGift && settings.freeGiftEnabled) {
-    const v = pick(settings.freeGiftProduct, settings.freeGiftVariantId);
+    const v = pick(settings.freeGiftProduct);
     if (v) ids.push(v);
   }
   if (incentives && incentives.gift && incentives.gift.length) {
-    const v = pick(incentives.gift[0], incentives.giftVariantId);
+    const v = pick(incentives.gift[0]);
     if (v) ids.push(v);
   }
   return ids.map((id) => `,${id}:1`).join('');
