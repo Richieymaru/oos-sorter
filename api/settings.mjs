@@ -51,7 +51,7 @@ function previewSamples(settings, ctx, giftImages = {}) {
     { label: 'Back in stock', note: 'Sent automatically when a shopper’s exact option returns (also the manual “Send now”).', html: s1.html, subject: s1.subject },
     { label: 'Back in stock — with order perks', note: settings.incentivesEnabled ? 'A higher-priced product shows the perks box, based on your thresholds.' : 'Turn on “Order perks by price” in Settings to show the free-shipping / gift box here.', html: s2.html, subject: s2.subject },
     { label: `Follow-up nudge (after ${settings.nudgeDays || 2} days)`, note: freeGift ? 'Includes your free-gift offer plus any in-stock alternatives.' : 'Turn on the free-gift offer to add a gift box. It also lists in-stock alternatives when available.', html: s3.html, subject: s3.subject },
-    { label: 'A different option is in stock', note: settings.offerAltVariant ? 'Sent automatically — and available as the manual “Offer” buttons on Waitlists.' : 'Enable “Offer a different variant…” to send this automatically; the manual Offer buttons on Waitlists work regardless.', html: s4.html, subject: s4.subject },
+    { label: 'A different option is in stock', note: 'What the manual “Offer” buttons on the Waitlists page send — you choose which in-stock option to offer the shoppers still waiting. Manual only.', html: s4.html, subject: s4.subject },
     { label: 'Manual “Resend” (re-engagement)', note: freeGift ? 'What the “Resend” button on Notified sends — includes your free-gift offer to win back shoppers who didn’t convert.' : 'What the “Resend” button on Notified sends. Turn on the free-gift offer to add a gift box here.', html: s5.html, subject: s5.subject },
   ];
 }

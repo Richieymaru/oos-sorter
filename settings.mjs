@@ -97,10 +97,6 @@ export function normalizeSettings(obj) {
     freeGiftEnabled: o.freeGiftEnabled === true,
     freeGiftProduct: normalizeSingle(o.freeGiftProduct ?? o.freeGiftProducts, 'Free gels'),
     freeGiftImage: normalizeImageUrl(o.freeGiftImage),
-    // Cross-variant offer. OFF by default: when a waitlisted shopper's variant is
-    // still sold out but another variant of the same product is back, email them
-    // the available option (once each). Only safe facts (real stock), no promise.
-    offerAltVariant: o.offerAltVariant === true,
     // Price-tiered order perks shown in the restock emails, by the product's price
     // (in the store's own currency). OFF by default — it only writes the offer into
     // the email; the merchant must set up the real free-shipping rule + gift fulfilment.

@@ -115,14 +115,8 @@ export function settingsBody(settings) {
     <div class="giftprev" id="prev_freeGiftProduct" style="display:none;gap:8px;align-items:center;margin-top:9px;font-size:12.5px"></div>
   </div>
   <div class="card pad" style="margin-top:14px">
-    <label class="row" for="offerAltVariant">
-      <input type="checkbox" id="offerAltVariant"${ck(settings.offerAltVariant)} class="sw">
-      <span class="track" aria-hidden="true"><span class="thumb"></span></span>
-      <span class="rowtext">
-        <span class="rowtitle">Offer a different variant when theirs is still out</span>
-        <span class="rowdesc">When a waitlisted shopper’s option is still sold out but a <strong>different</strong> option of the same product is back in stock, email them the available option (once each). Only real stock facts, no promise — safe to turn on. Off by default.</span>
-      </span>
-    </label>
+    <div class="rowtitle">Offer a different variant (manual)</div>
+    <p class="rowdesc" style="margin:4px 0 0">When a shopper’s option is still sold out but a <strong>different</strong> option of the same product is in stock, you can email them the available one. On the <a href="/waitlists" style="color:var(--accent-ink);font-weight:600">Waitlists</a> page each product shows its in-stock options as buttons — click one to send. This is <strong>manual only</strong>: nothing goes out automatically.</p>
   </div>
   <div class="card pad" style="margin-top:14px">
     <label class="row" for="incentivesEnabled" style="margin-bottom:6px">
@@ -240,7 +234,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, offerAltVariant:document.getElementById('offerAltVariant').checked, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

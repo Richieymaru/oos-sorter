@@ -151,12 +151,9 @@ async function bumpNotified(shoppers) {
  * @param {Array} args.waiting - the subset to keep (still sold out)
  * @param {{title?:string, handle?:string, image?:string|null}} args.product
  * @param {string|null} args.fallbackVariantId - variant to link when an entry has none
- * @param {{variants:Array<{id,title,priceText}>}|null} args.altOffer - when set
- *   and non-empty, shoppers still waiting (their variant out) are offered these
- *   in-stock alternatives once each (deduped by an `altTs` stamp on the entry).
  * @returns {Promise<number>} how many emails actually sent
  */
-async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base, altOffer = null, settings = null, giftImages = {} }) {
+async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariantId, variants = new Map(), ctx = {}, dryRun, base, settings = null, giftImages = {} }) {
   let sent = 0;
   const failed = [];
   const rows = [];
@@ -192,46 +189,9 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
     }
   }
 
-  // Offer alternatives to the shoppers still waiting (their variant is out) when
-  // the product has an in-stock variant they haven't been offered yet. One email
-  // per shopper, ever — tracked by an `altTs` stamp on the waitlist entry.
-  let altStamped = false;
-  const altAlts = altOffer?.variants || [];
-  if (altAlts.length) {
-    for (const sub of waiting) {
-      if (sub.altTs) continue; // already offered an alternative
-      const alts = altAlts.filter((a) => String(a.id) !== String(sub.variantId));
-      if (!alts.length) continue; // the only in-stock variant is the one they want (shouldn't happen here)
-      const primary = alts[0];
-      const rest = alts.slice(1);
-      const payload = {
-        ...product,
-        variantId: primary.id,
-        variantTitle: primary.title,
-        storeHost: ctx.host,
-        priceText: primary.priceText,
-        incentives: incentiveFor(primary.price, settings),
-        giftImages,
-        clickCartUrl: trackUrl(base, short, sub.email, `/cart/${primary.id}:1`),
-        clickProductUrl: trackUrl(base, short, sub.email, product.handle ? `/products/${product.handle}` : '/'),
-      };
-      const altVariants = rest.map((a) => ({
-        title: a.title,
-        priceText: a.priceText,
-        url: trackUrl(base, short, sub.email, `/cart/${a.id}:1`),
-      }));
-      try {
-        await sendAltVariant(sub.email, payload, unsubUrl(base, short, sub.email), { dryRun, altVariants });
-        if (!dryRun) { sub.altTs = new Date().toISOString(); altStamped = true; }
-      } catch (e) {
-        console.error(`  ! alternative-variant email to ${sub.email} failed: ${e.message}`);
-      }
-    }
-  }
-
   if (!dryRun) {
     const keep = [...waiting, ...failed];
-    if (keep.length === list.length && !altStamped) {
+    if (keep.length === list.length) {
       /* nothing changed — skip the write */
     } else if (keep.length) {
       await setWaitlist(gid, keep);
@@ -286,7 +246,6 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
   // Opt-in cross-variant offer (default OFF): email people whose variant is still
   // out when a DIFFERENT variant of the same product is back in stock.
   const settings = await loadSettings().catch(() => null);
-  const offerAlt = !!settings?.offerAltVariant;
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
 
   let productsNotified = 0;
@@ -296,10 +255,7 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
     if (!sp || !isInStock(sp)) continue; // every variant still sold out — keep the whole list
 
     const { notify, waiting } = partitionByStock(w.list, (variantId) => isVariantInStock(sp, variantId));
-    // The in-stock alternatives to offer those still waiting (empty unless opt-in on).
-    const altOffer = offerAlt ? { variants: inStockVariantInfos(sp, ctx) } : null;
-    // Nobody's waited variant is back AND there's no alternative to offer -> skip.
-    if (!notify.length && !(altOffer && altOffer.variants.length && waiting.length)) continue;
+    if (!notify.length) continue; // the product is back, but not the variants these people want
 
     const first = sp.variants?.nodes?.[0];
     emailsSent += await emailAndPrune({
@@ -313,11 +269,10 @@ export async function notifyRestocks({ dryRun = false, base = null } = {}) {
       ctx,
       dryRun,
       base,
-      altOffer,
       settings,
       giftImages,
     });
-    if (notify.length) productsNotified++;
+    productsNotified++;
   }
   return { waitlisted: waited.length, productsNotified, emailsSent };
 }
@@ -342,7 +297,6 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
   const byId = new Map(stock.map((p) => [p.id, p]));
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
-  const offerAlt = !!settings?.offerAltVariant;
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
 
   let productsNotified = 0;
@@ -352,8 +306,7 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
     if (!sp || !isInStock(sp)) continue; // every variant still sold out — keep the whole list
 
     const { notify, waiting } = partitionByStock(list, (variantId) => isVariantInStock(sp, variantId));
-    const altOffer = offerAlt ? { variants: inStockVariantInfos(sp, ctx) } : null;
-    if (!notify.length && !(altOffer && altOffer.variants.length && waiting.length)) continue;
+    if (!notify.length) continue; // the product is back, but not the variants these people want
 
     const first = sp.variants?.nodes?.[0];
     emailsSent += await emailAndPrune({
@@ -367,11 +320,10 @@ export async function notifyRestocksForProducts(productGids, { dryRun = false, b
       ctx,
       dryRun,
       base,
-      altOffer,
       settings,
       giftImages,
     });
-    if (notify.length) productsNotified++;
+    productsNotified++;
   }
   return { productsNotified, emailsSent };
 }
