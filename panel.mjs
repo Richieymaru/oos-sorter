@@ -182,7 +182,7 @@ export function settingsBody(settings) {
       <span class="track" aria-hidden="true"><span class="thumb"></span></span>
       <span class="rowtext">
         <span class="rowtitle">Add the gift(s) to the cart on “Add to cart”</span>
-        <span class="rowdesc">When a shopper clicks <strong>Add to cart</strong>, also put the free gift(s) in their cart so a Shopify <strong>Buy-X-Get-Y automatic discount</strong> can make them free. ⚠️ Set up that discount first (buy the product → free gift) — otherwise shoppers get CHARGED for the “free” item. Only works for gifts you <strong>picked from your store</strong> (so they have a variant). Off by default.</span>
+        <span class="rowdesc">When a shopper clicks <strong>Add to cart</strong>, also put the free gift(s) in their cart. ✅ If your gift products are priced <strong>$0</strong> (free), they stay free in the cart — no discount needed. ⚠️ If a gift has a real price, set up a Shopify <strong>Buy-X-Get-Y automatic discount</strong> first, or shoppers get CHARGED for it. Only works for gifts you <strong>picked from your store</strong> (so they have a variant). Off by default.</span>
       </span>
     </label>
     <p class="rowdesc" style="margin:10px 2px 0">Perks apply when a product’s price is <strong>at or above</strong> a tier (e.g. “Free shipping from 200” = A$200 and up).</p>
