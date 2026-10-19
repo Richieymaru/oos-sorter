@@ -33,6 +33,11 @@ export function normalizeEmails(input) {
   return out;
 }
 
+/** Pure: a numeric id (variant/product), digits only, else ''. */
+export function normalizeId(input) {
+  return String(input ?? '').replace(/\D/g, '').slice(0, 20);
+}
+
 /** Pure: accept an https image URL (a picked product's photo), else ''. */
 export function normalizeImageUrl(input, maxLen = 600) {
   const v = String(input ?? '').trim().slice(0, maxLen);
@@ -100,6 +105,11 @@ export function normalizeSettings(obj) {
     freeGiftEnabled: o.freeGiftEnabled === true,
     freeGiftProduct: normalizeSingle(o.freeGiftProduct ?? o.freeGiftProducts, 'Free gels'),
     freeGiftImage: normalizeImageUrl(o.freeGiftImage),
+    freeGiftVariantId: normalizeId(o.freeGiftVariantId),
+    // Add the gift(s) to the cart when "Add to cart" is clicked (so a Buy-X-Get-Y
+    // automatic discount can make them free). OFF by default — only turn on once the
+    // discount is set up, or shoppers would be charged for the "free" item.
+    addGiftsToCart: o.addGiftsToCart === true,
     // Price-tiered order perks shown in the restock emails, by the product's price
     // (in the store's own currency). OFF by default — it only writes the offer into
     // the email; the merchant must set up the real free-shipping rule + gift fulfilment.
@@ -111,8 +121,10 @@ export function normalizeSettings(obj) {
     // email then just says "a free gift" / "a premium free gift").
     incentiveMinorGift: normalizeSingle(o.incentiveMinorGift ?? o.incentiveMinorGiftProducts, ''),
     incentiveMinorGiftImage: normalizeImageUrl(o.incentiveMinorGiftImage),
+    incentiveMinorGiftVariantId: normalizeId(o.incentiveMinorGiftVariantId),
     incentiveMajorGift: normalizeSingle(o.incentiveMajorGift ?? o.incentiveMajorGiftProducts, ''),
     incentiveMajorGiftImage: normalizeImageUrl(o.incentiveMajorGiftImage),
+    incentiveMajorGiftVariantId: normalizeId(o.incentiveMajorGiftVariantId),
   };
 }
 
@@ -128,14 +140,14 @@ export function incentiveFor(price, settings) {
   const major = s.incentiveMajorGift ? [s.incentiveMajorGift] : ['a premium free gift'];
   const minor = s.incentiveMinorGift ? [s.incentiveMinorGift] : ['a free gift'];
   const tiers = [
-    { min: Number(s.incentiveTier3), gift: major },
-    { min: Number(s.incentiveTier2), gift: minor },
-    { min: Number(s.incentiveTier1), gift: null },
+    { min: Number(s.incentiveTier3), gift: major, giftVariantId: s.incentiveMajorGiftVariantId || null },
+    { min: Number(s.incentiveTier2), gift: minor, giftVariantId: s.incentiveMinorGiftVariantId || null },
+    { min: Number(s.incentiveTier1), gift: null, giftVariantId: null },
   ]
     .filter((t) => Number.isFinite(t.min))
     .sort((a, b) => b.min - a.min);
   for (const t of tiers) {
-    if (p >= t.min) return { freeShipping: true, gift: t.gift };
+    if (p >= t.min) return { freeShipping: true, gift: t.gift, giftVariantId: t.giftVariantId };
   }
   return null;
 }

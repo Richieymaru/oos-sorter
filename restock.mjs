@@ -109,6 +109,19 @@ export async function giftImagesFor(settings) {
   return map;
 }
 
+/** Extra cart-permalink segments that add the free gift(s) to the cart, so a
+ *  Buy-X-Get-Y automatic discount can make them free. Empty unless the owner
+ *  turned "Add gifts to cart" on (and only for gifts picked from the store, which
+ *  have a variant id). `incentives` = incentiveFor(...)'s result; `includeFreeGift`
+ *  adds the nudge/resend free gift too (not shown on the first back-in-stock email). */
+function cartGiftSuffix(settings, incentives, includeFreeGift) {
+  if (!settings || !settings.addGiftsToCart) return '';
+  const ids = [];
+  if (includeFreeGift && settings.freeGiftEnabled && settings.freeGiftVariantId) ids.push(settings.freeGiftVariantId);
+  if (incentives && incentives.giftVariantId) ids.push(incentives.giftVariantId);
+  return ids.map((id) => `,${id}:1`).join('');
+}
+
 async function bumpNotified(shoppers) {
   if (!shoppers) return;
   try {
@@ -142,11 +155,13 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
 
   for (const sub of due) {
     const variantId = sub.variantId || fallbackVariantId;
-    // Deep-link the email to the variant the shopper asked about, through the
-    // tracked redirect so a click-through is recorded on the log row.
-    const relCart = variantId ? `/cart/${variantId}:1` : (product.handle ? `/products/${product.handle}` : '/');
-    const relProduct = product.handle ? `/products/${product.handle}` : '/';
     const variantNode = variants.get(String(variantId));
+    const incentives = incentiveFor(variantNode?.price, settings);
+    // Deep-link the email to the variant the shopper asked about, through the
+    // tracked redirect so a click-through is recorded on the log row. The first
+    // back-in-stock email carries only the perks gift (no free-gift offer).
+    const relCart = variantId ? `/cart/${variantId}:1${cartGiftSuffix(settings, incentives, false)}` : (product.handle ? `/products/${product.handle}` : '/');
+    const relProduct = product.handle ? `/products/${product.handle}` : '/';
     const { priceText, compareAtText } = priceTextFor(variantNode, ctx.currency);
     const payload = {
       ...product,
@@ -155,7 +170,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
       storeHost: ctx.host,
       priceText,
       compareAtText,
-      incentives: incentiveFor(variantNode?.price, settings),
+      incentives,
       giftImages,
       brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
       clickCartUrl: trackUrl(base, short, sub.email, relCart),
@@ -442,6 +457,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
   const want = String(offerVariantId || '').replace(/\D/g, '');
   const offered = inStock.find((v) => String(v.id) === want) || null;
   if (!offered) return { sent: 0, error: 'That option isn’t in stock right now.' };
+  const incOffered = incentiveFor(offered.price, settings);
 
   const list = await readWaitlist(productGid);
   let sent = 0;
@@ -459,11 +475,11 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
       variantTitle: offered.title,
       storeHost: ctx.host,
       priceText: offered.priceText,
-      incentives: incentiveFor(offered.price, settings),
+      incentives: incOffered,
       giftImages,
       freeGift,
       brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
-      clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1`),
+      clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, true)}`),
       clickProductUrl: trackUrl(base, short, sub.email, sp.handle ? `/products/${sp.handle}` : '/'),
     };
     try {
@@ -501,13 +517,14 @@ export async function previewResendEmail(productGid, email, { variantId = null, 
   const vId = vWant || (first?.id ? shortId(first.id) : null);
   const vNode = variantsById(sp).get(String(vId));
   const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
-  const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
+  const incentives = incentiveFor(vNode?.price, settings);
+  const relCart = vId ? `/cart/${vId}:1${cartGiftSuffix(settings, incentives, true)}` : (sp.handle ? `/products/${sp.handle}` : '/');
   const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
   const payload = {
     title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
     variantId: vId, variantTitle: vNode?.title && vNode.title !== 'Default Title' ? vNode.title : null,
     storeHost: ctx.host, priceText, compareAtText,
-    incentives: incentiveFor(vNode?.price, settings), giftImages, freeGift,
+    incentives, giftImages, freeGift,
     brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
     clickCartUrl: trackUrl(base, short, email, relCart),
     clickProductUrl: trackUrl(base, short, email, relProduct),
@@ -531,12 +548,13 @@ export async function previewOfferEmail(productGid, { offerVariantId, email = 'p
   const want = String(offerVariantId || '').replace(/\D/g, '');
   const offered = inStock.find((v) => String(v.id) === want) || null;
   if (!offered) return { error: 'That option isn’t in stock right now.' };
+  const incOffered = incentiveFor(offered.price, settings);
   const payload = {
     title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
     variantId: offered.id, variantTitle: offered.title, storeHost: ctx.host, priceText: offered.priceText,
-    incentives: incentiveFor(offered.price, settings), giftImages, freeGift,
+    incentives: incOffered, giftImages, freeGift,
     brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
-    clickCartUrl: trackUrl(base, short, email, `/cart/${offered.id}:1`),
+    clickCartUrl: trackUrl(base, short, email, `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, true)}`),
     clickProductUrl: trackUrl(base, short, email, sp.handle ? `/products/${sp.handle}` : '/'),
   };
   const { subject, html } = buildAltVariant(payload, unsubUrl(base, short, email));
@@ -572,7 +590,8 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
     : null;
   const vNode = variantsById(sp).get(String(vId));
   const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
-  const relCart = vId ? `/cart/${vId}:1` : (sp.handle ? `/products/${sp.handle}` : '/');
+  const incentives = incentiveFor(vNode?.price, settings);
+  const relCart = vId ? `/cart/${vId}:1${cartGiftSuffix(settings, incentives, true)}` : (sp.handle ? `/products/${sp.handle}` : '/');
   const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
   const payload = {
     title: sp.title,
@@ -583,7 +602,7 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
     storeHost: ctx.host,
     priceText,
     compareAtText,
-    incentives: incentiveFor(vNode?.price, settings),
+    incentives,
     giftImages,
     freeGift,
     brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
@@ -632,7 +651,8 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
     // Price for the shopper's variant, or the first variant for a product-level signup.
     const vNode = row.v ? variantsById(sp).get(String(row.v)) : sp?.variants?.nodes?.[0];
     const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
-    const relCart = row.v ? `/cart/${row.v}:1` : (sp?.handle ? `/products/${sp.handle}` : '/');
+    const incentives = incentiveFor(vNode?.price, settings);
+    const relCart = row.v ? `/cart/${row.v}:1${cartGiftSuffix(settings, incentives, true)}` : (sp?.handle ? `/products/${sp.handle}` : '/');
     const relProduct = sp?.handle ? `/products/${sp.handle}` : '/';
     const payload = {
       title: row.t,
@@ -643,7 +663,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
       storeHost: ctx.host,
       priceText,
       compareAtText,
-      incentives: incentiveFor(vNode?.price, settings),
+      incentives,
       giftImages,
       brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
       clickCartUrl: trackUrl(base, row.p, row.e, relCart),

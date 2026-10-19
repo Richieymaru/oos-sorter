@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMajorGift: '', incentiveMajorGiftImage: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', addGiftsToCart: false, incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '' };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProduct, 'Free gels');
@@ -31,12 +31,14 @@ eq('minor gift is a single product', normalizeSettings({ incentiveMinorGift: '  
 eq('gift migrates from a legacy array', normalizeSettings({ incentiveMajorGiftProducts: ['Blaster', 'x'] }).incentiveMajorGift, 'Blaster');
 // incentiveFor: off -> null
 eq('incentiveFor returns null when disabled', incentiveFor(999, normalizeSettings({})), null);
-const incOn = normalizeSettings({ incentivesEnabled: true, incentiveMinorGift: 'Sticker', incentiveMajorGift: 'Blaster' });
+const incOn = normalizeSettings({ incentivesEnabled: true, incentiveMinorGift: 'Sticker', incentiveMinorGiftVariantId: '111', incentiveMajorGift: 'Blaster', incentiveMajorGiftVariantId: '222' });
 eq('below tier1 -> null', incentiveFor(199, incOn), null);
-eq('tier1 (200) -> free shipping only', incentiveFor(200, incOn), { freeShipping: true, gift: null });
-eq('tier2 (500) -> free shipping + minor gift', incentiveFor(500, incOn), { freeShipping: true, gift: ['Sticker'] });
-eq('tier3 (1000) -> free shipping + major gift', incentiveFor(1500, incOn), { freeShipping: true, gift: ['Blaster'] });
-eq('empty minor gift falls back to a free gift label', incentiveFor(500, normalizeSettings({ incentivesEnabled: true })), { freeShipping: true, gift: ['a free gift'] });
+eq('tier1 (200) -> free shipping only', incentiveFor(200, incOn), { freeShipping: true, gift: null, giftVariantId: null });
+eq('tier2 (500) -> free shipping + minor gift + its variant', incentiveFor(500, incOn), { freeShipping: true, gift: ['Sticker'], giftVariantId: '111' });
+eq('tier3 (1000) -> free shipping + major gift + its variant', incentiveFor(1500, incOn), { freeShipping: true, gift: ['Blaster'], giftVariantId: '222' });
+eq('empty minor gift falls back to a free gift label', incentiveFor(500, normalizeSettings({ incentivesEnabled: true })), { freeShipping: true, gift: ['a free gift'], giftVariantId: null });
+eq('gift variant id is numeric only', normalizeSettings({ freeGiftVariantId: 'gid://shopify/ProductVariant/987' }).freeGiftVariantId, '987');
+eq('addGiftsToCart off by default', normalizeSettings({}).addGiftsToCart, false);
 eq('non-numeric price -> null', incentiveFor('abc', incOn), null);
 eq('undefined -> all false', normalizeSettings(undefined), base);
 eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });

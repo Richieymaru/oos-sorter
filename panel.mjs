@@ -125,6 +125,7 @@ export function settingsBody(settings) {
       <button type="button" class="ghost pickgift" data-target="freeGiftProduct" style="display:none;white-space:nowrap">Choose product</button>
     </div>
     <input type="hidden" id="freeGiftImage" value="${esc(settings.freeGiftImage || '')}">
+    <input type="hidden" id="freeGiftVariantId" value="${esc(settings.freeGiftVariantId || '')}">
     <div class="giftprev" id="prev_freeGiftProduct" style="display:none;gap:8px;align-items:center;margin-top:9px;font-size:12.5px"></div>
   </div>
   <div class="card pad" style="margin-top:14px">
@@ -163,6 +164,7 @@ export function settingsBody(settings) {
       <button type="button" class="ghost pickgift" data-target="incentiveMinorGift" style="display:none;white-space:nowrap">Choose product</button>
     </div>
     <input type="hidden" id="incentiveMinorGiftImage" value="${esc(settings.incentiveMinorGiftImage || '')}">
+    <input type="hidden" id="incentiveMinorGiftVariantId" value="${esc(settings.incentiveMinorGiftVariantId || '')}">
     <div class="giftprev" id="prev_incentiveMinorGift" style="display:none;gap:8px;align-items:center;margin-top:9px;font-size:12.5px"></div>
     <div style="height:12px"></div>
     <label class="rowtitle" for="incentiveMajorGift">Major gift product</label>
@@ -172,7 +174,17 @@ export function settingsBody(settings) {
       <button type="button" class="ghost pickgift" data-target="incentiveMajorGift" style="display:none;white-space:nowrap">Choose product</button>
     </div>
     <input type="hidden" id="incentiveMajorGiftImage" value="${esc(settings.incentiveMajorGiftImage || '')}">
+    <input type="hidden" id="incentiveMajorGiftVariantId" value="${esc(settings.incentiveMajorGiftVariantId || '')}">
     <div class="giftprev" id="prev_incentiveMajorGift" style="display:none;gap:8px;align-items:center;margin-top:9px;font-size:12.5px"></div>
+    <div style="height:14px"></div>
+    <label class="row" for="addGiftsToCart" style="margin-bottom:0">
+      <input type="checkbox" id="addGiftsToCart"${ck(settings.addGiftsToCart)} class="sw">
+      <span class="track" aria-hidden="true"><span class="thumb"></span></span>
+      <span class="rowtext">
+        <span class="rowtitle">Add the gift(s) to the cart on “Add to cart”</span>
+        <span class="rowdesc">When a shopper clicks <strong>Add to cart</strong>, also put the free gift(s) in their cart so a Shopify <strong>Buy-X-Get-Y automatic discount</strong> can make them free. ⚠️ Set up that discount first (buy the product → free gift) — otherwise shoppers get CHARGED for the “free” item. Only works for gifts you <strong>picked from your store</strong> (so they have a variant). Off by default.</span>
+      </span>
+    </label>
     <p class="rowdesc" style="margin:10px 2px 0">Perks apply when a product’s price is <strong>at or above</strong> a tier (e.g. “Free shipping from 200” = A$200 and up).</p>
   </div>
   <div class="card pad" style="margin-top:14px">
@@ -239,6 +251,7 @@ export function settingsBody(settings) {
     // preview (thumbnail + name) so the owner can SEE the gift that's set, even on
     // reload. The picked product's image is stored so the email uses the exact photo.
     var GIFTIMG={freeGiftProduct:'freeGiftImage', incentiveMinorGift:'incentiveMinorGiftImage', incentiveMajorGift:'incentiveMajorGiftImage'};
+    var GIFTVAR={freeGiftProduct:'freeGiftVariantId', incentiveMinorGift:'incentiveMinorGiftVariantId', incentiveMajorGift:'incentiveMajorGiftVariantId'};
     function renderGiftPrev(t){
       var prev=document.getElementById('prev_'+t); if(!prev) return;
       var inp=document.getElementById(t), himg=document.getElementById(GIFTIMG[t]);
@@ -252,7 +265,7 @@ export function settingsBody(settings) {
     }
     ['freeGiftProduct','incentiveMinorGift','incentiveMajorGift'].forEach(function(t){
       var inp=document.getElementById(t); if(!inp) return;
-      inp.addEventListener('input', function(){ var h=document.getElementById(GIFTIMG[t]); if(h) h.value=''; renderGiftPrev(t); });
+      inp.addEventListener('input', function(){ var h=document.getElementById(GIFTIMG[t]); if(h) h.value=''; var vv=document.getElementById(GIFTVAR[t]); if(vv) vv.value=''; renderGiftPrev(t); });
       renderGiftPrev(t); // reflect the saved gift on load
     });
     (function(){
@@ -267,6 +280,8 @@ export function settingsBody(settings) {
               var inp=document.getElementById(t); if(inp) inp.value=p.title;
               var src=(p.images&&p.images[0]&&(p.images[0].originalSrc||p.images[0].src))||'';
               var himg=document.getElementById(GIFTIMG[t]); if(himg) himg.value=src;
+              var vid=(p.variants&&p.variants[0]&&p.variants[0].id)||''; vid=String(vid).replace(/\\D/g,'');
+              var hvar=document.getElementById(GIFTVAR[t]); if(hvar) hvar.value=vid;
               renderGiftPrev(t);
             }
           }catch(e){}
@@ -276,7 +291,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, freeGiftVariantId:document.getElementById('freeGiftVariantId').value, addGiftsToCart:document.getElementById('addGiftsToCart').checked, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMinorGiftVariantId:document.getElementById('incentiveMinorGiftVariantId').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value, incentiveMajorGiftVariantId:document.getElementById('incentiveMajorGiftVariantId').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);
