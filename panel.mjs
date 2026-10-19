@@ -106,8 +106,11 @@ export function settingsBody(settings) {
     </label>
     <div style="height:10px"></div>
     <label class="rowtitle" for="freeGiftProduct">Free product to offer</label>
-    <p class="rowdesc" style="margin:3px 0 9px">One product only. Default is “Free gels” — type the product name as it should read in the email.</p>
-    <input id="freeGiftProduct" type="text" placeholder="Free gels" value="${esc(settings.freeGiftProduct || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <p class="rowdesc" style="margin:3px 0 9px">One product only. Choose it from your store, or type the name. Default is “Free gels”.</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="freeGiftProduct" type="text" placeholder="Free gels" value="${esc(settings.freeGiftProduct || '')}" style="flex:1;min-width:0;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+      <button type="button" class="ghost pickgift" data-target="freeGiftProduct" style="display:none;white-space:nowrap">Choose product</button>
+    </div>
   </div>
   <div class="card pad" style="margin-top:14px">
     <label class="row" for="offerAltVariant">
@@ -145,12 +148,18 @@ export function settingsBody(settings) {
     </div>
     <div style="height:12px"></div>
     <label class="rowtitle" for="incentiveMinorGift">Minor gift product</label>
-    <p class="rowdesc" style="margin:3px 0 9px">One product only, given at the “+ minor gift” tier. Leave blank to just say “a free gift”.</p>
-    <input id="incentiveMinorGift" type="text" placeholder="e.g. Free gels (10,000pcs)" value="${esc(settings.incentiveMinorGift || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <p class="rowdesc" style="margin:3px 0 9px">One product only, given at the “+ minor gift” tier. Choose it from your store or type the name. Leave blank to just say “a free gift”.</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="incentiveMinorGift" type="text" placeholder="e.g. Free gels (10,000pcs)" value="${esc(settings.incentiveMinorGift || '')}" style="flex:1;min-width:0;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+      <button type="button" class="ghost pickgift" data-target="incentiveMinorGift" style="display:none;white-space:nowrap">Choose product</button>
+    </div>
     <div style="height:12px"></div>
     <label class="rowtitle" for="incentiveMajorGift">Major gift product</label>
-    <p class="rowdesc" style="margin:3px 0 9px">One product only, given at the “+ major gift” tier. Leave blank to just say “a premium free gift”.</p>
-    <input id="incentiveMajorGift" type="text" placeholder="e.g. Gel blaster bundle" value="${esc(settings.incentiveMajorGift || '')}" style="width:100%;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+    <p class="rowdesc" style="margin:3px 0 9px">One product only, given at the “+ major gift” tier. Choose it from your store or type the name. Leave blank to just say “a premium free gift”.</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="incentiveMajorGift" type="text" placeholder="e.g. Gel blaster bundle" value="${esc(settings.incentiveMajorGift || '')}" style="flex:1;min-width:0;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+      <button type="button" class="ghost pickgift" data-target="incentiveMajorGift" style="display:none;white-space:nowrap">Choose product</button>
+    </div>
     <p class="rowdesc" style="margin:10px 2px 0">Perks apply when a product’s price is <strong>at or above</strong> a tier (e.g. “Free shipping from 200” = A$200 and up).</p>
   </div>
   <div class="card pad" style="margin-top:14px">
@@ -184,6 +193,21 @@ export function settingsBody(settings) {
     else { try{ pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
     function flash(t,err){ msg.textContent=t; msg.className=err?'err':''; if(!err) setTimeout(function(){ if(msg.textContent===t) msg.textContent=''; },2500); }
     function needAuth(){ if(embedded) return true; var v=(pw.value||'').trim(); if(!v){ flash('Enter the panel password',true); pw.focus(); return false; } return true; }
+    // Shopify product picker for the gift fields — only when running inside the
+    // Shopify admin (App Bridge). Fills the field with the chosen product's title;
+    // outside the admin the plain text box is the fallback.
+    (function(){
+      if(!(embedded && typeof shopify!=='undefined' && shopify.resourcePicker)) return;
+      document.querySelectorAll('.pickgift').forEach(function(b){
+        b.style.display='';
+        b.addEventListener('click', async function(){
+          try{
+            var sel=await shopify.resourcePicker({ type:'product', multiple:false, action:'select' });
+            if(sel && sel.length){ var inp=document.getElementById(b.dataset.target); if(inp) inp.value=sel[0].title; }
+          }catch(e){}
+        });
+      });
+    })();
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;

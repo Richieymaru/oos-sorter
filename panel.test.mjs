@@ -105,6 +105,8 @@ eq('alt-variant toggle reflects saved on-state', /id="offerAltVariant"[^>]*check
 eq('renders the incentives toggle + thresholds wired to the body', /id="incentivesEnabled"/.test(sb) && /id="incentiveTier1"/.test(sb) && sb.includes('incentivesEnabled:') && sb.includes('incentiveTier1:'), true);
 eq('renders single minor/major gift fields', /id="incentiveMinorGift"/.test(sb) && /id="incentiveMajorGift"/.test(sb) && sb.includes('incentiveMinorGift:'), true);
 eq('free gift is a single input, no discount code field', /id="freeGiftProduct"/.test(sb) && !/id="freeGiftCode"/.test(sb) && !/id="freeGiftProducts"/.test(sb), true);
+eq('each gift field has a Choose-product picker button', (sb.match(/class="ghost pickgift"/g) || []).length === 3 && sb.includes('data-target="freeGiftProduct"') && sb.includes('data-target="incentiveMinorGift"') && sb.includes('data-target="incentiveMajorGift"'), true);
+eq('picker wired to the Shopify resource picker', sb.includes('shopify.resourcePicker'), true);
 eq('prefills saved thresholds', settingsBody({ incentiveTier1: 250 }).includes('value="250"'), true);
 eq('prefills saved gift product', settingsBody({ incentiveMajorGift: 'Mega Bundle' }).includes('Mega Bundle'), true);
 
