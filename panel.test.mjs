@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', addGiftsToCart: false, incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '' };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProduct, 'Free gels');
@@ -38,7 +38,7 @@ eq('tier2 (500) -> free shipping + minor gift + its variant', incentiveFor(500, 
 eq('tier3 (1000) -> free shipping + major gift + its variant', incentiveFor(1500, incOn), { freeShipping: true, gift: ['Blaster'], giftVariantId: '222' });
 eq('empty minor gift falls back to a free gift label', incentiveFor(500, normalizeSettings({ incentivesEnabled: true })), { freeShipping: true, gift: ['a free gift'], giftVariantId: null });
 eq('gift variant id is numeric only', normalizeSettings({ freeGiftVariantId: 'gid://shopify/ProductVariant/987' }).freeGiftVariantId, '987');
-eq('addGiftsToCart off by default', normalizeSettings({}).addGiftsToCart, false);
+eq('addGiftsToCart toggle removed (always auto-adds)', 'addGiftsToCart' in normalizeSettings({ addGiftsToCart: true }), false);
 eq('non-numeric price -> null', incentiveFor('abc', incOn), null);
 eq('undefined -> all false', normalizeSettings(undefined), base);
 eq('true booleans pass', normalizeSettings({ sort: true, notify: true, draft: true }), { ...base, sort: true, notify: true, draft: true });

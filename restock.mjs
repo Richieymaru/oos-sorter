@@ -139,7 +139,7 @@ async function resolveGiftVariants(names) {
  *  picked), so they can still be added to the cart. {} unless "Add gifts to cart"
  *  is on and some gift lacks a variant. */
 export async function giftVariantsFor(settings) {
-  if (!settings || !settings.addGiftsToCart) return {};
+  if (!settings) return {};
   const need = [];
   if (settings.freeGiftEnabled && settings.freeGiftProduct && !settings.freeGiftVariantId) need.push(settings.freeGiftProduct);
   if (settings.incentivesEnabled) {
@@ -151,13 +151,12 @@ export async function giftVariantsFor(settings) {
 }
 
 /** Extra cart-permalink segments that add the free gift(s) to the cart, so they
- *  check out free ($0 gift products, or a Buy-X-Get-Y automatic discount). Empty
- *  unless the owner turned "Add gifts to cart" on. Uses the PICKED variant id
- *  (stored in settings) or, for typed gifts, the one resolved by name in
- *  `giftVariants`. `incentives` = incentiveFor(...)'s result; `includeFreeGift`
- *  adds the nudge/resend free gift too (not on the first back-in-stock email). */
+ *  check out free ($0 gift products, or a Buy-X-Get-Y automatic discount). Uses
+ *  the PICKED variant id (stored in settings) or, for typed gifts, the one
+ *  resolved by name in `giftVariants`. `incentives` = incentiveFor(...)'s result;
+ *  `includeFreeGift` adds the nudge/resend free gift too (not on the first email). */
 function cartGiftSuffix(settings, incentives, includeFreeGift, giftVariants = {}) {
-  if (!settings || !settings.addGiftsToCart) return '';
+  if (!settings) return '';
   const pick = (name, storedId) => storedId || (name ? giftVariants[String(name).toLowerCase()] : '') || '';
   const ids = [];
   if (includeFreeGift && settings.freeGiftEnabled) {

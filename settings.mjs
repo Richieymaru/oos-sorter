@@ -106,10 +106,6 @@ export function normalizeSettings(obj) {
     freeGiftProduct: normalizeSingle(o.freeGiftProduct ?? o.freeGiftProducts, 'Free gels'),
     freeGiftImage: normalizeImageUrl(o.freeGiftImage),
     freeGiftVariantId: normalizeId(o.freeGiftVariantId),
-    // Add the gift(s) to the cart when "Add to cart" is clicked (so a Buy-X-Get-Y
-    // automatic discount can make them free). OFF by default — only turn on once the
-    // discount is set up, or shoppers would be charged for the "free" item.
-    addGiftsToCart: o.addGiftsToCart === true,
     // Price-tiered order perks shown in the restock emails, by the product's price
     // (in the store's own currency). OFF by default — it only writes the offer into
     // the email; the merchant must set up the real free-shipping rule + gift fulfilment.

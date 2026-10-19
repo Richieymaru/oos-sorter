@@ -114,7 +114,7 @@ export function settingsBody(settings) {
       <span class="track" aria-hidden="true"><span class="thumb"></span></span>
       <span class="rowtext">
         <span class="rowtitle">Offer a free gift in the follow-up nudge</span>
-        <span class="rowdesc">When a notified shopper still hasn’t clicked after the nudge delay, the follow-up email (and any Resend) offers this product free. ⚠️ Set up the actual free-gift fulfilment in Shopify first (a free Buy-X-Get-Y automatic discount or a free-gift app) — this only writes the offer into the email. Off by default.</span>
+        <span class="rowdesc">When a notified shopper still hasn’t clicked after the nudge delay, the follow-up email (and any Resend) offers this product free — and it’s <strong>automatically added to their cart</strong> on Add to cart. ⚠️ The gift product must be priced <strong>$0</strong> (free) OR covered by a Buy-X-Get-Y automatic discount, or shoppers get charged. Off by default.</span>
       </span>
     </label>
     <div style="height:10px"></div>
@@ -176,15 +176,7 @@ export function settingsBody(settings) {
     <input type="hidden" id="incentiveMajorGiftImage" value="${esc(settings.incentiveMajorGiftImage || '')}">
     <input type="hidden" id="incentiveMajorGiftVariantId" value="${esc(settings.incentiveMajorGiftVariantId || '')}">
     <div class="giftprev" id="prev_incentiveMajorGift" style="display:none;gap:8px;align-items:center;margin-top:9px;font-size:12.5px"></div>
-    <div style="height:14px"></div>
-    <label class="row" for="addGiftsToCart" style="margin-bottom:0">
-      <input type="checkbox" id="addGiftsToCart"${ck(settings.addGiftsToCart)} class="sw">
-      <span class="track" aria-hidden="true"><span class="thumb"></span></span>
-      <span class="rowtext">
-        <span class="rowtitle">Add the gift(s) to the cart on “Add to cart”</span>
-        <span class="rowdesc">When a shopper clicks <strong>Add to cart</strong>, also put the free gift(s) in their cart. ✅ If your gift products are priced <strong>$0</strong> (free), they stay free in the cart — no discount needed. ⚠️ If a gift has a real price, set up a Shopify <strong>Buy-X-Get-Y automatic discount</strong> first, or shoppers get CHARGED for it. Only works for gifts you <strong>picked from your store</strong> (so they have a variant). Off by default.</span>
-      </span>
-    </label>
+    <p class="rowdesc" style="margin:12px 2px 0">The gift(s) are automatically added to the shopper’s cart when they click <strong>Add to cart</strong>, so they check out together. ✅ If a gift product is priced <strong>$0</strong> it stays free — no discount needed. ⚠️ If a gift has a real price, set up a Shopify <strong>Buy-X-Get-Y automatic discount</strong> first, or shoppers get CHARGED for it. (Works best when you <strong>pick</strong> the gift from your store.)</p>
     <p class="rowdesc" style="margin:10px 2px 0">Perks apply when a product’s price is <strong>at or above</strong> a tier (e.g. “Free shipping from 200” = A$200 and up).</p>
   </div>
   <div class="card pad" style="margin-top:14px">
@@ -291,7 +283,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, freeGiftVariantId:document.getElementById('freeGiftVariantId').value, addGiftsToCart:document.getElementById('addGiftsToCart').checked, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMinorGiftVariantId:document.getElementById('incentiveMinorGiftVariantId').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value, incentiveMajorGiftVariantId:document.getElementById('incentiveMajorGiftVariantId').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, freeGiftVariantId:document.getElementById('freeGiftVariantId').value, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMinorGiftVariantId:document.getElementById('incentiveMinorGiftVariantId').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value, incentiveMajorGiftVariantId:document.getElementById('incentiveMajorGiftVariantId').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);
