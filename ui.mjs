@@ -8,19 +8,30 @@
  */
 
 /** Brand name shown across the UI + emails. Per-store: set APP_NAME in the env. */
-export const APP_NAME = process.env.APP_NAME || 'OOS Sorter';
+export const APP_NAME = process.env.APP_NAME || 'Topshelf';
 
 export const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/** The brand mark — an SVG "stack settling to the bottom" (the sort heritage),
- *  crisp at any size, with a live-pulse dot. Emerald fill works on both themes. */
-export const mark = `<svg class="mark" width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-  <rect width="26" height="26" rx="7" fill="var(--accent)"/>
-  <rect x="6" y="7" width="14" height="2.6" rx="1.3" fill="#fff"/>
-  <rect x="6" y="11.7" width="10" height="2.6" rx="1.3" fill="#fff" opacity=".7"/>
-  <rect x="6" y="16.4" width="6" height="2.6" rx="1.3" fill="#fff" opacity=".45"/>
-  <circle cx="19" cy="17.7" r="2.1" fill="#fff"/>
+/** The brand mark — the "restock cycle": a loop around a live core (sold-out
+ *  drops out, back-in-stock pulls shoppers back). Dark tactical neon app-icon,
+ *  self-contained (own gradients), crisp on both themes. */
+export const mark = `<svg class="mark" width="28" height="28" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+  <defs>
+    <radialGradient id="mkTile" cx="50%" cy="34%" r="80%"><stop offset="0" stop-color="#113a2b"/><stop offset=".52" stop-color="#0b2019"/><stop offset="1" stop-color="#05100c"/></radialGradient>
+    <linearGradient id="mkRim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3dffbd" stop-opacity=".8"/><stop offset="1" stop-color="#0a9a68" stop-opacity=".15"/></linearGradient>
+    <linearGradient id="mkNeon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#eafff5"/><stop offset=".55" stop-color="#27f5a8"/><stop offset="1" stop-color="#0cae77"/></linearGradient>
+    <radialGradient id="mkCore" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#f1fff8"/><stop offset=".38" stop-color="#2cffac"/><stop offset="1" stop-color="#07a56e"/></radialGradient>
+  </defs>
+  <rect x="2" y="2" width="44" height="44" rx="12" fill="url(#mkTile)"/>
+  <rect x="2.9" y="2.9" width="42.2" height="42.2" rx="11" fill="none" stroke="url(#mkRim)" stroke-width="1.1"/>
+  <g fill="none" stroke="url(#mkNeon)" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14.5 19.5 A11 11 0 0 1 32 15.5"/>
+    <polyline points="31.5,10.5 33,16 27.5,16.4"/>
+    <path d="M33.5 28.5 A11 11 0 0 1 16 32.5"/>
+    <polyline points="16.5,37.5 15,32 20.5,31.6"/>
+  </g>
+  <circle cx="24" cy="24" r="4.4" fill="url(#mkCore)"/>
 </svg>`;
 
 /** A status badge. tone: 'ok' | 'warn' | 'idle' | 'info' | 'danger'. */
