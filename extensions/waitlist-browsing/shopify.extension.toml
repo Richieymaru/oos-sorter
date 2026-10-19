@@ -4,6 +4,7 @@ api_version = "2026-07"
 type = "web_pixel_extension"
 name = "Waitlist browsing"
 handle = "waitlist-browsing"
+uid = "4451c41a-b40c-16e8-dcbb-6f6c8205a2ebfe964762"
 # Strict sandbox: standard events, consent-gated by Shopify.
 runtime_context = "strict"
 
@@ -15,6 +16,9 @@ runtime_context = "strict"
   preferences = false
   sale_of_data = "enabled"
 
-  # No merchant-configurable settings; the app endpoint is fixed.
+  # No merchant-configurable settings; the app endpoint is fixed. The settings
+  # schema still needs a `fields` object (empty is fine).
   [extensions.settings]
   type = "object"
+
+    [extensions.settings.fields]
