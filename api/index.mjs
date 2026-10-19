@@ -173,10 +173,15 @@ export default async function handler(req, res) {
       // Top 5 products per category, by collection membership.
       const categoryDefs = PRODUCT_CATEGORIES.map((c, i) => ({ label: c.label, ids: new Set(catIdSets[i] || []) }));
       const categories = topProductsByCategory(ordRes.orders, categoryDefs, 5);
-      // Attach a featured image to each shown product (for the category thumbnails).
-      const shownIds = [...new Set(categories.flatMap((c) => c.products.map((p) => p.id)))];
+      // Attach a featured image to each shown product (category lists + the
+      // overall Top products list) in one batched, cached image fetch.
+      const shownIds = [...new Set([
+        ...categories.flatMap((c) => c.products.map((p) => p.id)),
+        ...(analysis.products || []).map((p) => p.id),
+      ].filter(Boolean))];
       const imgs = shownIds.length ? await cachedProductImages(shownIds).catch(() => ({})) : {};
       for (const c of categories) for (const p of c.products) p.img = imgs[p.id] || null;
+      for (const p of (analysis.products || [])) p.img = imgs[p.id] || null;
       body = funnelsBody({ analysis, checkout, window: win, waitlist, categories, saleReminder });
     } catch (e) {
       console.error('funnels: fetch failed —', e.message);

@@ -147,10 +147,11 @@ export function topProducts(orders, limit = 8) {
   const map = new Map();
   for (const o of orders) {
     for (const li of o.items || []) {
-      if (!map.has(li.title)) map.set(li.title, { title: li.title, units: 0, orders: 0 });
+      if (!map.has(li.title)) map.set(li.title, { title: li.title, id: li.id || null, units: 0, orders: 0 });
       const p = map.get(li.title);
       p.units += li.qty;
       p.orders += 1;
+      if (!p.id && li.id) p.id = li.id; // remember a product id so we can show its image
     }
   }
   const rows = [...map.values()];

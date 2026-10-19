@@ -885,7 +885,7 @@ export function funnelsBody(view) {
     <div class="card-h"><h2>Top products</h2><span class="faint">units sold</span></div>
     <div class="pad" style="padding-top:8px">
       ${a.products && a.products.length ? a.products.map((p, i) => `
-        <div class="fn-prow"><span class="fn-rank">${i + 1}</span><span class="fn-pname">${esc(p.title)}</span><span class="fn-punits">${p.units} unit${p.units === 1 ? '' : 's'}</span></div>`).join('') : '<div class="empty">No line items yet.</div>'}
+        <div class="fn-prow"><span class="fn-rank">${i + 1}</span>${prodThumb(p.img)}<span class="fn-pname">${esc(p.title)}</span><span class="fn-punits">${p.units} unit${p.units === 1 ? '' : 's'}</span></div>`).join('') : '<div class="empty">No line items yet.</div>'}
     </div></div>`;
 
   // Full-tier only: traffic sources, referrers, landing pages.
@@ -966,21 +966,26 @@ export function funnelsBody(view) {
       var modal=document.getElementById('rcModal'), frame=document.getElementById('rcFrame');
       function openModal(html){ try{ frame.srcdoc=html; }catch(e){ try{ frame.contentDocument.open(); frame.contentDocument.write(html); frame.contentDocument.close(); }catch(e2){} } modal.style.display='block'; }
       var cl=document.getElementById('rcClose'); if(cl) cl.addEventListener('click', function(){ modal.style.display='none'; });
-      [].forEach.call(document.querySelectorAll('.rc-prev'), function(b){ b.addEventListener('click', function(){
-        if(msg) msg.textContent='Loading preview\\u2026';
-        post({action:'previewRecover', id:b.dataset.id}).then(function(res){ var j=res.j;
-          if(res.s===200 && j.ok){ openModal(j.html); if(msg) msg.textContent = j.recoverable ? '' : (j.emailDenied?'Preview only \\u2014 add read_customers + reinstall to send.':'This cart has no customer email.'); }
-          else { if(msg) msg.textContent = (res.s===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Could not load preview')); }
-        }).catch(function(){ if(msg) msg.textContent='Network error'; });
-      }); });
-      [].forEach.call(document.querySelectorAll('.rc-send'), function(b){ b.addEventListener('click', function(){
-        if(!embedded && !((pw&&pw.value)||'').trim()){ if(msg) msg.textContent='Enter the panel password'; if(pw) pw.focus(); return; }
-        var old=b.textContent; b.disabled=true; b.textContent='Sending\\u2026'; if(msg) msg.textContent='';
-        post({action:'recoverCart', id:b.dataset.id}).then(function(res){ var j=res.j;
-          if(res.s===200 && j.ok && j.sent){ b.textContent='Sent \\u2713'; if(!embedded){ try{ localStorage.setItem('oos_pw',((pw&&pw.value)||'').trim()); }catch(e){} } }
-          else { b.disabled=false; b.textContent=old; if(msg) msg.textContent = j.redacted ? (j.error||'Needs read_customers') : (res.s===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Could not send')); }
-        }).catch(function(){ b.disabled=false; b.textContent=old; if(msg) msg.textContent='Network error'; });
-      }); });
+      // Event delegation on document so clicks work regardless of DOM order
+      // (the cart buttons are rendered after this script).
+      document.addEventListener('click', function(e){
+        var b = (e.target && e.target.closest) ? (e.target.closest('.rc-prev') || e.target.closest('.rc-send')) : null;
+        if(!b) return;
+        if(b.classList.contains('rc-prev')){
+          if(msg) msg.textContent='Loading preview\\u2026';
+          post({action:'previewRecover', id:b.dataset.id}).then(function(res){ var j=res.j;
+            if(res.s===200 && j.ok){ openModal(j.html); if(msg) msg.textContent = j.recoverable ? '' : (j.emailDenied?'Preview only \\u2014 add read_customers + reinstall to send.':'This cart has no customer email.'); }
+            else { if(msg) msg.textContent = (res.s===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Could not load preview')); }
+          }).catch(function(){ if(msg) msg.textContent='Network error'; });
+        } else {
+          if(!embedded && !((pw&&pw.value)||'').trim()){ if(msg) msg.textContent='Enter the panel password'; if(pw) pw.focus(); return; }
+          var old=b.textContent; b.disabled=true; b.textContent='Sending\\u2026'; if(msg) msg.textContent='';
+          post({action:'recoverCart', id:b.dataset.id}).then(function(res){ var j=res.j;
+            if(res.s===200 && j.ok && j.sent){ b.textContent='Sent \\u2713'; if(!embedded){ try{ localStorage.setItem('oos_pw',((pw&&pw.value)||'').trim()); }catch(e){} } }
+            else { b.disabled=false; b.textContent=old; if(msg) msg.textContent = j.redacted ? (j.error||'Needs read_customers') : (res.s===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Could not send')); }
+          }).catch(function(){ b.disabled=false; b.textContent=old; if(msg) msg.textContent='Network error'; });
+        }
+      });
     })();</script>` : '';
 
   return head + baseNote + cards + catSection + recoverUI + `
