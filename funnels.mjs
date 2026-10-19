@@ -159,6 +159,34 @@ export function topProducts(orders, limit = 8) {
 }
 
 /**
+ * Top products within each category, by units sold. `categories` is
+ * [{ label, ids: Set<string> }] (collection membership, short product ids).
+ * Aggregates units per product id across orders, then ranks within each
+ * category. Pure — a product with no id (older orders) is simply skipped.
+ */
+export function topProductsByCategory(orders, categories, limit = 5) {
+  const byId = new Map();
+  for (const o of (orders || [])) {
+    for (const li of (o.items || [])) {
+      if (!li.id) continue;
+      if (!byId.has(li.id)) byId.set(li.id, { id: li.id, title: li.title || '(untitled)', units: 0, orders: 0 });
+      const p = byId.get(li.id);
+      p.units += Number(li.qty) || 0;
+      p.orders += 1;
+      if (li.title && (p.title === '(untitled)')) p.title = li.title;
+    }
+  }
+  const all = [...byId.values()];
+  return (categories || []).map((c) => ({
+    label: c.label,
+    products: all
+      .filter((p) => c.ids && c.ids.has(p.id))
+      .sort((a, b) => b.units - a.units || b.orders - a.orders)
+      .slice(0, limit),
+  }));
+}
+
+/**
  * The whole funnel analysis. `tier` comes from orders.mjs:
  *   'full' — traffic-source insights available
  *   'base' — revenue/channel/products only (protected data off)

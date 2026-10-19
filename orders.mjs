@@ -14,12 +14,13 @@
  */
 import { gql } from './shopify.mjs';
 
-// Safe with read_orders alone.
+// Safe with read_orders alone. product{id} is catalog data (not protected) —
+// used to bucket sold products by collection on the Funnels page.
 const BASE_FIELDS = `
   createdAt
   sourceName
   currentTotalPriceSet { shopMoney { amount currencyCode } }
-  lineItems(first: 5) { nodes { title quantity } }`;
+  lineItems(first: 10) { nodes { title quantity product { id } } }`;
 
 // Adds traffic-source / funnel data — needs protected customer data access.
 const JOURNEY_FIELDS = `
@@ -55,7 +56,11 @@ export function normalizeOrder(n) {
     source: n.sourceName || null,
     amount: Number(money.amount || 0),
     currency: money.currencyCode || null,
-    items: (n.lineItems?.nodes || []).map((li) => ({ title: li.title || '(untitled)', qty: Number(li.quantity || 0) })),
+    items: (n.lineItems?.nodes || []).map((li) => ({
+      title: li.title || '(untitled)',
+      qty: Number(li.quantity || 0),
+      id: li.product?.id ? String(li.product.id).split('/').pop() : null,
+    })),
     journey: j
       ? {
           source: j.firstVisit?.source || null,

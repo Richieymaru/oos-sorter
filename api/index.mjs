@@ -12,7 +12,8 @@ import {
 import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
 import { fetchOrders, fetchAbandonedCheckouts } from '../orders.mjs';
-import { analyzeFunnels, analyzeCheckout, checkoutInsights, resolveRange } from '../funnels.mjs';
+import { analyzeFunnels, analyzeCheckout, checkoutInsights, resolveRange, topProductsByCategory } from '../funnels.mjs';
+import { fetchCollectionProductIds } from '../catalog.mjs';
 import { ttlMemo } from '../cache.mjs';
 
 export const config = { maxDuration: 30 };
@@ -23,6 +24,16 @@ export const config = { maxDuration: 30 };
 const cachedHandles = ttlMemo(fetchAllCollectionHandles, 300000);
 const cachedOrders = ttlMemo(fetchOrders, 120000);
 const cachedAbandoned = ttlMemo(fetchAbandonedCheckouts, 120000);
+const cachedCollectionIds = ttlMemo(fetchCollectionProductIds, 600000);
+
+// Funnels "top products by category" — collection membership per category.
+// Store-specific (GBU); move to settings if this ever ships to another store.
+const PRODUCT_CATEGORIES = [
+  { label: 'Rifles', handle: 'gel-blaster-rifles' },
+  { label: 'Pistols', handle: 'gel-blaster-pistols' },
+  { label: 'Accessories', handle: 'accessories' },
+  { label: 'Parts', handle: 'all-gel-blaster-parts' },
+];
 
 const ICON_BOX = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M10 2.5 3.5 6v8l6.5 3.5L16.5 14V6L10 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
 const ICON_LAYERS = `<svg viewBox="0 0 20 20" width="18" height="18" fill="none"><path d="M10 3 3 6.5 10 10l7-3.5L10 3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3.5 10 10 13.3 16.5 10" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
@@ -117,18 +128,22 @@ export default async function handler(req, res) {
     let body;
     try {
       const win = resolveRange(param(req, 'range') || '30d');
-      const [ordRes, abRes, notifiedLog, settings] = await Promise.all([
+      const [ordRes, abRes, notifiedLog, settings, ...catIdSets] = await Promise.all([
         cachedOrders({ since: win.since, until: win.until }),
         cachedAbandoned({ since: win.since, until: win.until }).catch(() => ({ abandoned: [], count: 0 })),
         loadNotified().catch(() => []),
         loadSettings().catch(() => ({})),
+        ...PRODUCT_CATEGORIES.map((c) => cachedCollectionIds(c.handle).catch(() => [])),
       ]);
       const analysis = analyzeFunnels(ordRes.orders, { tier: ordRes.tier, since: win.since, until: win.until });
       const checkout = analyzeCheckout(ordRes.orders, abRes.abandoned, abRes.count, { currency: analysis.currency });
       checkout.insights = checkoutInsights(checkout);
       // Back-in-stock revenue card — the app's own value, from the notified log.
       const waitlist = settings.waitlist ? deriveStats(notifiedLog) : null;
-      body = funnelsBody({ analysis, checkout, window: win, waitlist });
+      // Top 5 products per category, by collection membership.
+      const categoryDefs = PRODUCT_CATEGORIES.map((c, i) => ({ label: c.label, ids: new Set(catIdSets[i] || []) }));
+      const categories = topProductsByCategory(ordRes.orders, categoryDefs, 5);
+      body = funnelsBody({ analysis, checkout, window: win, waitlist, categories });
     } catch (e) {
       console.error('funnels: fetch failed —', e.message);
       body = funnelsBody({ error: 'Order data is temporarily unavailable. If this persists, check that read_orders is granted on the store.' });

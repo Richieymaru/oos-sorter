@@ -879,7 +879,20 @@ export function funnelsBody(view) {
       </div></div>`;
   })() : '';
 
-  return head + baseNote + cards + `
+  // Top 5 products per category (collection membership) — four mini-lists.
+  const cats = (view && view.categories) || [];
+  const catSection = cats.some((c) => c.products && c.products.length) ? `<div class="card rise" style="margin-top:18px">
+    <div class="card-h"><h2>Top products by category</h2><span class="faint">units sold · ${esc(rangeText)}</span></div>
+    <div class="pad fn-cats">
+      ${cats.map((c) => `<div class="fn-cat">
+        <div class="fn-cat-h">${esc(c.label)}</div>
+        ${c.products && c.products.length
+          ? c.products.map((p, i) => `<div class="fn-prow"><span class="fn-rank">${i + 1}</span><span class="fn-pname">${esc(p.title)}</span><span class="fn-punits">${p.units}</span></div>`).join('')
+          : '<div class="faint" style="font-size:12.5px;padding:10px 0">No sales in this category yet.</div>'}
+      </div>`).join('')}
+    </div></div>` : '';
+
+  return head + baseNote + cards + catSection + `
     <div class="layout" style="margin-top:18px">
       <div class="grid rise" style="gap:16px">${insights}${checkoutCard}${cartsList}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
       <div class="grid rise" style="gap:16px;--d:120ms">${waitlistCard}${trendCard}${productsCard}</div>
@@ -925,6 +938,12 @@ export function funnelsBody(view) {
       .fn-conv{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:6px}
       .fn-conv .fn-funnel{flex:1;min-width:190px}
       .fn-conv-body{flex:1;min-width:190px}
+      .fn-cats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 26px;padding-top:14px}
+      .fn-cat-h{font-family:var(--display);font-weight:700;font-size:13px;letter-spacing:-.01em;color:var(--ink);padding-bottom:7px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+      .fn-cat .fn-prow{padding:7px 0;font-size:12.5px;gap:9px}
+      .fn-cat .fn-pname{font-weight:450}
+      @media (max-width:900px){.fn-cats{grid-template-columns:repeat(2,1fr)}}
+      @media (max-width:520px){.fn-cats{grid-template-columns:1fr}}
       .fn-prow{display:flex;align-items:center;gap:12px;padding:9px 0;font-size:13.5px}
       .fn-prow+.fn-prow{border-top:1px solid var(--line-2)}
       .fn-rank{flex:none;width:20px;height:20px;border-radius:6px;background:var(--hover);color:var(--muted);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}

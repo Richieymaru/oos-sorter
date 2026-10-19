@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Pure tests for funnel analytics. node funnels.test.mjs — no env, no network. */
-import { analyzeFunnels, channelLabel, hostOf, dailyTrend, topProducts, buildInsights, analyzeCheckout, checkoutInsights, buildTrend, resolveRange, RANGES } from './funnels.mjs';
+import { analyzeFunnels, channelLabel, hostOf, dailyTrend, topProducts, topProductsByCategory, buildInsights, analyzeCheckout, checkoutInsights, buildTrend, resolveRange, RANGES } from './funnels.mjs';
 import { normalizeOrder, normalizeAbandoned } from './orders.mjs';
 
 let failures = 0, checks = 0;
@@ -137,6 +137,25 @@ ok('~10 month window -> monthly unit', moT.unit === 'month' && moT.points.length
 console.log('\n--- analyzeCheckout carts (per-cart list) ---');
 ok('carts carry each abandoned cart with its items', co.carts.length === 2 && co.carts[0].items.length >= 1);
 ok('cart has value + date', co.carts.every((k) => k.amount != null && k.at));
+
+console.log('\n--- topProductsByCategory ---');
+const catOrders = [
+  { items: [{ id: '1', title: 'Rifle A', qty: 2 }, { id: '9', title: 'Shipping', qty: 1 }] },
+  { items: [{ id: '1', title: 'Rifle A', qty: 3 }, { id: '2', title: 'Rifle B', qty: 1 }] },
+  { items: [{ id: '3', title: 'Pistol A', qty: 5 }] },
+  { items: [{ id: 'x', title: 'No-id product', qty: 9 }] }, // no id -> skipped
+];
+const cats = topProductsByCategory(catOrders, [
+  { label: 'Rifles', ids: new Set(['1', '2']) },
+  { label: 'Pistols', ids: new Set(['3']) },
+  { label: 'Parts', ids: new Set(['7']) },
+], 5);
+ok('returns a bucket per category', cats.length === 3 && cats[0].label === 'Rifles');
+ok('ranks within category by units', cats[0].products[0].id === '1' && cats[0].products[0].units === 5 && cats[0].products[1].id === '2');
+ok('buckets by membership only', cats[1].products.length === 1 && cats[1].products[0].title === 'Pistol A');
+ok('empty category -> no products', cats[2].products.length === 0);
+ok('excludes products not in any category (Shipping)', !cats.some((c) => c.products.some((p) => p.id === '9')));
+ok('respects the limit', topProductsByCategory(catOrders, [{ label: 'R', ids: new Set(['1', '2']) }], 1)[0].products.length === 1);
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

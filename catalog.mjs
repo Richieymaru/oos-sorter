@@ -79,6 +79,32 @@ export async function fetchAllCollections() {
   return out;
 }
 
+/**
+ * The short (numeric) product ids that belong to a collection, by handle.
+ * Used to bucket sold products into categories on the Funnels page. Paginates
+ * ids only (cheap). Returns [] if the handle doesn't resolve.
+ */
+export async function fetchCollectionProductIds(handle) {
+  const d0 = await gql(
+    `query($q: String!){ collections(first: 1, query: $q){ nodes { id } } }`,
+    { q: `handle:'${handle}'` }
+  );
+  const col = d0.collections?.nodes?.[0];
+  if (!col) return [];
+  const ids = [];
+  let cursor = null;
+  do {
+    const d = await gql(
+      `query($id: ID!, $c: String){ collection(id: $id){ products(first: 250, after: $c){ pageInfo { hasNextPage endCursor } nodes { id } } } }`,
+      { id: col.id, c: cursor }
+    );
+    const conn = d.collection?.products;
+    for (const n of (conn?.nodes || [])) ids.push(String(n.id).split('/').pop());
+    cursor = conn?.pageInfo?.hasNextPage ? conn.pageInfo.endCursor : null;
+  } while (cursor);
+  return ids;
+}
+
 export async function findCollection(handle) {
   const d = await gql(
     `query Col($q: String!) {
