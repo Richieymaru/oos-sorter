@@ -80,14 +80,22 @@ let shopCtxCache = null;
  */
 export async function getShopContext() {
   if (shopCtxCache) return shopCtxCache;
+  let host = process.env.STORE_DOMAIN || SHOP;
+  let currency = 'USD';
   try {
     const d = await gql(`{ shop { currencyCode primaryDomain { host } } }`);
-    shopCtxCache = {
-      host: process.env.STORE_DOMAIN || d.shop?.primaryDomain?.host || SHOP,
-      currency: d.shop?.currencyCode || 'USD',
-    };
-  } catch {
-    shopCtxCache = { host: process.env.STORE_DOMAIN || SHOP, currency: 'USD' };
+    host = process.env.STORE_DOMAIN || d.shop?.primaryDomain?.host || SHOP;
+    currency = d.shop?.currencyCode || 'USD';
+  } catch { /* degrade to env — never break emails over a shop lookup */ }
+  // Brand logo for email headers (best-effort, isolated so a failure or an
+  // unsupported field never affects host/currency). EMAIL_LOGO_URL overrides.
+  let brandLogo = process.env.EMAIL_LOGO_URL || null;
+  if (!brandLogo) {
+    try {
+      const b = await gql(`{ shop { brand { logo { image { url } } } } }`);
+      brandLogo = b.shop?.brand?.logo?.image?.url || null;
+    } catch { /* brand field unavailable in this API version — fall back to text */ }
   }
+  shopCtxCache = { host, currency, brandLogo };
   return shopCtxCache;
 }

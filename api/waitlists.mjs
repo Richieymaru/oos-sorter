@@ -194,7 +194,7 @@ export default async function handler(req, res) {
     if (r.o) return chip('#e7f6ee', '#0e7a4b', 'Ordered' + (r.oa ? ' · ' + esc(money(r.oc, r.oa)) : ''));
     if (r.u) return chip('#eef1f6', '#8b95a3', 'Unsubscribed');
     if (r.c) return chip('#e7f6ee', '#0e7a4b', 'Clicked');
-    if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged');
+    if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged' + (r.ns > 1 ? ` &times;${r.ns}` : ''));
     return chip('#eef1f6', '#5f6875', 'Notified');
   };
   const inStockNow = (r) => {
@@ -310,12 +310,12 @@ export default async function handler(req, res) {
     <span id="msgAll" class="faint" style="font-size:12.5px"></span>
   </div>
   ${cards}`}
-  ${notifiedView && (settings.freeGiftEnabled || settings.incentivesEnabled)
-    ? `<div class="callout" style="margin:-4px 0 16px"><div class="ct" style="font-size:12.5px">Every <strong>Resend</strong> (and the automatic 2-day nudge) includes ${
-        settings.freeGiftEnabled ? 'your <strong>free-gift offer</strong>' : ''
-      }${settings.freeGiftEnabled && settings.incentivesEnabled ? ' and ' : ''}${
-        settings.incentivesEnabled ? 'your <strong>order perks</strong> (free shipping / gifts)' : ''
-      }. <a href="/preview" style="color:var(--accent-ink);font-weight:600">Preview the emails &rarr;</a></div></div>`
+  ${notifiedView
+    ? `<div class="callout" style="margin:-4px 0 16px"><div class="ct" style="font-size:12.5px">Shoppers who don’t click or order get up to <strong>3 automatic follow-ups</strong> (after ${settings.nudgeDays || 2} days, then +2, then +7) — then it stops. Anyone who <strong>orders or clicks</strong> is dropped automatically.${
+        settings.freeGiftEnabled || settings.incentivesEnabled
+          ? ` Follow-ups and Resends include ${settings.freeGiftEnabled ? 'your <strong>free-gift offer</strong>' : ''}${settings.freeGiftEnabled && settings.incentivesEnabled ? ' and ' : ''}${settings.incentivesEnabled ? 'your <strong>order perks</strong>' : ''}.`
+          : ''
+      } <a href="/preview" style="color:var(--accent-ink);font-weight:600">Preview the emails &rarr;</a></div></div>`
     : ''}
   ${notifiedView ? `<div class="card pad">
     <table>

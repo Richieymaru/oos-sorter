@@ -157,6 +157,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
       compareAtText,
       incentives: incentiveFor(variantNode?.price, settings),
       giftImages,
+      brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
       clickCartUrl: trackUrl(base, short, sub.email, relCart),
       clickProductUrl: trackUrl(base, short, sub.email, relProduct),
     };
@@ -434,6 +435,9 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
+  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct
+    ? { products: [settings.freeGiftProduct] }
+    : null;
   const inStock = inStockVariantInfos(sp, ctx); // [{id,title,priceText,price}]
   const want = String(offerVariantId || '').replace(/\D/g, '');
   const offered = inStock.find((v) => String(v.id) === want) || null;
@@ -456,6 +460,8 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
       priceText: offered.priceText,
       incentives: incentiveFor(offered.price, settings),
       giftImages,
+      freeGift,
+      brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
       clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1`),
       clickProductUrl: trackUrl(base, short, sub.email, sp.handle ? `/products/${sp.handle}` : '/'),
     };
@@ -513,6 +519,7 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
     incentives: incentiveFor(vNode?.price, settings),
     giftImages,
     freeGift,
+    brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
     clickCartUrl: trackUrl(base, short, email, relCart),
     clickProductUrl: trackUrl(base, short, email, relProduct),
   };
@@ -571,6 +578,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
       compareAtText,
       incentives: incentiveFor(vNode?.price, settings),
       giftImages,
+      brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
       clickCartUrl: trackUrl(base, row.p, row.e, relCart),
       clickProductUrl: trackUrl(base, row.p, row.e, relProduct),
     };

@@ -402,7 +402,9 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
       <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6eaf0;border-radius:18px;overflow:hidden">
         <tr><td style="height:4px;background:${ACCENT};font-size:0;line-height:0">&nbsp;</td></tr>
         <tr><td style="padding:16px 28px;border-bottom:1px solid #f1f3f7">
-          <span style="font-size:15px;font-weight:800;color:#0f1729;letter-spacing:-.01em">${esc(FROM_NAME)}</span>
+          ${product.brandLogo
+            ? `<img src="${esc(product.brandLogo)}" alt="${esc(FROM_NAME)}" height="30" style="height:30px;max-height:34px;width:auto;max-width:200px;display:block;border:0">`
+            : `<span style="font-size:15px;font-weight:800;color:#0f1729;letter-spacing:-.01em">${esc(FROM_NAME)}</span>`}
         </td></tr>
         ${heroImage}
         <tr><td style="padding:24px 28px 4px">

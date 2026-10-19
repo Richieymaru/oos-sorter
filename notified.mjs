@@ -17,6 +17,20 @@ const CAP = 1000;           // max rows kept (also trimmed by byte size below)
 const LIMIT = 131072;       // Shopify metafield JSON value cap, in bytes
 const DAY = 86400000;
 
+// Follow-up nudge cadence: up to 3 nudges to a notified-but-not-converted shopper,
+// then STOP. Gaps are measured since the LAST email we sent them — the original
+// back-in-stock notification for the 1st nudge, the previous nudge after that.
+// gaps[0] is the configurable first delay (settings.nudgeDays); then +2 then +7 days.
+export const MAX_NUDGES = 3;
+export function nudgeGaps(firstGapDays) {
+  return [Number(firstGapDays) || 2, 2, 7];
+}
+/** How many nudges a row has had (migrates old single-nudge rows: n set => 1). */
+export function nudgeStage(row) {
+  if (row && row.ns != null) return row.ns;
+  return row && row.n ? 1 : 0;
+}
+
 const nid = (id) => String(id ?? '').replace(/\D/g, '');
 const lc = (e) => String(e ?? '').trim().toLowerCase();
 
@@ -30,9 +44,10 @@ export function notifiedRow({ email, productId, title, variantId = null, variant
     vt: variantTitle ? String(variantTitle) : null,
     ts: ts || new Date().toISOString(),
     c: null,   // clickedAt
-    n: null,   // nudgedAt (the one manual/auto follow-up)
+    n: null,   // last-nudge timestamp
+    ns: 0,     // nudge stage (how many follow-ups sent, 0..MAX_NUDGES)
     u: false,  // unsubscribed
-    o: null,   // orderedAt — reserved for Phase 2
+    o: null,   // orderedAt
   };
 }
 
@@ -91,18 +106,16 @@ export function matchOrders(log, orders) {
   return { log: list, matched };
 }
 
-/** Flag EVERY un-nudged row for (email, product) — the nudge is one-per-shopper-
- *  per-product, so all rows (e.g. two variants) are consumed together; otherwise
- *  an older row keeps n==null and re-qualifies on every run (indefinite re-send). */
+/** Advance the nudge stage for ALL rows of (email, product) — records this send
+ *  (n = whenISO) and bumps ns to the next stage, so the cadence moves forward and
+ *  every row (e.g. two variants) stays in sync. One call per nudge sent. */
 export function markNudged(log, email, productId, whenISO) {
   const e = lc(email), p = nid(productId);
   const list = Array.isArray(log) ? log : [];
-  let changed = false;
-  const next = list.map((x) => {
-    if (x.e === e && x.p === p && !x.n) { changed = true; return { ...x, n: whenISO }; }
-    return x;
-  });
-  return changed ? next : list;
+  const rows = list.filter((x) => x.e === e && x.p === p);
+  if (!rows.length) return list;
+  const nextStage = Math.max(...rows.map((x) => nudgeStage(x))) + 1;
+  return list.map((x) => (x.e === e && x.p === p ? { ...x, n: whenISO, ns: nextStage } : x));
 }
 
 /** Flag every row for (email, product) unsubscribed (nudge suppression). */
@@ -117,22 +130,29 @@ export function markUnsubscribed(log, email, productId) {
   return changed ? next : list;
 }
 
-/** Rows due for the one nudge, at most ONE per (email, product) — the newest
- *  qualifying row wins (list is newest-first). Deduping here guarantees a shopper
- *  waiting on several variants of one product gets a single nudge per run.
+/** Rows due for a follow-up nudge, at most ONE per (email, product) — the newest
+ *  row per shopper+product is the one that counts (list is newest-first). A row is
+ *  due when: never clicked, never ordered, not unsubscribed, still has nudges left
+ *  (stage < MAX_NUDGES), the product is in stock, and enough time has passed since
+ *  the last email we sent them (gaps[stage] days). `firstGapDays` is the delay
+ *  before the FIRST nudge (settings.nudgeDays); later gaps are fixed (+2, +7).
  *  `isInStockByProduct(numericId) -> boolean`. */
-export function selectNudges(log, nowISO, days, isInStockByProduct) {
-  const cutoff = new Date(nowISO).getTime() - days * DAY;
+export function selectNudges(log, nowISO, firstGapDays, isInStockByProduct) {
+  const gaps = nudgeGaps(firstGapDays);
+  const now = new Date(nowISO).getTime();
   const list = Array.isArray(log) ? log : [];
   const seen = new Set();
   const out = [];
   for (const x of list) {
-    if (!(x.c == null && x.o == null && x.n == null && x.u !== true)) continue;
-    if (new Date(x.ts).getTime() > cutoff) continue;
-    if (isInStockByProduct(x.p) !== true) continue;
     const key = `${x.e}\u0000${x.p}`;
     if (seen.has(key)) continue;
-    seen.add(key);
+    seen.add(key); // lock onto the NEWEST row per (email, product)
+    if (!(x.c == null && x.o == null && x.u !== true)) continue; // clicked / ordered / unsubscribed => never
+    const stage = nudgeStage(x);
+    if (stage >= MAX_NUDGES) continue; // finished the sequence — stop
+    const last = stage === 0 ? x.ts : (x.n || x.ts); // since notify for #1, since last nudge after
+    if (now - new Date(last).getTime() < gaps[stage] * DAY) continue; // not due yet
+    if (isInStockByProduct(x.p) !== true) continue;
     out.push(x);
   }
   return out;

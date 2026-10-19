@@ -16,7 +16,11 @@ function previewSamples(settings, ctx, giftImages = {}) {
   const cur = ctx.currency || 'AUD';
   const price = (n) => formatMoney(String(n), cur);
   const unsub = '#';
-  const base = { handle: 'sample-product', image: null, storeHost: host, giftImages };
+  const sampleImg = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="360"><rect width="600" height="360" fill="#eef1f6"/><rect x="210" y="96" width="180" height="150" rx="14" fill="#dfe4ec"/><rect x="210" y="96" width="180" height="46" rx="14" fill="#cdd4df"/><text x="300" y="286" font-family="Arial,Helvetica,sans-serif" font-size="18" fill="#9aa3b2" text-anchor="middle">Your product photo appears here</text></svg>`
+  );
+  const brandLogo = settings.emailLogoUrl || ctx.brandLogo || null;
+  const base = { handle: 'sample-product', image: sampleImg, storeHost: host, giftImages, brandLogo };
   const freeGift = settings.freeGiftEnabled && settings.freeGiftProduct
     ? { products: [settings.freeGiftProduct] }
     : null;
@@ -36,7 +40,7 @@ function previewSamples(settings, ctx, giftImages = {}) {
     { freeGift }
   );
   const s4 = buildAltVariant(
-    { ...base, title: 'Hydro Gel Balls — 10,000pcs', variantId: '502', variantTitle: 'Green', priceText: price(149.99), incentives: incAt(149.99), clickCartUrl: `https://${host}/cart/502:1` },
+    { ...base, title: 'Hydro Gel Balls — 10,000pcs', variantId: '502', variantTitle: 'Green', priceText: price(149.99), incentives: incAt(149.99), freeGift, clickCartUrl: `https://${host}/cart/502:1` },
     unsub
   );
   // Manual "Resend" (and the 2-day nudge) re-use the back-in-stock layout but also
@@ -49,7 +53,7 @@ function previewSamples(settings, ctx, giftImages = {}) {
   return [
     { label: 'Back in stock', note: 'Sent automatically when a shopper’s exact option returns (also the manual “Send now”).', html: s1.html, subject: s1.subject },
     { label: 'Back in stock — with order perks', note: settings.incentivesEnabled ? 'A higher-priced product shows the perks box, based on your thresholds.' : 'Turn on “Order perks by price” in Settings to show the free-shipping / gift box here.', html: s2.html, subject: s2.subject },
-    { label: `Follow-up nudge (after ${settings.nudgeDays || 2} days)`, note: freeGift ? 'Includes your free-gift offer plus any in-stock alternatives.' : 'Turn on the free-gift offer to add a gift box. It also lists in-stock alternatives when available.', html: s3.html, subject: s3.subject },
+    { label: `Follow-up nudge (auto: after ${settings.nudgeDays || 2} days, then +2, then +7 — up to 3, then stops)`, note: freeGift ? 'Sent automatically to shoppers who didn’t click or order. Includes your free-gift offer.' : 'Sent automatically to shoppers who didn’t click or order. Turn on the free-gift offer to add a gift box.', html: s3.html, subject: s3.subject },
     { label: 'A different option is in stock', note: 'What the manual “Offer” buttons on the Waitlists page send — you choose which in-stock option to offer the shoppers still waiting. Manual only.', html: s4.html, subject: s4.subject },
     { label: 'Manual “Resend” (re-engagement)', note: freeGift ? 'What the “Resend” button on Notified sends — includes your free-gift offer to win back shoppers who didn’t convert.' : 'What the “Resend” button on Notified sends. Turn on the free-gift offer to add a gift box here.', html: s5.html, subject: s5.subject },
   ];

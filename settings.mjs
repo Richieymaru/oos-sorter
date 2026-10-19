@@ -91,6 +91,9 @@ export function normalizeSettings(obj) {
     monitorSlackWebhook: normalizeSlackWebhook(o.monitorSlackWebhook),
     sheetWebhook: normalizeSheetWebhook(o.sheetWebhook),
     nudgeDays: clampInt(o.nudgeDays, 2, 1, 14),
+    // Optional logo (https) shown at the top of the shopper emails instead of the
+    // store name text. Blank => auto-use the shop's brand logo, else the name.
+    emailLogoUrl: normalizeImageUrl(o.emailLogoUrl),
     // 2-day nudge / resend free-gift offer. OFF by default so no "free product"
     // promise goes out until the owner sets up fulfilment and turns it on. ONE
     // product only (a single gift), defaulting to "Free gels". No discount code.

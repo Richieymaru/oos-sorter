@@ -3,6 +3,7 @@
 import {
   notifiedRow, appendNotified, trimToFit, markClicked, markNudged,
   markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId, matchOrders,
+  nudgeStage, MAX_NUDGES,
 } from './notified.mjs';
 
 let failures = 0, checks = 0;
@@ -15,7 +16,7 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 console.log('--- notifiedRow ---');
 const row = notifiedRow({ email: 'A@X.com', productId: 'gid://shopify/Product/55', title: 'Knife', variantId: 'gid://shopify/ProductVariant/99', variantTitle: 'Black', ts: 't1' });
-ok('lowercases email + numeric ids', eq(row, { e: 'a@x.com', p: '55', t: 'Knife', v: '99', vt: 'Black', ts: 't1', c: null, n: null, u: false, o: null }));
+ok('lowercases email + numeric ids', eq(row, { e: 'a@x.com', p: '55', t: 'Knife', v: '99', vt: 'Black', ts: 't1', c: null, n: null, ns: 0, u: false, o: null }));
 ok('null variant when absent', notifiedRow({ email: 'a@x.com', productId: '55', title: 'X', ts: 't' }).v === null);
 
 console.log('\n--- appendNotified ---');
@@ -47,29 +48,43 @@ ok('marks the newest matching row', clicked[0].c === 'now' && clicked[1].c === n
 ok('no-op if already clicked', markClicked(clicked, 'a@x.com', '55', 'later')[0].c === 'now');
 ok('no-op when no match', markClicked(base, 'z@x.com', '55', 'now') === base);
 let nudged = markNudged(base, 'a@x.com', '55', 'now');
-ok('flags ALL matching rows nudged (no re-fire on older rows)', nudged[0].n === 'now' && nudged[1].n === 'now');
+ok('advances ALL matching rows to stage 1', nudged[0].n === 'now' && nudged[1].n === 'now' && nudged[0].ns === 1 && nudged[1].ns === 1);
+ok('a second nudge advances to stage 2', markNudged(nudged, 'a@x.com', '55', 'later')[0].ns === 2);
 ok('markNudged no-op when none match', markNudged(base, 'z@x.com', '55', 'now') === base);
+
+console.log('\n--- nudgeStage (migration of old single-nudge rows) ---');
+ok('new row is stage 0', nudgeStage(notifiedRow({ email: 'a@x.com', productId: '1', title: 'X' })) === 0);
+ok('legacy row with n set (no ns) counts as stage 1', nudgeStage({ n: 'x' }) === 1);
+ok('explicit ns wins', nudgeStage({ n: 'x', ns: 2 }) === 2);
 
 console.log('\n--- markUnsubscribed ---');
 const uns = markUnsubscribed(base, 'a@x.com', '55');
 ok('flags all matching rows', uns[0].u === true && uns[1].u === true);
 ok('no-op when none match', markUnsubscribed(base, 'z@x.com', '55') === base);
 
-console.log('\n--- selectNudges ---');
+console.log('\n--- selectNudges (multi-stage cadence) ---');
 const NOW = '2026-09-25T00:00:00Z';
 const mk = (over) => ({ ...notifiedRow({ email: 'a@x.com', productId: '7', title: 'X', ts: '2026-09-20T00:00:00Z' }), ...over });
-const pool = [
-  mk({ ts: '2026-09-20T00:00:00Z' }),                 // due (5 days old, in stock)
-  mk({ ts: '2026-09-24T18:00:00Z' }),                 // too recent
-  mk({ ts: '2026-09-20T00:00:00Z', c: 'x' }),         // clicked
-  mk({ ts: '2026-09-20T00:00:00Z', n: 'x' }),         // already nudged
-  mk({ ts: '2026-09-20T00:00:00Z', u: true }),        // unsubscribed
-  mk({ ts: '2026-09-20T00:00:00Z', p: '8' }),         // out of stock
-];
-const due = selectNudges(pool, NOW, 2, (p) => p === '7');
-ok('exactly the one due row', due.length === 1 && due[0].ts === '2026-09-20T00:00:00Z' && due[0].p === '7');
-ok('respects the wait window', selectNudges([mk({ ts: '2026-09-24T18:00:00Z' })], NOW, 2, () => true).length === 0);
+// Stage 0, 5 days since notify (gap[0]=2) => the FIRST nudge is due.
+const due = selectNudges([mk({})], NOW, 2, (p) => p === '7');
+ok('first nudge due after the first-gap window', due.length === 1 && nudgeStage(due[0]) === 0);
+ok('respects the first-gap wait window', selectNudges([mk({ ts: '2026-09-24T18:00:00Z' })], NOW, 2, () => true).length === 0);
+ok('clicked is never nudged', selectNudges([mk({ c: 'x' })], NOW, 2, () => true).length === 0);
+ok('ordered is never nudged', selectNudges([mk({ o: 'x' })], NOW, 2, () => true).length === 0);
+ok('unsubscribed is never nudged', selectNudges([mk({ u: true })], NOW, 2, () => true).length === 0);
+ok('out of stock is skipped', selectNudges([mk({})], NOW, 2, () => false).length === 0);
 ok('non-array is safe', selectNudges(null, NOW, 2, () => true).length === 0);
+// Stage 1 (one nudge already), last nudge 1 day ago, gap[1]=2 => NOT yet due.
+ok('second nudge waits the +2 day gap', selectNudges([mk({ ns: 1, n: '2026-09-24T00:00:00Z' })], NOW, 2, () => true).length === 0);
+// Stage 1, last nudge 3 days ago => second nudge due.
+ok('second nudge due after +2 days', selectNudges([mk({ ns: 1, n: '2026-09-22T00:00:00Z' })], NOW, 2, () => true).length === 1);
+// Stage 2, last nudge 3 days ago, gap[2]=7 => NOT due; 8 days ago => due.
+ok('third nudge waits the +7 day gap', selectNudges([mk({ ns: 2, n: '2026-09-22T00:00:00Z' })], NOW, 2, () => true).length === 0);
+ok('third nudge due after +7 days', selectNudges([mk({ ns: 2, n: '2026-09-15T00:00:00Z' })], NOW, 2, () => true).length === 1);
+// Stage 3 (MAX reached) => STOP, never again.
+ok('stops after MAX_NUDGES', MAX_NUDGES === 3 && selectNudges([mk({ ns: 3, n: '2026-09-01T00:00:00Z' })], NOW, 2, () => true).length === 0);
+// Legacy already-nudged row (n set, no ns) migrates to stage 1 and waits +2.
+ok('legacy nudged row continues the cadence (not re-fired at stage 0)', (() => { const r = mk({ n: '2026-09-24T00:00:00Z' }); delete r.ns; return selectNudges([r], NOW, 2, () => true).length === 0; })());
 const twoVariants = [
   mk({ ts: '2026-09-20T00:00:00Z', v: '1' }),
   mk({ ts: '2026-09-19T00:00:00Z', v: '2' }),
