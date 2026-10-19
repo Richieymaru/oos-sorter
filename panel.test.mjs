@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { normalizeSettings, normalizeEmails, normalizeSlackWebhook, normalizeSheetWebhook, incentiveFor } from './settings.mjs';
+import { normalizeSettings, normalizeEmails, normalizeSlackWebhook, normalizeSheetWebhook, incentiveFor, pickFreeGift } from './settings.mjs';
 import { isAuthorized, settingsBody } from './panel.mjs';
 
 let failures = 0, checks = 0;
@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', freeGiftGasProduct: '', freeGiftGasImage: '', freeGiftGasVariantId: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '' };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProduct, 'Free gels');
@@ -38,6 +38,16 @@ eq('tier2 (500) -> free shipping + minor gift + its variant', incentiveFor(500, 
 eq('tier3 (1000) -> free shipping + major gift + its variant', incentiveFor(1500, incOn), { freeShipping: true, gift: ['Blaster'], giftVariantId: '222' });
 eq('empty minor gift falls back to a free gift label', incentiveFor(500, normalizeSettings({ incentivesEnabled: true })), { freeShipping: true, gift: ['a free gift'], giftVariantId: null });
 eq('gift variant id is numeric only', normalizeSettings({ freeGiftVariantId: 'gid://shopify/ProductVariant/987' }).freeGiftVariantId, '987');
+// gas/custom free gift (product-aware pick)
+eq('gas gift defaults empty', normalizeSettings({}).freeGiftGasProduct, '');
+const gs = { freeGiftEnabled: true, freeGiftProduct: 'Free gels', freeGiftGasProduct: 'Gas gels' };
+eq('auto: non-gas gets default gift', pickFreeGift(gs, { gasCustom: false }), 'Free gels');
+eq('auto: gas/custom gets the gas gift', pickFreeGift(gs, { gasCustom: true }), 'Gas gels');
+eq('gas gift falls back to default when unset', pickFreeGift({ freeGiftEnabled: true, freeGiftProduct: 'Free gels', freeGiftGasProduct: '' }, { gasCustom: true }), 'Free gels');
+eq('override none -> no gift', pickFreeGift(gs, { gasCustom: true, override: 'none' }), '');
+eq('override gas -> gas gift even for non-gas', pickFreeGift(gs, { gasCustom: false, override: 'gas' }), 'Gas gels');
+eq('override default -> default even for gas', pickFreeGift(gs, { gasCustom: true, override: 'default' }), 'Free gels');
+eq('disabled gift -> empty', pickFreeGift({ freeGiftEnabled: false, freeGiftProduct: 'x' }, {}), '');
 eq('addGiftsToCart toggle removed (always auto-adds)', 'addGiftsToCart' in normalizeSettings({ addGiftsToCart: true }), false);
 eq('non-numeric price -> null', incentiveFor('abc', incOn), null);
 eq('undefined -> all false', normalizeSettings(undefined), base);
@@ -104,10 +114,10 @@ eq('alt-variant is manual-only (no toggle, points to Waitlists)', !/id="offerAlt
 eq('renders the incentives toggle + thresholds wired to the body', /id="incentivesEnabled"/.test(sb) && /id="incentiveTier1"/.test(sb) && sb.includes('incentivesEnabled:') && sb.includes('incentiveTier1:'), true);
 eq('renders single minor/major gift fields', /id="incentiveMinorGift"/.test(sb) && /id="incentiveMajorGift"/.test(sb) && sb.includes('incentiveMinorGift:'), true);
 eq('free gift is a single input, no discount code field', /id="freeGiftProduct"/.test(sb) && !/id="freeGiftCode"/.test(sb) && !/id="freeGiftProducts"/.test(sb), true);
-eq('each gift field has a Choose-product picker button', (sb.match(/class="ghost pickgift"/g) || []).length === 3 && sb.includes('data-target="freeGiftProduct"') && sb.includes('data-target="incentiveMinorGift"') && sb.includes('data-target="incentiveMajorGift"'), true);
+eq('each gift field has a Choose-product picker button', (sb.match(/class="ghost pickgift"/g) || []).length === 4 && sb.includes('data-target="freeGiftProduct"') && sb.includes('data-target="freeGiftGasProduct"') && sb.includes('data-target="incentiveMinorGift"') && sb.includes('data-target="incentiveMajorGift"'), true);
 eq('picker wired to the Shopify resource picker', sb.includes('shopify.resourcePicker'), true);
 eq('stores the picked product image (hidden inputs)', /id="freeGiftImage"/.test(sb) && /id="incentiveMinorGiftImage"/.test(sb) && /id="incentiveMajorGiftImage"/.test(sb), true);
-eq('renders a gift preview container per field', (sb.match(/class="giftprev"/g) || []).length === 3, true);
+eq('renders a gift preview container per field', (sb.match(/class="giftprev"/g) || []).length === 4, true);
 eq('only valid https image urls are stored', normalizeSettings({ freeGiftImage: 'javascript:alert(1)' }).freeGiftImage === '' && normalizeSettings({ freeGiftImage: 'https://cdn.shopify.com/x.png' }).freeGiftImage === 'https://cdn.shopify.com/x.png', true);
 eq('prefills a saved gift image into the hidden input', settingsBody({ freeGiftImage: 'https://cdn.shopify.com/gels.png' }).includes('https://cdn.shopify.com/gels.png'), true);
 eq('prefills saved thresholds', settingsBody({ incentiveTier1: 250 }).includes('value="250"'), true);

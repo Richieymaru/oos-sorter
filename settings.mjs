@@ -106,6 +106,11 @@ export function normalizeSettings(obj) {
     freeGiftProduct: normalizeSingle(o.freeGiftProduct ?? o.freeGiftProducts, 'Free gels'),
     freeGiftImage: normalizeImageUrl(o.freeGiftImage),
     freeGiftVariantId: normalizeId(o.freeGiftVariantId),
+    // A DIFFERENT free gift for gas & custom blasters (they need different gels).
+    // Empty => gas/custom products fall back to the default free gift above.
+    freeGiftGasProduct: normalizeSingle(o.freeGiftGasProduct, ''),
+    freeGiftGasImage: normalizeImageUrl(o.freeGiftGasImage),
+    freeGiftGasVariantId: normalizeId(o.freeGiftGasVariantId),
     // Price-tiered order perks shown in the restock emails, by the product's price
     // (in the store's own currency). OFF by default — it only writes the offer into
     // the email; the merchant must set up the real free-shipping rule + gift fulfilment.
@@ -146,6 +151,22 @@ export function incentiveFor(price, settings) {
     if (p >= t.min) return { freeShipping: true, gift: t.gift, giftVariantId: t.giftVariantId };
   }
   return null;
+}
+
+/**
+ * Pure: the free-gift product NAME to use for one email, or '' for none.
+ * `gasCustom` = the emailed product is a gas/custom blaster. `override` lets the
+ * owner switch it per send from the preview: 'auto' (default — gas/custom gets
+ * the gas gift, else the default), 'default', 'gas', or 'none'. Falls back to the
+ * default gift when the gas gift isn't configured.
+ */
+export function pickFreeGift(settings, { gasCustom = false, override = 'auto' } = {}) {
+  const s = settings || {};
+  if (!s.freeGiftEnabled) return '';
+  if (override === 'none') return '';
+  if (override === 'default') return s.freeGiftProduct || '';
+  if (override === 'gas') return s.freeGiftGasProduct || s.freeGiftProduct || '';
+  return (gasCustom && s.freeGiftGasProduct) ? s.freeGiftGasProduct : (s.freeGiftProduct || '');
 }
 
 export async function loadSettings() {

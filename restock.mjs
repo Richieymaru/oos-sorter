@@ -14,13 +14,39 @@
  * product-level behaviour.
  */
 import { gql, shortId, getShopContext } from './shopify.mjs';
-import { fetchProductsByIds } from './catalog.mjs';
+import { fetchProductsByIds, fetchCollectionProductIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
 import { sendBackInStock, sendSoldOutAlert, sendNudge, sendAltVariant, formatMoney, buildBackInStock, buildAltVariant } from './notify.mjs';
 import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
-import { loadSettings, incentiveFor } from './settings.mjs';
+import { loadSettings, incentiveFor, pickFreeGift } from './settings.mjs';
+
+// Gas & custom blasters get a DIFFERENT free gift (different gels). These are the
+// collections whose products count as gas/custom (GBU). Membership is cached.
+const GAS_CUSTOM_HANDLES = ['gas-powered-pistols', 'gas-rifles', 'custom-gel-blasters', 'custom-pistol'];
+let _gasIds = null, _gasAt = 0;
+async function gasCustomIds() {
+  if (_gasIds && Date.now() - _gasAt < 600000) return _gasIds;
+  const sets = await Promise.all(GAS_CUSTOM_HANDLES.map((h) => fetchCollectionProductIds(h).catch(() => [])));
+  _gasIds = new Set(sets.flat());
+  _gasAt = Date.now();
+  return _gasIds;
+}
+/** Is this product (short id) a gas or custom blaster? Best-effort (false on error). */
+export async function isGasCustom(productShortId) {
+  const id = String(productShortId || '').replace(/\D/g, '');
+  if (!id) return false;
+  try { return (await gasCustomIds()).has(id); } catch { return false; }
+}
+/** The free gift for one email: resolves gas/custom vs default (unless `override`
+ *  forces a choice from the preview), returning the chosen name + freeGift payload. */
+async function freeGiftFor(settings, productShortId, override = 'auto') {
+  if (!settings || !settings.freeGiftEnabled) return { giftName: '', freeGift: null };
+  const gasCustom = (!override || override === 'auto') ? await isGasCustom(productShortId) : false;
+  const giftName = pickFreeGift(settings, { gasCustom, override });
+  return { giftName, freeGift: giftName ? { products: [giftName] } : null };
+}
 
 /** Bump the cumulative "notified so far" counters after a real send. Best-effort:
  *  a failure here must never break the actual emailing. */
@@ -100,7 +126,10 @@ export async function giftImagesFor(settings) {
     if (image) map[name.toLowerCase()] = image;
     else toResolve.push(name);
   };
-  if (settings.freeGiftEnabled) add(settings.freeGiftProduct, settings.freeGiftImage);
+  if (settings.freeGiftEnabled) {
+    add(settings.freeGiftProduct, settings.freeGiftImage);
+    add(settings.freeGiftGasProduct, settings.freeGiftGasImage); // gas/custom gift
+  }
   if (settings.incentivesEnabled) {
     add(settings.incentiveMinorGift, settings.incentiveMinorGiftImage);
     add(settings.incentiveMajorGift, settings.incentiveMajorGiftImage);
@@ -173,7 +202,10 @@ export async function giftVariantsFor(settings) {
   if (!settings) return {};
   const cand = []; // { name, variantId|null }
   const add = (name, storedId) => { if (name) cand.push({ name, variantId: storedId ? String(storedId).replace(/\D/g, '') : null }); };
-  if (settings.freeGiftEnabled) add(settings.freeGiftProduct, settings.freeGiftVariantId);
+  if (settings.freeGiftEnabled) {
+    add(settings.freeGiftProduct, settings.freeGiftVariantId);
+    add(settings.freeGiftGasProduct, settings.freeGiftGasVariantId); // gas/custom gift
+  }
   if (settings.incentivesEnabled) {
     add(settings.incentiveMinorGift, settings.incentiveMinorGiftVariantId);
     add(settings.incentiveMajorGift, settings.incentiveMajorGiftVariantId);
@@ -193,14 +225,15 @@ export async function giftVariantsFor(settings) {
 /** Extra cart-permalink segments that add the free gift(s) to the cart, so they
  *  check out free ($0 gift products, or a Buy-X-Get-Y automatic discount). Only
  *  AVAILABLE gift variants are included (`giftVariants` is already filtered), so
- *  the cart never fails. `incentives` = incentiveFor(...)'s result; `includeFreeGift`
- *  adds the nudge/resend free gift too (not on the first back-in-stock email). */
-function cartGiftSuffix(settings, incentives, includeFreeGift, giftVariants = {}) {
+ *  the cart never fails. `incentives` = incentiveFor(...)'s result; `freeGiftName`
+ *  is the chosen free-gift product (gas/custom vs default) to add, or '' for the
+ *  first back-in-stock email which carries no free-gift offer. */
+function cartGiftSuffix(settings, incentives, freeGiftName, giftVariants = {}) {
   if (!settings) return '';
   const pick = (name) => (name ? giftVariants[String(name).toLowerCase()] : '') || '';
   const ids = [];
-  if (includeFreeGift && settings.freeGiftEnabled) {
-    const v = pick(settings.freeGiftProduct);
+  if (freeGiftName && settings.freeGiftEnabled) {
+    const v = pick(freeGiftName);
     if (v) ids.push(v);
   }
   if (incentives && incentives.gift && incentives.gift.length) {
@@ -248,7 +281,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
     // Deep-link the email to the variant the shopper asked about, through the
     // tracked redirect so a click-through is recorded on the log row. The first
     // back-in-stock email carries only the perks gift (no free-gift offer).
-    const relCart = variantId ? `/cart/${variantId}:1${cartGiftSuffix(settings, incentives, false, giftVariants)}` : (product.handle ? `/products/${product.handle}` : '/');
+    const relCart = variantId ? `/cart/${variantId}:1${cartGiftSuffix(settings, incentives, '', giftVariants)}` : (product.handle ? `/products/${product.handle}` : '/');
     const relProduct = product.handle ? `/products/${product.handle}` : '/';
     const { priceText, compareAtText } = priceTextFor(variantNode, ctx.currency);
     const payload = {
@@ -536,7 +569,7 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
  *
  * @returns {Promise<{sent:number, title:string, option:string}|{sent:0, error:string}>}
  */
-export async function offerAltForProduct(productGid, { offerVariantId, base = null, dryRun = false } = {}) {
+export async function offerAltForProduct(productGid, { offerVariantId, base = null, dryRun = false, gift = 'auto' } = {}) {
   const short = shortId(productGid);
   const [sp] = await fetchProductsByIds([short]);
   if (!sp) return { sent: 0, error: 'Product not found.' };
@@ -544,9 +577,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
   const settings = await loadSettings().catch(() => null);
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
   const giftVariants = await giftVariantsFor(settings).catch(() => ({}));
-  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct
-    ? { products: [settings.freeGiftProduct] }
-    : null;
+  const { giftName, freeGift } = await freeGiftFor(settings, short, gift);
   const inStock = inStockVariantInfos(sp, ctx); // [{id,title,priceText,price}]
   const want = String(offerVariantId || '').replace(/\D/g, '');
   const offered = inStock.find((v) => String(v.id) === want) || null;
@@ -573,7 +604,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
       giftImages,
       freeGift,
       brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
-      clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, true, giftVariants)}`),
+      clickCartUrl: trackUrl(base, short, sub.email, `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, giftName, giftVariants)}`),
       clickProductUrl: trackUrl(base, short, sub.email, sp.handle ? `/products/${sp.handle}` : '/'),
     };
     try {
@@ -598,7 +629,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
 /** Render (don't send) the exact back-in-stock email a Resend would produce for
  *  this shopper + product + variant, so the owner can preview it. @returns
  *  {{subject, html, soldOut}} or {{error}}. */
-export async function previewResendEmail(productGid, email, { variantId = null, base = null } = {}) {
+export async function previewResendEmail(productGid, email, { variantId = null, base = null, gift = 'auto' } = {}) {
   const short = shortId(productGid);
   const [sp] = await fetchProductsByIds([short]);
   if (!sp) return { error: 'Product not found.' };
@@ -606,14 +637,14 @@ export async function previewResendEmail(productGid, email, { variantId = null, 
   const settings = await loadSettings().catch(() => null);
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
   const giftVariants = await giftVariantsFor(settings).catch(() => ({}));
-  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct ? { products: [settings.freeGiftProduct] } : null;
+  const { giftName, freeGift } = await freeGiftFor(settings, short, gift);
   const vWant = variantId ? String(variantId).replace(/\D/g, '') : null;
   const first = sp.variants?.nodes?.[0];
   const vId = vWant || (first?.id ? shortId(first.id) : null);
   const vNode = variantsById(sp).get(String(vId));
   const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
   const incentives = incentiveFor(vNode?.price, settings);
-  const relCart = vId ? `/cart/${vId}:1${cartGiftSuffix(settings, incentives, true, giftVariants)}` : (sp.handle ? `/products/${sp.handle}` : '/');
+  const relCart = vId ? `/cart/${vId}:1${cartGiftSuffix(settings, incentives, giftName, giftVariants)}` : (sp.handle ? `/products/${sp.handle}` : '/');
   const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
   const payload = {
     title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
@@ -631,7 +662,7 @@ export async function previewResendEmail(productGid, email, { variantId = null, 
 /** Render (don't send) the exact "a different option is in stock" email that an
  *  Offer would produce for this product + offered variant. @returns
  *  {{subject, html, option}} or {{error}}. */
-export async function previewOfferEmail(productGid, { offerVariantId, email = 'preview@example.com', base = null } = {}) {
+export async function previewOfferEmail(productGid, { offerVariantId, email = 'preview@example.com', base = null, gift = 'auto' } = {}) {
   const short = shortId(productGid);
   const [sp] = await fetchProductsByIds([short]);
   if (!sp) return { error: 'Product not found.' };
@@ -639,22 +670,23 @@ export async function previewOfferEmail(productGid, { offerVariantId, email = 'p
   const settings = await loadSettings().catch(() => null);
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
   const giftVariants = await giftVariantsFor(settings).catch(() => ({}));
-  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct ? { products: [settings.freeGiftProduct] } : null;
+  const { giftName, freeGift } = await freeGiftFor(settings, short, gift);
   const inStock = inStockVariantInfos(sp, ctx);
   const want = String(offerVariantId || '').replace(/\D/g, '');
   const offered = inStock.find((v) => String(v.id) === want) || null;
   if (!offered) return { error: 'That option isn’t in stock right now.' };
   const incOffered = incentiveFor(offered.price, settings);
+  const cartRel = `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, giftName, giftVariants)}`;
   const payload = {
     title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
     variantId: offered.id, variantTitle: offered.title, storeHost: ctx.host, priceText: offered.priceText,
     incentives: incOffered, giftImages, freeGift,
     brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
-    clickCartUrl: trackUrl(base, short, email, `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, true, giftVariants)}`),
+    clickCartUrl: trackUrl(base, short, email, cartRel),
     clickProductUrl: trackUrl(base, short, email, sp.handle ? `/products/${sp.handle}` : '/'),
   };
   const { subject, html } = buildAltVariant(payload, unsubUrl(base, short, email));
-  return { subject, html, option: offered.title, cart: `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, true, giftVariants)}` };
+  return { subject, html, option: offered.title, cart: cartRel };
 }
 
 /**
@@ -664,7 +696,7 @@ export async function previewOfferEmail(productGid, { offerVariantId, email = 'p
  * back" when it isn't. Consumes the row's one nudge slot so the auto-nudge won't
  * also fire. @returns {{sent:number, soldOut:boolean}}
  */
-export async function resendOne(productGid, email, { variantId = null, base = null, dryRun = false, force = false } = {}) {
+export async function resendOne(productGid, email, { variantId = null, base = null, dryRun = false, force = false, gift = 'auto' } = {}) {
   const short = shortId(productGid);
   const [sp] = await fetchProductsByIds([short]);
   if (!sp) return { sent: 0, soldOut: true };
@@ -682,13 +714,11 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
   const giftVariants = await giftVariantsFor(settings).catch(() => ({}));
   // Resend is a re-engagement send (to someone who didn't convert), so it carries
   // the same free-gift offer as the 2-day nudge — not just the first email.
-  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct
-    ? { products: [settings.freeGiftProduct] }
-    : null;
+  const { giftName, freeGift } = await freeGiftFor(settings, short, gift);
   const vNode = variantsById(sp).get(String(vId));
   const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
   const incentives = incentiveFor(vNode?.price, settings);
-  const relCart = vId ? `/cart/${vId}:1${cartGiftSuffix(settings, incentives, true, giftVariants)}` : (sp.handle ? `/products/${sp.handle}` : '/');
+  const relCart = vId ? `/cart/${vId}:1${cartGiftSuffix(settings, incentives, giftName, giftVariants)}` : (sp.handle ? `/products/${sp.handle}` : '/');
   const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
   const payload = {
     title: sp.title,
@@ -733,9 +763,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
   const ctx = await getShopContext();
   const settings = await loadSettings().catch(() => null);
   // 2-day nudge free-gift offer (OFF by default; owner sets up fulfilment + enables it).
-  const freeGift = settings && settings.freeGiftEnabled && settings.freeGiftProduct
-    ? { products: [settings.freeGiftProduct] }
-    : null;
+  // Resolved per product below (gas/custom blasters get a different gift).
   const giftImages = await giftImagesFor(settings).catch(() => ({}));
   const giftVariants = await giftVariantsFor(settings).catch(() => ({}));
   const due = selectNudges(log, now, days, (p) => {
@@ -750,7 +778,8 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
     const vNode = row.v ? variantsById(sp).get(String(row.v)) : sp?.variants?.nodes?.[0];
     const { priceText, compareAtText } = priceTextFor(vNode, ctx.currency);
     const incentives = incentiveFor(vNode?.price, settings);
-    const relCart = row.v ? `/cart/${row.v}:1${cartGiftSuffix(settings, incentives, true, giftVariants)}` : (sp?.handle ? `/products/${sp.handle}` : '/');
+    const { giftName, freeGift } = await freeGiftFor(settings, row.p);
+    const relCart = row.v ? `/cart/${row.v}:1${cartGiftSuffix(settings, incentives, giftName, giftVariants)}` : (sp?.handle ? `/products/${sp.handle}` : '/');
     const relProduct = sp?.handle ? `/products/${sp.handle}` : '/';
     const payload = {
       title: row.t,

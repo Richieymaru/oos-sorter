@@ -127,6 +127,16 @@ export function settingsBody(settings) {
     <input type="hidden" id="freeGiftImage" value="${esc(settings.freeGiftImage || '')}">
     <input type="hidden" id="freeGiftVariantId" value="${esc(settings.freeGiftVariantId || '')}">
     <div class="giftprev" id="prev_freeGiftProduct" style="display:none;gap:8px;align-items:center;margin-top:9px;font-size:12.5px"></div>
+    <div style="height:16px"></div>
+    <label class="rowtitle" for="freeGiftGasProduct">Free gift for gas &amp; custom blasters</label>
+    <p class="rowdesc" style="margin:3px 0 9px">Gas blasters and customs get <strong>this</strong> gift instead (they need different gels). Leave blank to use the default gift above for them too.</p>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="freeGiftGasProduct" type="text" placeholder="Gas &amp; custom gels" value="${esc(settings.freeGiftGasProduct || '')}" style="flex:1;min-width:0;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+      <button type="button" class="ghost pickgift" data-target="freeGiftGasProduct" style="display:none;white-space:nowrap">Choose product</button>
+    </div>
+    <input type="hidden" id="freeGiftGasImage" value="${esc(settings.freeGiftGasImage || '')}">
+    <input type="hidden" id="freeGiftGasVariantId" value="${esc(settings.freeGiftGasVariantId || '')}">
+    <div class="giftprev" id="prev_freeGiftGasProduct" style="display:none;gap:8px;align-items:center;margin-top:9px;font-size:12.5px"></div>
   </div>
   <div class="card pad" style="margin-top:14px">
     <div class="rowtitle">Offer a different variant (manual)</div>
@@ -242,8 +252,8 @@ export function settingsBody(settings) {
     // Gift fields: a Shopify product picker (inside the admin) + a live "added"
     // preview (thumbnail + name) so the owner can SEE the gift that's set, even on
     // reload. The picked product's image is stored so the email uses the exact photo.
-    var GIFTIMG={freeGiftProduct:'freeGiftImage', incentiveMinorGift:'incentiveMinorGiftImage', incentiveMajorGift:'incentiveMajorGiftImage'};
-    var GIFTVAR={freeGiftProduct:'freeGiftVariantId', incentiveMinorGift:'incentiveMinorGiftVariantId', incentiveMajorGift:'incentiveMajorGiftVariantId'};
+    var GIFTIMG={freeGiftProduct:'freeGiftImage', freeGiftGasProduct:'freeGiftGasImage', incentiveMinorGift:'incentiveMinorGiftImage', incentiveMajorGift:'incentiveMajorGiftImage'};
+    var GIFTVAR={freeGiftProduct:'freeGiftVariantId', freeGiftGasProduct:'freeGiftGasVariantId', incentiveMinorGift:'incentiveMinorGiftVariantId', incentiveMajorGift:'incentiveMajorGiftVariantId'};
     function renderGiftPrev(t){
       var prev=document.getElementById('prev_'+t); if(!prev) return;
       var inp=document.getElementById(t), himg=document.getElementById(GIFTIMG[t]);
@@ -255,7 +265,7 @@ export function settingsBody(settings) {
       var sp=document.createElement('span'); sp.textContent=name; sp.style.cssText='font-weight:600;color:var(--ink)'; prev.appendChild(sp);
       var ok=document.createElement('span'); ok.textContent=src?'\\u2713 product added':'\\u2713 will be set'; ok.style.cssText='color:var(--accent-ink);font-weight:600'; prev.appendChild(ok);
     }
-    ['freeGiftProduct','incentiveMinorGift','incentiveMajorGift'].forEach(function(t){
+    ['freeGiftProduct','freeGiftGasProduct','incentiveMinorGift','incentiveMajorGift'].forEach(function(t){
       var inp=document.getElementById(t); if(!inp) return;
       inp.addEventListener('input', function(){ var h=document.getElementById(GIFTIMG[t]); if(h) h.value=''; var vv=document.getElementById(GIFTVAR[t]); if(vv) vv.value=''; renderGiftPrev(t); });
       renderGiftPrev(t); // reflect the saved gift on load
@@ -283,7 +293,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, freeGiftVariantId:document.getElementById('freeGiftVariantId').value, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMinorGiftVariantId:document.getElementById('incentiveMinorGiftVariantId').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value, incentiveMajorGiftVariantId:document.getElementById('incentiveMajorGiftVariantId').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, freeGiftVariantId:document.getElementById('freeGiftVariantId').value, freeGiftGasProduct:document.getElementById('freeGiftGasProduct').value, freeGiftGasImage:document.getElementById('freeGiftGasImage').value, freeGiftGasVariantId:document.getElementById('freeGiftGasVariantId').value, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMinorGiftVariantId:document.getElementById('incentiveMinorGiftVariantId').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value, incentiveMajorGiftVariantId:document.getElementById('incentiveMajorGiftVariantId').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

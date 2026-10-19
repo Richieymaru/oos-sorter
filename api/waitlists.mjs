@@ -91,7 +91,7 @@ export default async function handler(req, res) {
           const st = await loadSettings().catch(() => ({}));
           force = ownerEmailSet(st).has(String(body.email || '').trim().toLowerCase());
         }
-        const rr = await resendOne(rgid, String(body.email), { variantId: body.variantId || null, force });
+        const rr = await resendOne(rgid, String(body.email), { variantId: body.variantId || null, force, gift: body.gift || 'auto' });
         if (rr.soldOut) { res.end(JSON.stringify({ ok: false, soldOut: true, error: 'Sold out again — nothing sent.' })); return; }
         res.end(JSON.stringify({ ok: true, sent: rr.sent }));
         return;
@@ -106,8 +106,8 @@ export default async function handler(req, res) {
         if (!pgid) { res.end(JSON.stringify({ ok: false, error: 'Missing product.' })); return; }
         const pbase = `https://${req.headers['x-forwarded-host'] || req.headers['host'] || ''}`;
         const pr = body.action === 'previewResend'
-          ? await previewResendEmail(pgid, String(body.email || ''), { variantId: body.variantId || null, base: pbase })
-          : await previewOfferEmail(pgid, { offerVariantId: body.variantId, base: pbase });
+          ? await previewResendEmail(pgid, String(body.email || ''), { variantId: body.variantId || null, base: pbase, gift: body.gift || 'auto' })
+          : await previewOfferEmail(pgid, { offerVariantId: body.variantId, base: pbase, gift: body.gift || 'auto' });
         if (pr.error) { res.end(JSON.stringify({ ok: false, error: pr.error })); return; }
         res.end(JSON.stringify({ ok: true, subject: pr.subject, html: pr.html, soldOut: pr.soldOut || false, option: pr.option || null, cart: pr.cart || null }));
         return;
@@ -120,7 +120,7 @@ export default async function handler(req, res) {
         const on = os.replace(/\D/g, '');
         const ogid = os.startsWith('gid://') ? os : (on ? longId(on) : null);
         if (!ogid || !body.variantId) { res.end(JSON.stringify({ ok: false, error: 'Missing product or option.' })); return; }
-        const or = await offerAltForProduct(ogid, { offerVariantId: body.variantId });
+        const or = await offerAltForProduct(ogid, { offerVariantId: body.variantId, gift: body.gift || 'auto' });
         if (or.error) { res.end(JSON.stringify({ ok: false, error: or.error })); return; }
         res.end(JSON.stringify({ ok: true, sent: or.sent, option: or.option }));
         return;
