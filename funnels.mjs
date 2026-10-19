@@ -261,6 +261,7 @@ export function analyzeCheckout(orders, abandoned, abandonedCount, { currency } 
   const topAbandoned = [...map.values()].sort((a, b) => b.checkouts - a.checkouts || b.units - a.units).slice(0, 6);
   // Each abandoned cart on its own (most recent first) — the per-shopper list.
   const carts = (abandoned || []).map((a) => ({
+    id: a.id || null,
     at: a.createdAt,
     amount: a.amount,
     currency: a.currency || cur,

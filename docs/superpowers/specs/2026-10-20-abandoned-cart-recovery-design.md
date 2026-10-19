@@ -1,7 +1,12 @@
 # Abandoned-cart recovery — design
 
 **Date:** 2026-10-20
-**Status:** awaiting owner approval
+**Status:** BUILT (2026-10-20). Phase 1 (banner) + Phase 2 (manual Recover) shipped.
+Queries validated vs 2026-07 schema (shopify-admin skill). **Owner action to
+activate sends:** `read_customers` added to `shopify.app.gbu.toml` →
+`shopify app deploy` (release new version) → reinstall; then DRY-run to self
+before real customers. Until then, Preview works and Recover shows a clear
+"add read_customers + reinstall" message.
 
 ## Goal
 

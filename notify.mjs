@@ -481,6 +481,89 @@ export function buildAltVariant(product, unsub) {
   });
 }
 
+/** One cart item row (thumbnail + title + qty) for the recovery email. */
+function cartItemRow(it) {
+  const thumb = it.image
+    ? `<td width="64" style="padding-right:12px;vertical-align:middle"><img src="${esc(it.image + (it.image.includes('?') ? '&' : '?') + 'width=120')}" alt="" width="52" height="52" style="width:52px;height:52px;border-radius:10px;object-fit:cover;border:1px solid #eef1f6;display:block"></td>`
+    : `<td width="64" style="padding-right:12px;vertical-align:middle"><div style="width:52px;height:52px;border-radius:10px;background:#eef1f6;border:1px solid #e4e8ef"></div></td>`;
+  return `<tr><td style="padding:9px 0;border-bottom:1px solid #f0f2f6"><table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
+    ${thumb}
+    <td style="vertical-align:middle"><div style="font-size:14px;font-weight:600;color:#161b22;line-height:1.35">${esc(it.title)}</div>${it.qty > 1 ? `<div style="font-size:12.5px;color:#8b95a3;margin-top:3px">Qty ${it.qty}</div>` : ''}</td>
+  </tr></table></td></tr>`;
+}
+
+/**
+ * Pure: build a manual abandoned-cart recovery email for one shopper. Shows the
+ * cart's items, a "Complete your order" CTA to the Shopify recovery URL, and a
+ * free-shipping note (the chosen incentive). `cart` = { recoveryUrl, items,
+ * currency }. No discount code is generated.
+ */
+export function buildRecoveryEmail(cart, { freeShipping = true, brandLogo = null, storeHost = null } = {}) {
+  const host = storeHost || SHOP;
+  const items = cart.items || [];
+  const url = cart.recoveryUrl || (host ? `https://${host}` : '#');
+  const subject = `You left something in your cart${host ? ` at ${FROM_NAME}` : ''}`;
+  const text =
+    `You left some items in your cart${host ? ` at ${host}` : ''}:\n\n` +
+    items.map((it) => `  • ${it.title}${it.qty > 1 ? ` ×${it.qty}` : ''}`).join('\n') +
+    `\n\nComplete your order: ${url}\n` +
+    (freeShipping ? `\nFree shipping on your order.\n` : '') +
+    `\n— ${FROM_NAME}`;
+  const rows = items.length
+    ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation">${items.map(cartItemRow).join('')}</table>`
+    : '';
+  const shippingBox = freeShipping
+    ? `<tr><td style="padding:6px 20px 10px"><table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f0fbf6;border:1px solid #cdeede;border-radius:14px"><tr><td style="padding:13px 16px;font-size:14px;color:#0f1729">&#128666; <strong>Free shipping</strong> on your order.</td></tr></table></td></tr>`
+    : '';
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+  <body style="margin:0;padding:0;background:#eef1f6">
+  <div style="background:#eef1f6;padding:26px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6eaf0;border-radius:16px;overflow:hidden">
+        <tr><td style="height:3px;background:${ACCENT};font-size:0;line-height:0">&nbsp;</td></tr>
+        <tr><td align="center" style="padding:16px 20px;background:#000000">
+          ${brandLogo
+            ? `<img src="${esc(brandLogo)}" alt="${esc(FROM_NAME)}" height="30" style="height:30px;max-height:36px;width:auto;max-width:200px;display:inline-block;border:0">`
+            : `<span style="font-size:16px;font-weight:800;color:#ffffff;letter-spacing:-.01em">${esc(FROM_NAME)}</span>`}
+        </td></tr>
+        <tr><td style="padding:20px 20px 4px">
+          <span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.09em;color:#ffffff;background:${ACCENT};border-radius:999px;padding:5px 12px;text-transform:uppercase">Still in your cart</span>
+          <div style="font-size:22px;line-height:1.25;font-weight:800;color:#0f1729;letter-spacing:-.02em;margin:12px 0 0">Your cart's waiting for you</div>
+          <p style="font-size:14px;color:#5b6472;line-height:1.55;margin:12px 0 0">You left these behind — they're still available. Pick up right where you left off.</p>
+        </td></tr>
+        <tr><td style="padding:8px 20px 4px">${rows}</td></tr>
+        ${shippingBox}
+        <tr><td style="padding:16px 20px 4px" align="center">
+          <a href="${esc(url)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:15px 44px;border-radius:12px">Complete your order &rarr;</a>
+        </td></tr>
+        <tr><td style="padding:16px 20px;border-top:1px solid #f1f3f7;font-size:11.5px;color:#9aa3b2;line-height:1.6">
+          You received this because you left items in your cart at ${esc(FROM_NAME)}${host ? ` (${esc(host)})` : ''}. If this wasn't you, you can ignore it.
+        </td></tr>
+      </table>
+      <div style="font-size:11px;color:#9aa3b2;margin-top:14px">${esc(FROM_NAME)}${host ? ` &middot; ${esc(host)}` : ''}</div>
+    </td></tr></table>
+  </div></body></html>`;
+  return { subject, text, html };
+}
+
+/**
+ * Send a recovery email to one shopper. MANUAL ONLY — called from the owner's
+ * "Recover" click in the app, never from a cron. `dryRun` logs instead of sends.
+ */
+export async function sendRecovery(email, cart, opts = {}) {
+  const { subject, text, html } = buildRecoveryEmail(cart, opts);
+  if (opts.dryRun) {
+    console.log(`  [dry run] would recover ${email}: "${subject}"`);
+    return { dryRun: true };
+  }
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for recovery emails');
+  const info = await transport(user, pass).sendMail({ from: `${FROM_NAME} <${user}>`, to: email, subject, text, html });
+  console.log(`  recovery to ${email}: "${subject}" (${info.messageId})`);
+  return info;
+}
+
 let transportCache = null;
 function transport(user, pass) {
   if (!transportCache) {

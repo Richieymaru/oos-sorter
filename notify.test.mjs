@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // buildBackInStock reads SHOP_DOMAIN at module load, so set it before importing.
 process.env.SHOP_DOMAIN = 'demo.myshopify.com';
-const { buildBackInStock, buildSoldOutAlert, buildNudge, buildAltVariant, fromName, formatMoney } = await import('./notify.mjs');
+const { buildBackInStock, buildSoldOutAlert, buildNudge, buildAltVariant, buildRecoveryEmail, fromName, formatMoney } = await import('./notify.mjs');
 
 let failures = 0, checks = 0;
 function ok(label, cond) {
@@ -135,6 +135,19 @@ ok('gift image renders as a thumbnail when resolved', resend.html.includes('cdn.
 ok('discount code still shown', resend.html.includes('FREEGEL'));
 const noImg = buildBackInStock({ title: 'Z', handle: 'z', freeGift: { products: ['Mystery box'] } }, unsub);
 ok('falls back to a gift icon tile when no image resolved', noImg.html.includes('Mystery box') && noImg.html.includes('&#127873;'));
+
+console.log('\n--- buildRecoveryEmail (abandoned-cart recovery) ---');
+const rec = buildRecoveryEmail(
+  { recoveryUrl: 'https://demo.myshopify.com/recover/abc', currency: 'AUD', items: [{ title: 'Gel Blaster X', qty: 2, image: 'https://cdn.shopify.com/x.jpg' }, { title: 'Gel Balls 10k', qty: 1, image: null }] },
+  { freeShipping: true }
+);
+ok('CTA links to the recovery URL', rec.html.includes('https://demo.myshopify.com/recover/abc') && rec.html.includes('Complete your order'));
+ok('lists the cart items', rec.html.includes('Gel Blaster X') && rec.html.includes('Gel Balls 10k'));
+ok('shows a qty for multi-qty items', rec.html.includes('Qty 2'));
+ok('free-shipping note present', rec.html.includes('Free shipping'));
+ok('no free shipping when off', !buildRecoveryEmail({ recoveryUrl: 'u', items: [] }, { freeShipping: false }).html.includes('Free shipping'));
+ok('subject mentions the cart', /cart/i.test(rec.subject));
+ok('plain-text has the recovery link', rec.text.includes('https://demo.myshopify.com/recover/abc'));
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

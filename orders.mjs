@@ -109,7 +109,11 @@ export async function fetchOrders({ since = null, until = null, pageSize = 250, 
   }
 }
 
+// `id` lets the Funnels "Recover" button reference a cart; it needs no extra
+// scope. The customer email + recovery URL are fetched on demand by id
+// (fetchAbandonedCheckout), never in this list — keeps emails out of page source.
 const ABANDONED_FIELDS = `
+  id
   createdAt
   totalPriceSet { shopMoney { amount currencyCode } }
   lineItems(first: 10) { nodes { title quantity } }`;
@@ -118,10 +122,58 @@ const ABANDONED_FIELDS = `
 export function normalizeAbandoned(n) {
   const money = n.totalPriceSet?.shopMoney || {};
   return {
+    id: n.id ? String(n.id).split('/').pop() : null,
     createdAt: n.createdAt || null,
     amount: Number(money.amount || 0),
     currency: money.currencyCode || null,
     items: (n.lineItems?.nodes || []).map((li) => ({ title: li.title || '(untitled)', qty: Number(li.quantity || 0) })),
+  };
+}
+
+/**
+ * One abandoned checkout by id, for the manual "Recover" action: its recovery
+ * URL + items (needs only read_orders) and the customer email (needs
+ * read_customers — protected). If the email query is denied (scope not granted
+ * yet), falls back to the no-email query so Preview still works. Returns
+ * { id, createdAt, recoveryUrl, email, emailDenied, amount, currency, items }.
+ * Validated against the 2026-07 schema (shopify-admin skill) before shipping.
+ */
+export async function fetchAbandonedCheckout(id) {
+  const num = String(id || '').replace(/\D/g, '');
+  if (!num) return null;
+  const gid = `gid://shopify/AbandonedCheckout/${num}`;
+  const body = (withEmail) => `query($id: ID!){ node(id: $id){ ... on AbandonedCheckout {
+    id createdAt abandonedCheckoutUrl
+    ${withEmail ? 'customer { defaultEmailAddress { emailAddress } }' : ''}
+    totalPriceSet { shopMoney { amount currencyCode } }
+    lineItems(first: 25) { nodes { title quantity image { url } } }
+  } } }`;
+  let node;
+  let emailDenied = false;
+  try {
+    const d = await gql(body(true), { id: gid });
+    node = d.node;
+  } catch (e) {
+    if (!isDenied(e)) throw e;
+    emailDenied = true;
+    const d = await gql(body(false), { id: gid });
+    node = d.node;
+  }
+  if (!node) return null;
+  const money = node.totalPriceSet?.shopMoney || {};
+  return {
+    id: String(node.id).split('/').pop(),
+    createdAt: node.createdAt || null,
+    recoveryUrl: node.abandonedCheckoutUrl || null,
+    email: node.customer?.defaultEmailAddress?.emailAddress || null,
+    emailDenied,
+    amount: Number(money.amount || 0),
+    currency: money.currencyCode || null,
+    items: (node.lineItems?.nodes || []).map((li) => ({
+      title: li.title || '(untitled)',
+      qty: Number(li.quantity || 0),
+      image: li.image?.url || null,
+    })),
   };
 }
 

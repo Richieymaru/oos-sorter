@@ -854,7 +854,10 @@ export function funnelsBody(view) {
       ${checkout.carts.slice(0, 15).map((k) => {
         const when = k.at ? new Date(k.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
         const items = (k.items || []).map((li) => `${esc(li.title)}${li.qty > 1 ? ' ×' + li.qty : ''}`).join(', ');
-        return `<div class="fn-cart"><div class="fn-cart-top"><span class="fn-cart-when">${esc(when)}</span><span class="fn-cart-val">${esc(money(k.currency, k.amount))}</span></div><div class="fn-cart-items">${items || '<span class="faint">no items</span>'}</div></div>`;
+        return `<div class="fn-cart"><div class="fn-cart-top"><span class="fn-cart-when">${esc(when)}</span><span class="fn-cart-val">${esc(money(k.currency, k.amount))}</span></div>
+          <div class="fn-cart-items">${items || '<span class="faint">no items</span>'}</div>
+          ${k.id ? `<div class="fn-cart-act"><button type="button" class="ghost rc-prev" data-id="${esc(k.id)}">Preview</button><button type="button" class="primary rc-send" data-id="${esc(k.id)}">Recover</button></div>` : ''}
+        </div>`;
       }).join('')}
       ${checkout.carts.length > 15 ? `<div class="faint" style="padding:11px 0 2px;font-size:12px">Showing the 15 most recent of ${checkout.abandoned} abandoned carts.</div>` : ''}
     </div></div>` : '';
@@ -939,7 +942,48 @@ export function funnelsBody(view) {
       </div>`).join('')}
     </div></div>` : '';
 
-  return head + baseNote + cards + catSection + `
+  // Manual abandoned-cart recovery UI (preview modal + send), only when there
+  // are carts. Owner-triggered; posts to /api/index previewRecover / recoverCart.
+  const hasCarts = !!(checkout && checkout.carts && checkout.carts.length);
+  const recoverUI = hasCarts ? `
+    <div class="pw" id="rcPwWrap" style="margin-top:6px"><label for="rcPw">Panel password</label><input type="password" id="rcPw" placeholder="to send recovery emails" autocomplete="current-password"><span id="rcMsg" class="faint" style="margin-left:6px"></span></div>
+    <div id="rcModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,41,.55);z-index:1000;padding:18px;box-sizing:border-box">
+      <div style="max-width:660px;height:100%;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--muted);text-transform:uppercase">Recovery email preview</span>
+          <span style="flex:1"></span>
+          <button type="button" class="ghost" id="rcClose">Close</button>
+        </div>
+        <iframe id="rcFrame" title="Recovery email preview" style="flex:1;width:100%;border:0;background:#eef1f6"></iframe>
+      </div>
+    </div>
+    <script>(function(){
+      var embedded=(typeof shopify!=='undefined' && !!shopify.idToken);
+      var pwWrap=document.getElementById('rcPwWrap'), pw=document.getElementById('rcPw'), msg=document.getElementById('rcMsg');
+      if(embedded){ if(pwWrap) pwWrap.style.display='none'; } else { try{ if(pw) pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
+      function authH(){ var h={'Content-Type':'application/json'}; if(embedded){ return Promise.resolve().then(function(){ return shopify.idToken(); }).then(function(t){ if(t) h['Authorization']='Bearer '+t; return h; }).catch(function(){ return h; }); } h['x-panel-password']=((pw&&pw.value)||'').trim(); return Promise.resolve(h); }
+      function post(b){ return authH().then(function(h){ return fetch('/api/index',{method:'POST',headers:h,body:JSON.stringify(b)}); }).then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {s:r.status,j:j}; }); }); }
+      var modal=document.getElementById('rcModal'), frame=document.getElementById('rcFrame');
+      function openModal(html){ try{ frame.srcdoc=html; }catch(e){ try{ frame.contentDocument.open(); frame.contentDocument.write(html); frame.contentDocument.close(); }catch(e2){} } modal.style.display='block'; }
+      var cl=document.getElementById('rcClose'); if(cl) cl.addEventListener('click', function(){ modal.style.display='none'; });
+      [].forEach.call(document.querySelectorAll('.rc-prev'), function(b){ b.addEventListener('click', function(){
+        if(msg) msg.textContent='Loading preview\\u2026';
+        post({action:'previewRecover', id:b.dataset.id}).then(function(res){ var j=res.j;
+          if(res.s===200 && j.ok){ openModal(j.html); if(msg) msg.textContent = j.recoverable ? '' : (j.emailDenied?'Preview only \\u2014 add read_customers + reinstall to send.':'This cart has no customer email.'); }
+          else { if(msg) msg.textContent = (res.s===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Could not load preview')); }
+        }).catch(function(){ if(msg) msg.textContent='Network error'; });
+      }); });
+      [].forEach.call(document.querySelectorAll('.rc-send'), function(b){ b.addEventListener('click', function(){
+        if(!embedded && !((pw&&pw.value)||'').trim()){ if(msg) msg.textContent='Enter the panel password'; if(pw) pw.focus(); return; }
+        var old=b.textContent; b.disabled=true; b.textContent='Sending\\u2026'; if(msg) msg.textContent='';
+        post({action:'recoverCart', id:b.dataset.id}).then(function(res){ var j=res.j;
+          if(res.s===200 && j.ok && j.sent){ b.textContent='Sent \\u2713'; if(!embedded){ try{ localStorage.setItem('oos_pw',((pw&&pw.value)||'').trim()); }catch(e){} } }
+          else { b.disabled=false; b.textContent=old; if(msg) msg.textContent = j.redacted ? (j.error||'Needs read_customers') : (res.s===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Could not send')); }
+        }).catch(function(){ b.disabled=false; b.textContent=old; if(msg) msg.textContent='Network error'; });
+      }); });
+    })();</script>` : '';
+
+  return head + baseNote + cards + catSection + recoverUI + `
     <div class="layout" style="margin-top:18px">
       <div class="grid rise" style="gap:16px">${insights}${checkoutCard}${cartsList}${trafficCard}${referrersCard}${landingCard}${channelsCard}</div>
       <div class="grid rise" style="gap:16px;--d:120ms">${waitlistCard}${trendCard}${productsCard}</div>
@@ -955,6 +999,8 @@ export function funnelsBody(view) {
       .fn-cart-top{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-bottom:3px}
       .fn-cart-when{color:var(--muted)}.fn-cart-val{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
       .fn-cart-items{font-size:13px;color:var(--ink);line-height:1.45}
+      .fn-cart-act{display:flex;gap:8px;margin-top:10px}
+      .fn-cart-act button{font-size:12.5px;padding:7px 14px;border-radius:9px}
       .fn-funnel{display:flex;flex-direction:column;gap:12px}
       .fn-stage-top{display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:5px}
       .fn-stage-top b{font-variant-numeric:tabular-nums;color:var(--ink)}

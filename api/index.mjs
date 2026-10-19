@@ -12,7 +12,9 @@ import {
 import { activeSaleReminder } from '../sales-calendar.mjs';
 import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
-import { fetchOrders, fetchAbandonedCheckouts } from '../orders.mjs';
+import { fetchOrders, fetchAbandonedCheckouts, fetchAbandonedCheckout } from '../orders.mjs';
+import { buildRecoveryEmail, sendRecovery } from '../notify.mjs';
+import { getShopContext } from '../shopify.mjs';
 import { analyzeFunnels, analyzeCheckout, checkoutInsights, resolveRange, topProductsByCategory } from '../funnels.mjs';
 import { fetchCollectionProductIds, fetchProductImages } from '../catalog.mjs';
 import { ttlMemo } from '../cache.mjs';
@@ -99,6 +101,31 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'application/json');
     try {
       const body = await readJson(req);
+
+      // --- Abandoned-cart recovery (MANUAL, owner-triggered from Funnels) ---
+      // No cron, no automation — only runs on an explicit Recover/Preview click.
+      if (body.action === 'previewRecover' || body.action === 'recoverCart') {
+        const cart = await fetchAbandonedCheckout(String(body.id || '')).catch((e) => { console.error('recover: fetch —', e.message); return null; });
+        if (!cart) { res.end(JSON.stringify({ ok: false, error: 'Could not load that cart.' })); return; }
+        let brandLogo = null;
+        try { brandLogo = (await getShopContext()).brandLogo || null; } catch { /* logo optional */ }
+        if (body.action === 'previewRecover') {
+          const { html } = buildRecoveryEmail(cart, { freeShipping: true, brandLogo });
+          res.end(JSON.stringify({ ok: true, html, recoverable: !!cart.email, emailDenied: !!cart.emailDenied }));
+          return;
+        }
+        // recoverCart — the actual manual send; needs the customer email.
+        if (!cart.email) {
+          res.end(JSON.stringify({ ok: false, redacted: true, error: cart.emailDenied
+            ? 'Customer email needs the read_customers scope — add it and reinstall the app.'
+            : 'This cart has no customer email on file.' }));
+          return;
+        }
+        await sendRecovery(cart.email, cart, { freeShipping: true, brandLogo });
+        res.end(JSON.stringify({ ok: true, sent: true }));
+        return;
+      }
+
       const messages = Array.isArray(body.messages) ? body.messages.slice(-16) : [];
       const reply = await assistantReply(messages);
       res.end(JSON.stringify({ ok: true, reply }));
