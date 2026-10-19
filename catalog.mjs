@@ -226,7 +226,7 @@ export async function fetchProductsByIds(ids) {
            ... on Product {
              id title handle status tracksInventory totalInventory
              featuredImage { url }
-             variants(first: 100) { nodes { ${variantFields(onlineLocIds)} } }
+             variants(first: 100) { nodes { ${variantFields(onlineLocIds)} image { url } } }
            }
          }
        }`,

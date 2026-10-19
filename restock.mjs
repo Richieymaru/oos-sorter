@@ -67,7 +67,7 @@ function inStockVariantInfos(sp, ctx) {
     if (!v.title || v.title === 'Default Title') continue;
     if (!isVariantInStock(sp, vid)) continue;
     const { priceText } = priceTextFor(v, ctx.currency);
-    out.push({ id: vid, title: v.title, priceText, price: v.price });
+    out.push({ id: vid, title: v.title, priceText, price: v.price, image: v.image?.url || null });
   }
   return out;
 }
@@ -286,6 +286,7 @@ async function emailAndPrune({ gid, list, due, waiting, product, fallbackVariant
     const { priceText, compareAtText } = priceTextFor(variantNode, ctx.currency);
     const payload = {
       ...product,
+      image: variantNode?.image?.url || product.image, // the shopper's variant photo, else the product's
       variantId,
       variantTitle: sub.variantTitle || null,
       storeHost: ctx.host,
@@ -521,7 +522,7 @@ export async function notifyOneProduct(productGid, { dryRun = false, base = null
   const d = await gql(
     `query($id: ID!) { product(id: $id) {
        title handle featuredImage { url }
-       variants(first: 100) { nodes { id price compareAtPrice } }
+       variants(first: 100) { nodes { id price compareAtPrice image { url } } }
      } }`,
     { id: productGid }
   );
@@ -595,7 +596,7 @@ export async function offerAltForProduct(productGid, { offerVariantId, base = nu
     const payload = {
       title: sp.title,
       handle: sp.handle,
-      image: sp.featuredImage?.url || null,
+      image: offered.image || sp.featuredImage?.url || null,
       variantId: offered.id,
       variantTitle: offered.title,
       storeHost: ctx.host,
@@ -647,7 +648,7 @@ export async function previewResendEmail(productGid, email, { variantId = null, 
   const relCart = vId ? `/cart/${vId}:1${cartGiftSuffix(settings, incentives, giftName, giftVariants)}` : (sp.handle ? `/products/${sp.handle}` : '/');
   const relProduct = sp.handle ? `/products/${sp.handle}` : '/';
   const payload = {
-    title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
+    title: sp.title, handle: sp.handle, image: vNode?.image?.url || sp.featuredImage?.url || null,
     variantId: vId, variantTitle: vNode?.title && vNode.title !== 'Default Title' ? vNode.title : null,
     storeHost: ctx.host, priceText, compareAtText,
     incentives, giftImages, freeGift,
@@ -678,7 +679,7 @@ export async function previewOfferEmail(productGid, { offerVariantId, email = 'p
   const incOffered = incentiveFor(offered.price, settings);
   const cartRel = `/cart/${offered.id}:1${cartGiftSuffix(settings, incOffered, giftName, giftVariants)}`;
   const payload = {
-    title: sp.title, handle: sp.handle, image: sp.featuredImage?.url || null,
+    title: sp.title, handle: sp.handle, image: offered.image || sp.featuredImage?.url || null,
     variantId: offered.id, variantTitle: offered.title, storeHost: ctx.host, priceText: offered.priceText,
     incentives: incOffered, giftImages, freeGift,
     brandLogo: settings?.emailLogoUrl || ctx.brandLogo || null,
@@ -723,7 +724,7 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
   const payload = {
     title: sp.title,
     handle: sp.handle,
-    image: sp.featuredImage?.url || null,
+    image: vNode?.image?.url || sp.featuredImage?.url || null,
     variantId: vId,
     variantTitle: null,
     storeHost: ctx.host,
@@ -784,7 +785,7 @@ export async function nudgeUnengaged({ dryRun = false, base = null, days = 2 } =
     const payload = {
       title: row.t,
       handle: sp?.handle,
-      image: sp?.featuredImage?.url || null,
+      image: vNode?.image?.url || sp?.featuredImage?.url || null,
       variantId: row.v,
       variantTitle: row.vt,
       storeHost: ctx.host,
