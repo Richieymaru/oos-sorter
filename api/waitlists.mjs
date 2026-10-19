@@ -294,7 +294,7 @@ export default async function handler(req, res) {
   ${notifiedView
     ? `<div class="pagehead"><h1>Recently notified</h1><p>Who we emailed when a product came back &mdash; whether they clicked through, and resend if they missed it. <a href="/waitlists" style="color:var(--accent-ink);font-weight:600">&larr; back to waitlists</a></p></div>
   <div class="grid c3" style="margin-bottom:16px">
-    ${statCard({ value: stats.notified, label: 'Notified (recent)' })}
+    ${statCard({ value: stats.totalSent, label: 'Emails sent', sub: `${stats.notified} back-in-stock · ${stats.nudgeSends} follow-up${stats.nudgeSends === 1 ? '' : 's'}` })}
     ${statCard({ value: `${stats.clicked}`, label: 'Clicked', sub: `${stats.clickRate}% click-through`, tone: stats.clicked ? 'pos' : '' })}
     ${statCard({ value: stats.revenue ? money(stats.currency, stats.revenue) : '—', label: 'Waitlist revenue', sub: `${stats.orders || 0} order(s) from notified`, tone: stats.revenue ? 'pos' : '' })}
   </div>`

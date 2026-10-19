@@ -177,7 +177,19 @@ export function deriveStats(log) {
   }
   const revenue = Math.round([...byOrder.values()].reduce((a, b) => a + b, 0) * 100) / 100;
   const orders = byOrder.size;
-  return { notified, clicked, nudged, ordered, orders, revenue, currency, clickRate };
+  // Follow-up nudge EMAILS sent = sum of the stage over distinct (email,product)
+  // (all rows of a group share the stage, so count the newest once per group).
+  const seen = new Set();
+  let nudgeSends = 0;
+  for (const x of list) {
+    const key = `${x.e}\u0000${x.p}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    nudgeSends += x.ns != null ? x.ns : (x.n ? 1 : 0);
+  }
+  // Total shopper emails sent = one back-in-stock per row + every follow-up nudge.
+  const totalSent = notified + nudgeSends;
+  return { notified, clicked, nudged, ordered, orders, revenue, currency, clickRate, nudgeSends, totalSent };
 }
 
 /** A safe storefront-relative redirect target, or null. Blocks open-redirects. */

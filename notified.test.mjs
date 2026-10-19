@@ -94,8 +94,16 @@ ok('dedupes to one nudge per (email,product)', dueDedup.length === 1 && dueDedup
 
 console.log('\n--- deriveStats ---');
 const stats = deriveStats([mk({}), mk({ c: 'x' }), mk({ c: 'x', n: 'y' }), mk({ o: 'z' })]);
-ok('counts + click rate', eq(stats, { notified: 4, clicked: 2, nudged: 1, ordered: 1, orders: 1, revenue: 0, currency: null, clickRate: 50 }));
-ok('empty stats', eq(deriveStats([]), { notified: 0, clicked: 0, nudged: 0, ordered: 0, orders: 0, revenue: 0, currency: null, clickRate: 0 }));
+ok('counts + click rate', eq(stats, { notified: 4, clicked: 2, nudged: 1, ordered: 1, orders: 1, revenue: 0, currency: null, clickRate: 50, nudgeSends: 0, totalSent: 4 }));
+ok('empty stats', eq(deriveStats([]), { notified: 0, clicked: 0, nudged: 0, ordered: 0, orders: 0, revenue: 0, currency: null, clickRate: 0, nudgeSends: 0, totalSent: 0 }));
+// Follow-up sends: 2 distinct shoppers at stages 2 and 3 => 5 nudge emails; +3 rows notified = 8 total.
+const sendStats = deriveStats([
+  { ...notifiedRow({ email: 'a@x.com', productId: '1', title: 'X', ts: 't3' }), ns: 2, n: 'x' },
+  { ...notifiedRow({ email: 'a@x.com', productId: '1', title: 'X', ts: 't1' }), ns: 2, n: 'x' },
+  { ...notifiedRow({ email: 'b@x.com', productId: '2', title: 'Y', ts: 't2' }), ns: 3, n: 'x' },
+]);
+ok('nudgeSends sums stages per distinct shopper+product', sendStats.nudgeSends === 5);
+ok('totalSent = back-in-stock rows + nudge sends', sendStats.totalSent === 3 + 5);
 
 console.log('\n--- safeRelPath ---');
 ok('accepts a product path', safeRelPath('/products/x') === '/products/x');
