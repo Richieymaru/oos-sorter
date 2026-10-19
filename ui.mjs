@@ -103,13 +103,14 @@ export function activityFeed(items) {
 
 const CSS = `
   :root{
-    --bg:#f5f6f8; --surface:#ffffff; --surface-2:#fafbfc; --ink:#0f1520; --muted:#59636f; --faint:#8b95a1;
-    --line:#e6e9ee; --line-2:#eef1f4; --hover:#f3f5f7;
-    --accent:#10a171; --accent-2:#17b887; --accent-ink:#0b6b4c; --accent-wash:#e6f5ee;
-    --pos:#10a171; --pos-wash:#e6f5ee; --warn:#b5761b; --warn-wash:#fbf1e0;
+    --bg:#f4f6f8; --surface:#ffffff; --surface-2:#fafbfc; --ink:#0e141c; --muted:#5b6572; --faint:#8d97a3;
+    --line:#eceff3; --line-2:#f1f4f7; --hover:#f3f5f8;
+    --accent-50:#eef8f3; --accent-100:#cfeede; --accent-300:#5fcfa1;
+    --accent:#0fa373; --accent-2:#17b887; --accent-ink:#0a6549; --accent-wash:var(--accent-50);
+    --pos:#0fa373; --pos-wash:var(--accent-50); --warn:#b5761b; --warn-wash:#fbf1e0;
     --danger:#c5384b; --danger-wash:#fbe9ec; --info:#3667e0; --info-wash:#e9f0fe;
     --neutral:#5a6672; --neutral-wash:#eef1f4;
-    --radius:16px; --radius-sm:11px;
+    --radius:16px; --radius-sm:12px;
     --shadow:0 1px 2px rgba(15,21,32,.04), 0 10px 28px -10px rgba(15,21,32,.12);
     --shadow-sm:0 1px 2px rgba(15,21,32,.05), 0 2px 10px -6px rgba(15,21,32,.07);
     --shadow-lg:0 2px 6px rgba(15,21,32,.06), 0 24px 50px -16px rgba(15,21,32,.16);
@@ -120,8 +121,9 @@ const CSS = `
   @media (prefers-color-scheme:dark){:root{
     --bg:#0d1014; --surface:#161b22; --surface-2:#1a2029; --ink:#e8edf3; --muted:#9aa4b1; --faint:#6b7684;
     --line:#232a34; --line-2:#1e252e; --hover:#1c232c;
-    --accent:#2ccb8c; --accent-2:#39d89a; --accent-ink:#7fe7bd; --accent-wash:#123024;
-    --pos:#2ccb8c; --pos-wash:#123024; --warn:#e0b978; --warn-wash:#2a2213;
+    --accent-50:#122a20; --accent-100:#19402f; --accent-300:#2ba877;
+    --accent:#2ccb8c; --accent-2:#39d89a; --accent-ink:#7fe7bd; --accent-wash:var(--accent-50);
+    --pos:#2ccb8c; --pos-wash:var(--accent-50); --warn:#e0b978; --warn-wash:#2a2213;
     --danger:#f08a97; --danger-wash:#331a1f; --info:#8fb0ff; --info-wash:#152139;
     --neutral:#9aa4b1; --neutral-wash:#1e252e;
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 30px -10px rgba(0,0,0,.5);
@@ -145,29 +147,29 @@ const CSS = `
   nav.tabs a:hover{background:var(--hover);color:var(--ink)}
   nav.tabs a.on{background:var(--accent-wash);color:var(--accent-ink);font-weight:600}
   /* page */
-  main{max-width:1080px;margin:0 auto;padding:30px 24px 72px}
-  .pagehead{margin:0 0 22px}
-  .pagehead h1{font-size:25px;font-weight:700;letter-spacing:-.03em;margin:0}
-  .pagehead p{margin:5px 0 0;color:var(--muted);font-size:14.5px;max-width:60ch}
+  main{max-width:1080px;margin:0 auto;padding:32px 24px 72px}
+  .pagehead{margin:0 0 24px}
+  .pagehead h1{font-size:26px;font-weight:700;letter-spacing:-.03em;margin:0}
+  .pagehead p{margin:6px 0 0;color:var(--muted);font-size:14.5px;max-width:60ch}
   /* grids */
-  .grid{display:grid;gap:14px}
+  .grid{display:grid;gap:16px}
   .grid.c3{grid-template-columns:repeat(3,1fr)}
   .grid.c4{grid-template-columns:repeat(4,1fr)}
   .layout{display:grid;grid-template-columns:1.7fr 1fr;gap:16px;margin-top:22px;align-items:start}
   @media (max-width:900px){.grid.c4{grid-template-columns:repeat(2,1fr)}.grid.c3{grid-template-columns:1fr}.layout{grid-template-columns:1fr}}
   @media (max-width:520px){.grid.c4{grid-template-columns:1fr}}
-  /* cards */
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
-  .pad{padding:20px 22px}
-  .card-h{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line-2)}
-  .card-h h2{font-size:14.5px;font-weight:650;margin:0;letter-spacing:-.01em}
+  /* cards — borderless; whitespace + soft shadow do the separating */
+  .card{background:var(--surface);border:1px solid transparent;border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+  .pad{padding:24px}
+  .card-h{display:flex;align-items:center;gap:10px;padding:18px 24px;border-bottom:1px solid var(--line-2)}
+  .card-h h2{font-size:15px;font-weight:640;margin:0;letter-spacing:-.01em}
   .card-h .faint{margin-left:auto;font-size:12.5px}
   /* stat cards */
-  .stat{padding:20px 22px;position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
-  .stat:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:color-mix(in srgb,var(--accent) 22%,var(--line))}
-  .stat-ico{position:absolute;top:15px;right:15px;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:var(--accent-wash);color:var(--accent-ink);opacity:1}
-  .statval{font-size:34px;font-weight:720;letter-spacing:-.04em;line-height:1.02;font-variant-numeric:tabular-nums}
-  .statlabel{color:var(--muted);font-size:13px;margin-top:7px;font-weight:550}
+  .stat{padding:24px;position:relative;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}
+  .stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+  .stat-ico{position:absolute;top:18px;right:18px;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:var(--accent-50);color:var(--accent-ink);opacity:1}
+  .statval{font-size:36px;font-weight:740;letter-spacing:-.04em;line-height:1.02;font-variant-numeric:tabular-nums}
+  .statlabel{color:var(--muted);font-size:13px;margin-top:8px;font-weight:540}
   .statsub{color:var(--faint);font-size:12px;margin-top:9px}
   .stat.t-pos{border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
   .stat.t-pos::before,.stat.t-danger::before,.stat.t-warn::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px}
@@ -235,8 +237,8 @@ const CSS = `
   .rowtitle{font-size:14.5px;font-weight:560}.rowdesc{font-size:12.5px;color:var(--muted)}
   .actions{margin-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px}
   button{font-family:var(--sans);font-size:14px;font-weight:580;border-radius:var(--radius-sm);cursor:pointer;padding:10px 17px;border:1px solid transparent;transition:filter .15s,background .15s,border-color .15s,box-shadow .15s,transform .08s}
-  .primary{background:linear-gradient(180deg,var(--accent-2),var(--accent));color:#fff;box-shadow:0 1px 2px rgba(15,21,32,.14),0 6px 16px -7px color-mix(in srgb,var(--accent) 55%,transparent)}
-  .primary:hover{filter:brightness(1.04);box-shadow:0 2px 5px rgba(15,21,32,.16),0 12px 24px -7px color-mix(in srgb,var(--accent) 62%,transparent)}
+  .primary{background:var(--accent);color:#fff;box-shadow:0 1px 2px rgba(15,21,32,.12),0 5px 14px -8px color-mix(in srgb,var(--accent) 50%,transparent)}
+  .primary:hover{filter:brightness(1.05);box-shadow:0 2px 5px rgba(15,21,32,.14),0 10px 22px -8px color-mix(in srgb,var(--accent) 58%,transparent)}
   .primary:active{transform:translateY(1px)}
   .ghost{background:var(--surface);color:var(--ink);border-color:var(--line);box-shadow:var(--shadow-sm)}.ghost:hover{background:var(--hover);border-color:color-mix(in srgb,var(--accent) 28%,var(--line))}
   button:disabled{opacity:.6;cursor:default}
@@ -246,8 +248,6 @@ const CSS = `
   .pw label{font-size:12px;color:var(--faint)}
   a:focus-visible,button:focus-visible,.feed-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
   input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;border-color:var(--accent)!important;box-shadow:var(--ring)}
-  nav.tabs a.on{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 24%,transparent)}
-  .card-h{border-bottom:1px solid var(--line-2);background:linear-gradient(180deg,color-mix(in srgb,var(--surface-2) 60%,transparent),transparent)}
 `;
 
 /** App Bridge tags so pages opened inside the Shopify admin can fetch a session
