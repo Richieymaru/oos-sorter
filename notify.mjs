@@ -385,23 +385,23 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
          ${leadP}
        </td></tr>`
     : `<tr><td style="padding:18px 20px 4px">${heroText}${leadP}</td></tr>`;
-  const incentiveBlock = inc
-    ? `<tr><td style="padding:6px 20px 10px">
-         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:14px">
-           <tr><td style="padding:14px 16px">
-             <div style="font-size:14px;color:#0f1729;line-height:1.5">&#128666; <strong>Free shipping</strong> on this order</div>
-             ${incGiftList.length ? giftRowsHtml(incGiftList, giftImages, '#1f6feb') : ''}
-           </td></tr>
-         </table>
-       </td></tr>`
-    : '';
-  const freeGiftBlock = hasGift
+  // One combined "free with your order" box: free shipping (perks) + every free
+  // gift — the free-gift offer AND any price-tier gift — deduped, in one place.
+  const giftNames = [];
+  const seenGift = new Set();
+  for (const n of [...(hasGift ? freeGift.products : []), ...incGiftList]) {
+    const k = String(n).toLowerCase();
+    if (!seenGift.has(k)) { seenGift.add(k); giftNames.push(n); }
+  }
+  const hasShipping = !!inc;
+  const offersBlock = (hasShipping || giftNames.length)
     ? `<tr><td style="padding:6px 20px 10px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f0fbf6;border:1px solid #cdeede;border-radius:14px">
-           <tr><td style="padding:16px 18px">
-             <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:${ACCENT};text-transform:uppercase">&#127873; Free gift if you order now</div>
-             ${giftRowsHtml(freeGift.products, giftImages, ACCENT)}
-             ${freeGift.code ? `<div style="font-size:13px;color:#5f6875;margin-top:12px;padding-top:12px;border-top:1px solid #cdeede">Use code <strong style="color:#161b22;background:#fff;border:1px dashed #9bd3b6;border-radius:6px;padding:2px 8px">${esc(freeGift.code)}</strong> at checkout.</div>` : ''}
+           <tr><td style="padding:14px 16px">
+             <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:${ACCENT};text-transform:uppercase">&#127873; Free with your order</div>
+             ${hasShipping ? `<div style="font-size:14px;color:#0f1729;line-height:1.5;margin-top:8px">&#128666; <strong>Free shipping</strong> on this order</div>` : ''}
+             ${giftNames.length ? giftRowsHtml(giftNames, giftImages, ACCENT) : ''}
+             ${hasGift && freeGift.code ? `<div style="font-size:13px;color:#5f6875;margin-top:12px;padding-top:12px;border-top:1px solid #cdeede">Use code <strong style="color:#161b22;background:#fff;border:1px dashed #9bd3b6;border-radius:6px;padding:2px 8px">${esc(freeGift.code)}</strong> at checkout.</div>` : ''}
            </td></tr>
          </table>
        </td></tr>`
@@ -412,14 +412,13 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6eaf0;border-radius:16px;overflow:hidden">
         <tr><td style="height:3px;background:${ACCENT};font-size:0;line-height:0">&nbsp;</td></tr>
-        <tr><td style="padding:13px 20px;border-bottom:1px solid #f1f3f7">
+        <tr><td align="center" style="padding:16px 20px;background:#000000">
           ${product.brandLogo
-            ? `<img src="${esc(product.brandLogo)}" alt="${esc(FROM_NAME)}" height="28" style="height:28px;max-height:32px;width:auto;max-width:190px;display:block;border:0">`
-            : `<span style="font-size:15px;font-weight:800;color:#0f1729;letter-spacing:-.01em">${esc(FROM_NAME)}</span>`}
+            ? `<img src="${esc(product.brandLogo)}" alt="${esc(FROM_NAME)}" height="30" style="height:30px;max-height:36px;width:auto;max-width:200px;display:inline-block;border:0">`
+            : `<span style="font-size:16px;font-weight:800;color:#ffffff;letter-spacing:-.01em">${esc(FROM_NAME)}</span>`}
         </td></tr>
         ${heroRow}
-        ${freeGiftBlock}
-        ${incentiveBlock}
+        ${offersBlock}
         <tr><td style="padding:16px 20px 4px" align="center">
           <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:15px 44px;border-radius:12px">Add to cart &rarr;</a>
           <div style="margin-top:9px"><a href="${esc(productUrl)}" style="color:#6b7280;text-decoration:underline;font-size:13px">or view the product</a></div>

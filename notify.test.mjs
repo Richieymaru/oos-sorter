@@ -130,7 +130,7 @@ const resend = buildBackInStock(
     giftImages: { 'free gels': 'https://cdn.shopify.com/img/gels.png' } },
   unsub
 );
-ok('resend-style email shows the free gift from the payload', resend.html.toLowerCase().includes('free gift if you order now') && resend.html.includes('Free gels'));
+ok('resend-style email shows the free gift from the payload', resend.html.toLowerCase().includes('free with your order') && resend.html.includes('Free gels'));
 ok('gift image renders as a thumbnail when resolved', resend.html.includes('cdn.shopify.com/img/gels.png') && resend.html.includes('<img'));
 ok('discount code still shown', resend.html.includes('FREEGEL'));
 const noImg = buildBackInStock({ title: 'Z', handle: 'z', freeGift: { products: ['Mystery box'] } }, unsub);
