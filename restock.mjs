@@ -136,27 +136,24 @@ async function resolveGiftVariants(names) {
 }
 
 /** Of the given numeric variant ids, the Set that can actually be bought via a
- *  cart permalink: the product isn't Draft/Archived and the variant is in stock,
- *  oversellable, or untracked. Used to skip an unavailable gift so the cart link
- *  never fails with "one or more items are no longer available". On error, the id
- *  is kept (optimistic) so a transient lookup never drops a valid gift. */
+ *  cart permalink. Uses Shopify's own `availableForSale` — the single source of
+ *  truth: it's true when the variant is in stock OR oversellable ("sell when out
+ *  of stock") AND the product is published/purchasable, and false for draft,
+ *  unpublished, or truly-out-of-stock variants. Skipping the rest keeps the cart
+ *  link from failing with "one or more items are no longer available". On a lookup
+ *  error the id is kept (optimistic) so a transient failure never drops a gift. */
 async function availableVariants(ids) {
   const uniq = [...new Set((ids || []).map((id) => String(id).replace(/\D/g, '')).filter(Boolean))];
   if (!uniq.length) return new Set();
   const gids = uniq.map((id) => `gid://shopify/ProductVariant/${id}`);
   try {
     const d = await gql(
-      `query($ids: [ID!]!) { nodes(ids: $ids) { __typename ... on ProductVariant { id inventoryPolicy inventoryQuantity product { status } inventoryItem { tracked } } } }`,
+      `query($ids: [ID!]!) { nodes(ids: $ids) { __typename ... on ProductVariant { id availableForSale } } }`,
       { ids: gids }
     );
     const out = new Set();
     for (const n of d.nodes || []) {
-      if (!n || n.__typename !== 'ProductVariant') continue;
-      const vid = String(n.id).replace(/\D/g, '');
-      const status = n.product?.status;
-      if (status === 'DRAFT' || status === 'ARCHIVED') continue;
-      const buyable = n.inventoryItem?.tracked === false || n.inventoryPolicy === 'CONTINUE' || (n.inventoryQuantity || 0) > 0;
-      if (buyable) out.add(vid);
+      if (n && n.__typename === 'ProductVariant' && n.availableForSale) out.add(String(n.id).replace(/\D/g, ''));
     }
     return out;
   } catch (e) {
