@@ -59,7 +59,9 @@ function previewSamples(settings, ctx, giftImages = {}) {
   ];
 }
 
-/** The /preview page body: each sample email rendered isolated in its own iframe. */
+/** The /preview page body: each sample email rendered isolated in its own iframe,
+ *  with a Gmail desktop/mobile size toggle (each box ≈ one screen, so the owner
+ *  can see whether the Add-to-cart button + gift sit above the fold). */
 function previewBody(samples) {
   const cards = samples
     .map(
@@ -67,12 +69,29 @@ function previewBody(samples) {
       <div class="cname" style="font-size:15px">${esc(s.label)}</div>
       <div class="faint" style="font-size:12.5px;margin:3px 0 2px">Subject: <strong>${esc(s.subject)}</strong></div>
       <div class="faint" style="font-size:12.5px;margin-bottom:10px">${s.note}</div>
-      <iframe srcdoc="${esc(s.html)}" title="${esc(s.label)}" loading="lazy" style="width:100%;max-width:620px;height:760px;border:1px solid var(--line);border-radius:12px;background:#fff;display:block"></iframe>
+      <iframe class="pvframe" srcdoc="${esc(s.html)}" title="${esc(s.label)}" loading="lazy" style="width:100%;max-width:620px;height:700px;border:1px solid var(--line);border-radius:12px;background:#eef1f6;display:block;margin:0 auto"></iframe>
     </div>`
     )
     .join('');
   return `<div class="pagehead"><h1>Email preview</h1><p>Exactly what shoppers receive, rendered from your current settings. Product, price and images are samples — the real emails use each live product. <a href="/settings" style="color:var(--accent-ink);font-weight:600">&larr; back to settings</a></p></div>
-  ${cards}`;
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-4px 0 16px">
+    <span class="faint" style="font-size:12.5px">Preview as:</span>
+    <button type="button" class="ghost pvdev" data-w="620" data-h="700">Gmail desktop</button>
+    <button type="button" class="ghost pvdev" data-w="390" data-h="680">Gmail mobile</button>
+    <span class="faint" style="font-size:11.5px">— each box is about one screen; if the button or gift is below it, shoppers would have to scroll.</span>
+  </div>
+  ${cards}
+  <script>
+    (function(){
+      var frames=document.querySelectorAll('.pvframe'), btns=document.querySelectorAll('.pvdev');
+      function setSize(w,h,active){
+        frames.forEach(function(f){ f.style.maxWidth=w+'px'; f.style.height=h+'px'; });
+        btns.forEach(function(b){ var on=(b===active); b.style.background=on?'var(--accent-wash)':''; b.style.color=on?'var(--accent-ink)':''; b.style.fontWeight=on?'700':''; });
+      }
+      btns.forEach(function(b){ b.addEventListener('click', function(){ setSize(parseInt(b.dataset.w,10), parseInt(b.dataset.h,10), b); }); });
+      if(btns[0]) setSize(620,700,btns[0]);
+    })();
+  </script>`;
 }
 
 async function readJson(req) {

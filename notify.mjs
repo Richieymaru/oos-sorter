@@ -365,12 +365,12 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
     ? `<div style="margin:14px 0 0"><span style="display:inline-block;font-size:12.5px;color:#48506a;background:#f2f4f8;border:1px solid #e6eaf0;border-radius:8px;padding:5px 11px">Option: <strong style="color:#0f1729">${esc(variant)}</strong></span></div>`
     : '';
   const heroImage = product.image
-    ? `<tr><td style="padding:0">
-         <a href="${esc(cartUrl)}" style="display:block;text-decoration:none"><img src="${esc(product.image)}" alt="${esc(title)}" width="600" style="width:100%;height:auto;display:block;border:0"></a>
+    ? `<tr><td style="padding:14px 20px 0">
+         <a href="${esc(cartUrl)}" style="display:block;text-decoration:none"><img src="${esc(product.image)}" alt="${esc(title)}" width="560" style="width:100%;max-height:240px;height:auto;object-fit:cover;border-radius:12px;display:block;border:1px solid #eef1f6"></a>
        </td></tr>`
     : '';
   const incentiveBlock = inc
-    ? `<tr><td style="padding:6px 28px 10px">
+    ? `<tr><td style="padding:6px 20px 10px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#eef5ff;border:1px solid #cfe0fb;border-radius:14px">
            <tr><td style="padding:16px 18px">
              <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:#1f6feb;text-transform:uppercase">&#128230; Your order perks</div>
@@ -385,7 +385,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
        </td></tr>`
     : '';
   const freeGiftBlock = hasGift
-    ? `<tr><td style="padding:6px 28px 10px">
+    ? `<tr><td style="padding:6px 20px 10px">
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f0fbf6;border:1px solid #cdeede;border-radius:14px">
            <tr><td style="padding:16px 18px">
              <div style="font-size:12px;font-weight:800;letter-spacing:.05em;color:${ACCENT};text-transform:uppercase">&#127873; Free gift if you order now</div>
@@ -399,30 +399,28 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
   <body style="margin:0;padding:0;background:#eef1f6">
   <div style="background:#eef1f6;padding:26px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6eaf0;border-radius:18px;overflow:hidden">
-        <tr><td style="height:4px;background:${ACCENT};font-size:0;line-height:0">&nbsp;</td></tr>
-        <tr><td style="padding:16px 28px;border-bottom:1px solid #f1f3f7">
+      <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #e6eaf0;border-radius:16px;overflow:hidden">
+        <tr><td style="height:3px;background:${ACCENT};font-size:0;line-height:0">&nbsp;</td></tr>
+        <tr><td style="padding:13px 20px;border-bottom:1px solid #f1f3f7">
           ${product.brandLogo
-            ? `<img src="${esc(product.brandLogo)}" alt="${esc(FROM_NAME)}" height="30" style="height:30px;max-height:34px;width:auto;max-width:200px;display:block;border:0">`
+            ? `<img src="${esc(product.brandLogo)}" alt="${esc(FROM_NAME)}" height="28" style="height:28px;max-height:32px;width:auto;max-width:190px;display:block;border:0">`
             : `<span style="font-size:15px;font-weight:800;color:#0f1729;letter-spacing:-.01em">${esc(FROM_NAME)}</span>`}
         </td></tr>
-        ${heroImage}
-        <tr><td style="padding:24px 28px 4px">
-          <span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.09em;color:#ffffff;background:${ACCENT};border-radius:999px;padding:6px 13px;text-transform:uppercase">${esc(eyebrow)}</span>
-          <div style="font-size:24px;line-height:1.25;font-weight:800;color:#0f1729;letter-spacing:-.02em;margin:14px 0 0">${esc(title)}</div>
+        <tr><td style="padding:18px 20px 2px">
+          <span style="display:inline-block;font-size:11px;font-weight:800;letter-spacing:.09em;color:#ffffff;background:${ACCENT};border-radius:999px;padding:5px 12px;text-transform:uppercase">${esc(eyebrow)}</span>
+          <div style="font-size:22px;line-height:1.25;font-weight:800;color:#0f1729;letter-spacing:-.02em;margin:12px 0 0">${esc(title)}</div>
           ${variantChip}
           ${priceBlock}
-          <p style="font-size:15px;color:#5b6472;line-height:1.6;margin:14px 0 0">${leadHtml}</p>
+          <p style="font-size:14px;color:#5b6472;line-height:1.55;margin:11px 0 0">${leadHtml}</p>
         </td></tr>
-        ${incentiveBlock}
         ${freeGiftBlock}
-        <tr><td style="padding:22px 28px 6px" align="center">
-          <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:16px 46px;border-radius:12px">Add to cart &rarr;</a>
+        <tr><td style="padding:16px 20px 4px" align="center">
+          <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:15px 44px;border-radius:12px">Add to cart &rarr;</a>
+          <div style="margin-top:9px"><a href="${esc(productUrl)}" style="color:#6b7280;text-decoration:underline;font-size:13px">or view the product</a></div>
         </td></tr>
-        <tr><td style="padding:0 28px 26px" align="center">
-          <a href="${esc(productUrl)}" style="color:#6b7280;text-decoration:underline;font-size:13px">or view the product</a>
-        </td></tr>
-        <tr><td style="padding:18px 28px;border-top:1px solid #f1f3f7;font-size:11.5px;color:#9aa3b2;line-height:1.6">
+        ${heroImage}
+        ${incentiveBlock}
+        <tr><td style="padding:16px 20px;border-top:1px solid #f1f3f7;font-size:11.5px;color:#9aa3b2;line-height:1.6">
           You asked ${esc(FROM_NAME)} to let you know when this was back in stock. <a href="${esc(unsub)}" style="color:#9aa3b2">Unsubscribe</a>.
         </td></tr>
       </table>
