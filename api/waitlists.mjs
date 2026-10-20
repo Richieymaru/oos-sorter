@@ -253,28 +253,26 @@ export default async function handler(req, res) {
     if (r.n) return chip('#fff3e0', '#a15c00', 'Nudged' + (r.ns > 1 ? ` &times;${r.ns}` : ''));
     return chip('#eef1f6', '#5f6875', 'Notified');
   };
-  // What a still-interested shopper is exploring — the OTHER products in their
-  // cart (considering) or that they viewed while browsing — so the owner knows
-  // they're warm and can act.
+  // The OTHER products a still-interested shopper is viewing — from LIVE browsing
+  // only (the Web Pixel), never the abandoned cart (which is polluted by the free
+  // gifts OUR email adds). Excludes our own gifts/perks, the waitlisted product,
+  // and common add-ons so only genuine products show.
+  const ourProducts = new Set(
+    [settings.freeGiftProduct, settings.freeGiftGasProduct, settings.incentiveMinorGift, settings.incentiveMajorGift]
+      .filter(Boolean).map((s) => String(s).toLowerCase())
+  );
   const engHint = (r) => {
-    if (r.o) return '';
-    const line = (items) => {
-      const list = (items || []).filter(Boolean);
-      const others = list.filter((t) => t !== r.t);
-      const pool = others.length ? others : list;
-      if (!pool.length) return '';
-      const show = pool.slice(0, 3);
-      const more = pool.length - show.length;
-      return `${esc(show.join(', '))}${more > 0 ? ` +${more} more` : ''}`;
-    };
-    const wrap = (txt) => `<div class="faint" style="font-size:11px;margin-top:4px;line-height:1.35">${txt}</div>`;
-    if (r.ca) { const t = line(r.ca.items); if (t) return wrap('considering: ' + t); }
-    if (r.br && r.br.viewed && r.br.viewed.length) {
-      const t = line(r.br.viewed);
-      const seen = r.br.last ? ' · last seen ' + fmtShort(r.br.last) : '';
-      if (t) return wrap('viewed: ' + t + seen);
-    }
-    return '';
+    if (r.o || !r.br || !r.br.viewed || !r.br.viewed.length) return '';
+    const mine = String(r.t || '').toLowerCase();
+    const pool = r.br.viewed.filter(Boolean).filter((t) => {
+      const s = String(t).toLowerCase();
+      return s !== mine && !ourProducts.has(s) && !/giveaway entry|shipping protection/.test(s);
+    });
+    if (!pool.length) return '';
+    const show = pool.slice(0, 3);
+    const more = pool.length - show.length;
+    const seen = r.br.last ? ' · last seen ' + fmtShort(r.br.last) : '';
+    return `<div class="faint" style="font-size:11px;margin-top:4px;line-height:1.35">viewed: ${esc(show.join(', '))}${more > 0 ? ` +${more} more` : ''}${seen}</div>`;
   };
   const inStockNow = (r) => {
     const sp = stockById.get(r.p);
@@ -486,8 +484,12 @@ export default async function handler(req, res) {
     document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeEmail(); });
     var emCart=document.getElementById('emCart');
     function showEmail(subject, html, cart, giftApplied){
-      emSubject.textContent=(subject?('Subject: '+subject):'') + (giftApplied!==undefined ? '   ·   Gift: ' + (giftApplied || 'none') : '');
-      if(emCart){ if(cart){ emCart.textContent='🛒 Add to cart adds → '+cart+(cart.indexOf(',')>-1?'  ✓ gift included':'  (only this product — no gift added)'); emCart.style.display='block'; } else { emCart.style.display='none'; emCart.textContent=''; } }
+      emSubject.textContent=subject?('Subject: '+subject):'';
+      if(emCart){
+        var g = (giftApplied!==undefined && giftApplied!==null) ? ('🎁 Free gift: ' + (giftApplied || 'none')) : '';
+        var c = cart ? ('   ·   🛒 adds → '+cart+(cart.indexOf(',')>-1?'  ✓ in cart':'  (product only)')) : '';
+        if(g || c){ emCart.textContent = g + c; emCart.style.display='block'; } else { emCart.style.display='none'; emCart.textContent=''; }
+      }
       emFrame.srcdoc=html; emModal.style.display='block';
     }
     // The gift override selector + send-from-modal: switch the free gift in the
