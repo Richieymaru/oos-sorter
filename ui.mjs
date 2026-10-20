@@ -73,6 +73,30 @@ export function saleReminderBanner(ev) {
   }catch(e){} })();</script>`;
 }
 
+/**
+ * A client-side "show N, then Show more" pager for a list already in the DOM.
+ * `containerId` holds the items; `itemSel` selects them within it (e.g. 'tr',
+ * '.feed-item', ':scope > .card'). Shows `pageSize` first, revealing +pageSize
+ * per click. Pure markup + a scoped script; keeps everything in the DOM (fast).
+ */
+export function paginator(containerId, pageSize, itemSel) {
+  const id = JSON.stringify(containerId);
+  const sel = JSON.stringify(itemSel);
+  return `<div class="pager" id="pg_${esc(containerId)}" style="display:none;align-items:center;justify-content:space-between;gap:12px;padding:14px 4px 2px;border-top:1px solid var(--line-2);margin-top:8px">
+    <span class="faint" id="pgc_${esc(containerId)}" style="font-size:12.5px"></span>
+    <button class="ghost" type="button" id="pgm_${esc(containerId)}">Show more</button>
+  </div>
+  <script>(function(){
+    var c=document.getElementById(${id}); if(!c) return;
+    var items=[].slice.call(c.querySelectorAll(${sel}));
+    var ps=${Number(pageSize) || 10}, shown=ps;
+    var pager=document.getElementById('pg_'+${id}), cnt=document.getElementById('pgc_'+${id}), more=document.getElementById('pgm_'+${id});
+    function render(){ for(var i=0;i<items.length;i++){ items[i].style.display = i<shown ? '' : 'none'; } var sh=Math.min(shown,items.length); if(cnt) cnt.textContent='Showing '+sh+' of '+items.length; if(more) more.style.display= sh<items.length?'':'none'; if(pager) pager.style.display= items.length>ps?'flex':'none'; }
+    if(more) more.addEventListener('click', function(){ shown+=ps; render(); });
+    render();
+  })();</script>`;
+}
+
 /** A status badge. tone: 'ok' | 'warn' | 'idle' | 'info' | 'danger'. */
 export function badge(label, tone = 'ok') {
   return `<span class="badge ${tone}">${esc(label)}</span>`;

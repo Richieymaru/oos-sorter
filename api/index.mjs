@@ -7,7 +7,7 @@ import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
   shell, setPageHeaders, statCard, badge, activityFeed, funnelsBody, areaChart,
-  relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner,
+  relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner, paginator,
 } from '../ui.mjs';
 import { activeSaleReminder } from '../sales-calendar.mjs';
 import { requireAuth } from './_auth.mjs';
@@ -208,7 +208,7 @@ export default async function handler(req, res) {
       <div class="card rise" style="--d:80ms">
         <div class="card-h"><h2>All activity</h2><span class="faint">${items.length ? `${items.length} most recent` : ''}</span></div>
         ${settings.monitor
-          ? activityFeed(items)
+          ? `<div id="actfeed">${activityFeed(items)}</div>${items.length > 10 ? paginator('actfeed', 10, '.feed-item') : ''}`
           : `<div class="empty">The change monitor is off.<div class="faint" style="margin-top:6px">Turn it on in Settings to track who changes, adds, or deletes products and collections.</div></div>`}
       </div>`;
     setPageHeaders(res);

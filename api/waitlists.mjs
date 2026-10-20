@@ -1,5 +1,5 @@
 import { requireAuth } from './_auth.mjs';
-import { shell, setPageHeaders, esc, statCard } from '../ui.mjs';
+import { shell, setPageHeaders, esc, statCard, paginator } from '../ui.mjs';
 import { productsWithWaitlist, notifyOneProduct, resendOne, offerAltForProduct, previewResendEmail, previewOfferEmail } from '../restock.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isVariantInStock, isInStock } from '../stock.mjs';
@@ -402,7 +402,8 @@ export default async function handler(req, res) {
     <button class="ghost" id="emailAll">Email me the full list</button>
     <span id="msgAll" class="faint" style="font-size:12.5px"></span>
   </div>
-  ${cards}`}
+  <div id="wlcards">${cards}</div>
+  ${items.length > 20 ? paginator('wlcards', 20, ':scope > .card') : ''}`}
   ${notifiedView
     ? `<div class="callout" style="margin:-4px 0 16px"><div class="ct" style="font-size:12.5px">Shoppers who don’t click or order get up to <strong>3 automatic follow-ups</strong> (after ${settings.nudgeDays || 2} days, then +2, then +7) — then it stops. Anyone who <strong>orders or clicks</strong> is dropped automatically.${
         settings.freeGiftEnabled || settings.incentivesEnabled
@@ -413,8 +414,9 @@ export default async function handler(req, res) {
   ${notifiedView ? `<div class="card pad">
     <table>
       <thead><tr><th>Email</th><th>Product</th><th>Variant</th><th class="when">Notified</th><th class="when">Clicked</th><th>Status</th><th></th></tr></thead>
-      <tbody>${recentRows}</tbody>
+      <tbody id="ntb">${recentRows}</tbody>
     </table>
+    ${recent.length > 10 ? paginator('ntb', 10, 'tr') : ''}
     <style>.when{text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}thead th.when{color:var(--faint)}</style>
   </div>` : ''}
   <div class="pw" style="margin-top:16px">
