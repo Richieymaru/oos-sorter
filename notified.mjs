@@ -129,7 +129,7 @@ export function matchCarts(log, carts) {
   }
   for (let i = 0; i < list.length; i++) {
     const r = list[i];
-    if (r.o) continue; // ordered already — stronger than "in cart"
+    if (r.o || r.ca) continue; // ordered, or already has a cart signal (idempotent — no re-match)
     const k = byEmail.get(lc(r.e));
     if (!k) continue;
     if (new Date(k.at).getTime() < new Date(r.ts).getTime()) continue; // cart must come AFTER we notified
@@ -361,7 +361,7 @@ export async function reconcileOrders({ days = 60 } = {}) {
  */
 export async function reconcileCarts({ days = 30 } = {}) {
   const log = await loadNotified();
-  if (!log.length || !log.some((r) => !r.o)) return { matched: 0 };
+  if (!log.length || !log.some((r) => !r.o && !r.ca)) return { matched: 0 }; // only rows that could still gain a cart signal
   const since = new Date(Date.now() - days * DAY).toISOString();
   const { carts, emailRedacted, denied } = await fetchAbandonedForAttribution({ since });
   if (denied) return { matched: 0, denied: true };

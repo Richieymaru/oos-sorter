@@ -174,6 +174,7 @@ ok('matches a cart placed after notify', mc.log[0].ca && mc.log[0].ca.items.leng
 ok('cart before notify does not match', !mc.log[1].ca);
 ok('ordered row is skipped', !mc.log[2].ca);
 ok('matched count is 1', mc.matched === 1);
+ok('idempotent — re-running matches nothing new (no reload loop)', matchCarts(mc.log, carts).matched === 0);
 ok('keeps most-recent cart per email', (() => {
   const two = [{ email: 'd@x.com', at: '2026-10-02T00:00:00Z', items: ['Old'] }, { email: 'd@x.com', at: '2026-10-09T00:00:00Z', items: ['New'] }];
   const r = matchCarts([notifiedRow({ email: 'd@x.com', productId: '9', title: 'X', ts: '2026-10-01T00:00:00Z' })], two);

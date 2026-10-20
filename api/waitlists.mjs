@@ -552,16 +552,15 @@ export default async function handler(req, res) {
       });
     });
 
-    // Freshen order attribution in the background so the 60-day order scan never
-    // blocks first paint. Reloads once if new orders were just attributed;
-    // reconcile is idempotent, so the reload can't loop.
+    // Freshen order + cart attribution in the BACKGROUND (so the 60-day scans
+    // never block first paint). No auto-reload — the fresh Ordered / In-cart
+    // status simply shows on the next page load. (The old reload could interrupt
+    // navigation and, with cart matching, loop — jumping the page to the top.)
     setTimeout(function(){
       authH().then(function(h){
         return fetch('/api/waitlists',{method:'POST',headers:h,body:JSON.stringify({action:'reconcile'})});
-      }).then(function(r){ return r.json(); }).then(function(j){
-        if(j && j.ok && j.matched>0){ location.reload(); }
       }).catch(function(){});
-    }, 600);
+    }, 1500);
   </script>`;
   setPageHeaders(res);
   res.end(shell({ title: notifiedView ? 'Recently notified' : 'Waitlists', active: notifiedView ? 'notified' : 'waitlists', body }));
