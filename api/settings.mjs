@@ -56,7 +56,7 @@ function previewSamples(settings, ctx, giftImages = {}) {
   const s6 = buildReorderReminder(
     { ...base, title: '7,000 Ultra Hard Gel Balls', variantId: '901', qty: 2, priceText: price(13.99), clickCartUrl: `https://${host}/cart/901:2,902:1` },
     unsub,
-    { weeks: remWeeks, others: ['Competition 14KG Puff Dino Gun Gas'], kind: 'gels' }
+    { weeks: remWeeks, others: ['Competition 14KG Puff Dino Gun Gas'], kind: 'both' }
   );
   return [
     { label: `Gel & gas reorder reminder (auto: ${settings.reminderDays || 21} days after the order)`, note: settings.remindersEnabled ? 'Sent once per order to customers who agreed to marketing emails and haven’t reordered. The button puts the same items, same quantities, in their cart.' : 'Off — turn on “Gel & gas reorder reminders” in Settings to start sending.', html: s6.html, subject: s6.subject },
