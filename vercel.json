@@ -8,6 +8,7 @@
     { "source": "/activity", "destination": "/api/index?view=activity" },
     { "source": "/assistant", "destination": "/api/index?view=assistant" },
     { "source": "/settings", "destination": "/api/settings" },
+    { "source": "/reminders", "destination": "/api/settings?view=reminders" },
     { "source": "/preview", "destination": "/api/settings?view=preview" }
   ]
 }

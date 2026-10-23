@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', freeGiftGasProduct: '', freeGiftGasImage: '', freeGiftGasVariantId: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '' };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', freeGiftGasProduct: '', freeGiftGasImage: '', freeGiftGasVariantId: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '', remindersEnabled: false, reminderDays: 21 };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProduct, 'Free gels');
@@ -31,6 +31,9 @@ eq('minor gift is a single product', normalizeSettings({ incentiveMinorGift: '  
 eq('gift migrates from a legacy array', normalizeSettings({ incentiveMajorGiftProducts: ['Blaster', 'x'] }).incentiveMajorGift, 'Blaster');
 // incentiveFor: off -> null
 eq('incentiveFor returns null when disabled', incentiveFor(999, normalizeSettings({})), null);
+// Reorder reminders: off unless explicitly true; the delay is clamped to 7-90 days.
+eq('reminders off unless true', [normalizeSettings({ remindersEnabled: 'true' }).remindersEnabled, normalizeSettings({ remindersEnabled: true }).remindersEnabled], [false, true]);
+eq('reminder delay clamps to 7-90, default 21', [{}, { reminderDays: 2 }, { reminderDays: 400 }, { reminderDays: '30' }].map((o) => normalizeSettings(o).reminderDays), [21, 7, 90, 30]);
 const incOn = normalizeSettings({ incentivesEnabled: true, incentiveMinorGift: 'Sticker', incentiveMinorGiftVariantId: '111', incentiveMajorGift: 'Blaster', incentiveMajorGiftVariantId: '222' });
 eq('below tier1 -> null', incentiveFor(199, incOn), null);
 eq('tier1 (200) -> free shipping only', incentiveFor(200, incOn), { freeShipping: true, gift: null, giftVariantId: null });

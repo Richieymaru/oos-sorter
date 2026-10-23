@@ -5,7 +5,9 @@ import { requireAuth } from './_auth.mjs';
 import { ensureMonitorWebhooks } from '../webhooks.mjs';
 import { fetchAllStatuses } from '../monitor.mjs';
 import { loadMonitorState, saveMonitorState } from '../monitor-state.mjs';
-import { buildBackInStock, buildNudge, buildAltVariant, formatMoney } from '../notify.mjs';
+import { buildBackInStock, buildNudge, buildAltVariant, buildReorderReminder, formatMoney } from '../notify.mjs';
+import { loadReminders, reminderStats, GEL_COLLECTION } from '../reminders.mjs';
+import { statCard, relTime } from '../ui.mjs';
 import { getShopContext, gql, getShopId } from '../shopify.mjs';
 import { giftImagesFor } from '../restock.mjs';
 
@@ -50,7 +52,14 @@ function previewSamples(settings, ctx, giftImages = {}) {
     unsub
   );
 
+  const remWeeks = Math.max(1, Math.round((settings.reminderDays || 21) / 7));
+  const s6 = buildReorderReminder(
+    { ...base, title: '7,000 Ultra Hard Gel Balls', variantId: '901', qty: 2, priceText: price(13.99), clickCartUrl: `https://${host}/cart/901:2,902:1` },
+    unsub,
+    { weeks: remWeeks, others: ['Competition 14KG Puff Dino Gun Gas'], kind: 'gels' }
+  );
   return [
+    { label: `Gel & gas reorder reminder (auto: ${settings.reminderDays || 21} days after the order)`, note: settings.remindersEnabled ? 'Sent once per order to customers who agreed to marketing emails and haven’t reordered. The button puts the same items, same quantities, in their cart.' : 'Off — turn on “Gel & gas reorder reminders” in Settings to start sending.', html: s6.html, subject: s6.subject },
     { label: 'Back in stock', note: 'Sent automatically when a shopper’s exact option returns (also the manual “Send now”).', html: s1.html, subject: s1.subject },
     { label: 'Back in stock — with order perks', note: settings.incentivesEnabled ? 'A higher-priced product shows the perks box, based on your thresholds.' : 'Turn on “Order perks by price” in Settings to show the free-shipping / gift box here.', html: s2.html, subject: s2.subject },
     { label: `Follow-up nudge (auto: after ${settings.nudgeDays || 2} days, then +2, then +7 — up to 3, then stops)`, note: freeGift ? 'Sent automatically to shoppers who didn’t click or order. Includes your free-gift offer.' : 'Sent automatically to shoppers who didn’t click or order. Turn on the free-gift offer to add a gift box.', html: s3.html, subject: s3.subject },
@@ -203,8 +212,10 @@ export default async function handler(req, res) {
   // GET ?asset=logo serves the uploaded logo image (public, for email clients).
   if (/[?&]asset=logo\b/.test(req.url || '')) { await serveLogo(res); return; }
 
-  // GET = the page. ?view=preview renders the sample emails instead.
+  // GET = the page. ?view=preview renders the sample emails instead; ?view=reminders
+  // the reorder-reminder log.
   const previewView = /[?&]view=preview\b/.test(req.url || '');
+  const remindersView = /[?&]view=reminders\b/.test(req.url || '');
   let settings;
   try {
     settings = await loadSettings();
@@ -212,6 +223,14 @@ export default async function handler(req, res) {
     console.error('settings: not connected —', e.message);
     setPageHeaders(res);
     res.end(shell({ title: previewView ? 'Email preview' : 'Settings', active: previewView ? 'preview' : 'settings', body: notConnectedBody(shopOf(req)) }));
+    return;
+  }
+
+  if (remindersView) {
+    let log = null;
+    try { log = await loadReminders(); } catch (e) { console.error('reminders load failed:', e.message); }
+    setPageHeaders(res);
+    res.end(shell({ title: 'Reminders', active: 'reminders', body: remindersBody(settings, log) }));
     return;
   }
 
@@ -229,4 +248,42 @@ export default async function handler(req, res) {
     settingsBody(settings);
   setPageHeaders(res);
   res.end(shell({ title: 'Settings', active: 'settings', body }));
+}
+
+/** The Reminders page: who got a "running low?" email, and what came of it. */
+export function remindersBody(settings, log) {
+  const money = (cur, amt) => `${cur ? cur + ' ' : ''}${(Number(amt) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const head = `<div class="pagehead"><h1>Reorder reminders</h1><p>One &ldquo;Running low on gels?&rdquo; email, ${esc(String(settings.reminderDays || 21))} days after an order with gel balls or gas from the &ldquo;${esc(GEL_COLLECTION)}&rdquo; collection &mdash; only to customers who agreed to marketing emails. <a href="/settings" style="color:var(--accent-ink);font-weight:600">Settings &rarr;</a> &middot; <a href="/preview" style="color:var(--accent-ink);font-weight:600">Preview the email &rarr;</a></p></div>`;
+  const off = settings.remindersEnabled
+    ? ''
+    : `<div class="card pad" style="margin-bottom:16px"><strong>Reminders are off.</strong> Nothing is sent until you turn on &ldquo;Gel &amp; gas reorder reminders&rdquo; in <a href="/settings" style="color:var(--accent-ink);font-weight:600">Settings</a>.</div>`;
+  if (!log) return head + off + `<div class="card pad">Couldn&rsquo;t load the reminder log just now.</div>`;
+  const st = reminderStats(log);
+  const ls = log.lastStatus;
+  const skippedText = ls && ls.skipped
+    ? Object.entries(ls.skipped).filter(([, n]) => n).map(([k, n]) => `${n} ${({ noConsent: 'no marketing consent', reordered: 'already reordered', dead: 'cancelled/refunded', already: 'already reminded', optout: 'unsubscribed', noEmail: 'no email', older: 'older order' })[k] || k}`).join(' · ')
+    : '';
+  const last = ls
+    ? `<div class="card pad" style="margin-bottom:16px"><strong>Last run:</strong> ${esc(relTime(ls.at))} &mdash; ${ls.status === 'ok' ? `sent ${ls.sent} of ${ls.due} due` : `<span style="color:#b42318">${esc(ls.status)}</span>`}${ls.dryRun ? ' (dry run)' : ''}${skippedText ? `<div class="faint" style="font-size:12.5px;margin-top:6px">Skipped: ${esc(skippedText)}</div>` : ''}</div>`
+    : '';
+  const stats = `<div class="grid c3" style="margin-bottom:16px">
+    ${statCard({ value: `${st.sent}`, label: 'Reminders sent', sub: st.optedOut ? `${st.optedOut} unsubscribed` : '' })}
+    ${statCard({ value: `${st.clicked}`, label: 'Clicked', sub: st.sent ? `${Math.round((st.clicked / st.sent) * 100)}% click-through` : '', tone: st.clicked ? 'pos' : '' })}
+    ${statCard({ value: st.revenue ? money(st.currency, st.revenue) : '—', label: 'Reorder revenue', sub: `${st.reordered} reorder(s) after a reminder`, tone: st.revenue ? 'pos' : '' })}
+  </div>`;
+  const rows = [...log.rows].reverse().slice(0, 100);
+  const table = rows.length
+    ? `<div class="card pad"><table>
+        <thead><tr><th>Order</th><th>Email</th><th>Items</th><th class="when">Sent</th><th class="when">Clicked</th><th>Reordered</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr>
+          <td>${esc(r.n || '#' + r.o)}</td>
+          <td>${esc(r.e)}</td>
+          <td>${esc((r.items || []).map((i) => (i.q > 1 ? i.q + ' × ' : '') + i.t).join(', '))}</td>
+          <td class="when">${esc(relTime(r.ts))}</td>
+          <td class="when">${r.c ? esc(relTime(r.c)) : '—'}</td>
+          <td>${r.r ? `<strong>${esc(money(r.cur, r.amt))}</strong>` : '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+    : `<div class="card pad">No reminders sent yet.</div>`;
+  return head + off + last + stats + table;
 }

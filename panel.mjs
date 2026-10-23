@@ -31,6 +31,7 @@ export function settingsBody(settings) {
   const monitorSlack = settings.monitorSlackWebhook || '';
   const sheet = settings.sheetWebhook || '';
   const nudgeDays = Number.isFinite(settings.nudgeDays) ? settings.nudgeDays : 2;
+  const reminderDays = Number.isFinite(settings.reminderDays) ? settings.reminderDays : 21;
   const rows = [
     {
       id: 'sort',
@@ -203,6 +204,20 @@ export function settingsBody(settings) {
     </div>
     <p class="faint" style="margin:8px 2px 0;font-size:11.5px">Run once (and after any URL change): subscribes the product-change webhook and records every product’s current status as the baseline. Safe to click again — it just refreshes.</p>
   </div>
+  <div class="card pad" style="margin-top:14px">
+    <label class="row" for="remindersEnabled" style="margin-bottom:6px">
+      <input type="checkbox" id="remindersEnabled"${ck(settings.remindersEnabled)} class="sw">
+      <span class="track" aria-hidden="true"><span class="thumb"></span></span>
+      <span class="rowtext">
+        <span class="rowtitle">Gel &amp; gas reorder reminders</span>
+        <span class="rowdesc">One &ldquo;Running low on gels?&rdquo; email a set number of days after an order that included gel balls or gas, with the same items in a one-click reorder cart. Sent only to customers who <strong>agreed to marketing emails</strong> &mdash; never to anyone who already reordered, cancelled, was refunded or unsubscribed, and never twice for one order. Runs once a day. <a href="/reminders" style="color:var(--accent-ink);font-weight:600">See who got one &rarr;</a> &middot; <a href="/preview" style="color:var(--accent-ink);font-weight:600">Preview the email &rarr;</a></span>
+      </span>
+    </label>
+    <div style="height:10px"></div>
+    <label class="rowtitle" for="reminderDays">Days after the order</label>
+    <p class="rowdesc" style="margin:3px 0 9px">How long after the order the reminder goes out (7&ndash;90). Default 21 days.</p>
+    <input id="reminderDays" type="number" min="7" max="90" value="${reminderDays}" style="width:90px;box-sizing:border-box;font:13px var(--mono);padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)">
+  </div>
   <div class="actions">
     <button type="submit" form="f" class="primary" id="save">Save changes</button>
     <button type="button" class="ghost" id="report">Email me the sold-out list</button>
@@ -293,7 +308,7 @@ export function settingsBody(settings) {
     async function authH(json){ var h=json?{'Content-Type':'application/json'}:{}; if(embedded){ try{ var t=await shopify.idToken(); if(t){ h['Authorization']='Bearer '+t; return h; } }catch(e){} } h['x-panel-password']=(pw.value||'').trim(); return h; }
     document.getElementById('f').addEventListener('submit', async function(e){
       e.preventDefault(); if(!needAuth()) return;
-      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, freeGiftVariantId:document.getElementById('freeGiftVariantId').value, freeGiftGasProduct:document.getElementById('freeGiftGasProduct').value, freeGiftGasImage:document.getElementById('freeGiftGasImage').value, freeGiftGasVariantId:document.getElementById('freeGiftGasVariantId').value, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMinorGiftVariantId:document.getElementById('incentiveMinorGiftVariantId').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value, incentiveMajorGiftVariantId:document.getElementById('incentiveMajorGiftVariantId').value };
+      var body={ sort:sort.checked, notify:notify.checked, draft:draft.checked, waitlist:waitlist.checked, monitor:monitor.checked, notifyEmails:document.getElementById('recips').value, slackWebhook:document.getElementById('slack').value, monitorSlackWebhook:document.getElementById('monitorSlack').value, sheetWebhook:document.getElementById('sheet').value, nudgeDays:document.getElementById('nudgeDays').value, emailLogoUrl:document.getElementById('emailLogoUrl').value, freeGiftEnabled:document.getElementById('freeGiftEnabled').checked, freeGiftProduct:document.getElementById('freeGiftProduct').value, freeGiftImage:document.getElementById('freeGiftImage').value, freeGiftVariantId:document.getElementById('freeGiftVariantId').value, freeGiftGasProduct:document.getElementById('freeGiftGasProduct').value, freeGiftGasImage:document.getElementById('freeGiftGasImage').value, freeGiftGasVariantId:document.getElementById('freeGiftGasVariantId').value, incentivesEnabled:document.getElementById('incentivesEnabled').checked, incentiveTier1:document.getElementById('incentiveTier1').value, incentiveTier2:document.getElementById('incentiveTier2').value, incentiveTier3:document.getElementById('incentiveTier3').value, incentiveMinorGift:document.getElementById('incentiveMinorGift').value, incentiveMinorGiftImage:document.getElementById('incentiveMinorGiftImage').value, incentiveMinorGiftVariantId:document.getElementById('incentiveMinorGiftVariantId').value, incentiveMajorGift:document.getElementById('incentiveMajorGift').value, incentiveMajorGiftImage:document.getElementById('incentiveMajorGiftImage').value, incentiveMajorGiftVariantId:document.getElementById('incentiveMajorGiftVariantId').value, remindersEnabled:document.getElementById('remindersEnabled').checked, reminderDays:document.getElementById('reminderDays').value };
       var r=await fetch('/api/settings',{method:'POST',headers:await authH(true),body:JSON.stringify(body)});
       if(r.ok){ if(!embedded){ try{localStorage.setItem('oos_pw',(pw.value||'').trim());}catch(e){} } flash('Saved \\u2713'); }
       else flash(r.status===401?(embedded?'Not authorized':'Wrong password'):'Couldn\\u2019t save',true);

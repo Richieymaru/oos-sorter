@@ -308,7 +308,7 @@ function giftRowsHtml(names, giftImages, tint) {
  *  product: { title, handle, image, variantId, clickCartUrl?, clickProductUrl? }.
  *  When the tracked click URLs are present they replace the raw storefront links
  *  (so we can record click-through); otherwise it falls back to direct links. */
-function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introText, freeGift = null }) {
+function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introText, freeGift = null, ctaLabel = 'Add to cart', footerHtml = null, footerText = null }) {
   const title = product.title ?? 'Your item';
   // freeGift may come via opts (nudge) or ride on the payload (resend reuses the
   // back-in-stock builder but should still show the offer).
@@ -349,6 +349,7 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
     `Or view the product: ${productUrl}\n` +
     freeGiftText +
     `\n— ${FROM_NAME}\n\n` +
+    (footerText ? `${footerText}\n` : '') +
     `Don't want these emails? Unsubscribe: ${unsub}`;
 
   // ---- HTML version (premium, single-column, conversion-focused) ----
@@ -420,11 +421,11 @@ function buildRestockEmail(product, unsub, { eyebrow, subject, leadHtml, introTe
         ${heroRow}
         ${offersBlock}
         <tr><td style="padding:16px 20px 4px" align="center">
-          <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:15px 44px;border-radius:12px">Add to cart &rarr;</a>
+          <a href="${esc(cartUrl)}" style="display:inline-block;background:${ACCENT};color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:15px 44px;border-radius:12px">${esc(ctaLabel)} &rarr;</a>
           <div style="margin-top:9px"><a href="${esc(productUrl)}" style="color:#6b7280;text-decoration:underline;font-size:13px">or view the product</a></div>
         </td></tr>
         <tr><td style="padding:16px 20px;border-top:1px solid #f1f3f7;font-size:11.5px;color:#9aa3b2;line-height:1.6">
-          You asked ${esc(FROM_NAME)} to let you know when this was back in stock. <a href="${esc(unsub)}" style="color:#9aa3b2">Unsubscribe</a>.
+          ${footerHtml || `You asked ${esc(FROM_NAME)} to let you know when this was back in stock.`} <a href="${esc(unsub)}" style="color:#9aa3b2">Unsubscribe</a>.
         </td></tr>
       </table>
       <div style="font-size:11px;color:#9aa3b2;margin-top:14px">${esc(FROM_NAME)}${host ? ` &middot; ${esc(host)}` : ''}</div>
@@ -479,6 +480,52 @@ export function buildAltVariant(product, unsub) {
     leadHtml: `The option you were waiting for is still sold out on ${esc(host)}${variant ? ` — but <strong>${esc(variant)}</strong> is available right now` : ' — but another option is available right now'}. Grab it before it's gone.`,
     introText: `The option you wanted for "${title}" is still sold out, but ${variant ? `"${variant}"` : 'another option'} is in stock on ${host}.`,
   });
+}
+
+/**
+ * Pure: the "running low?" reorder reminder for one past order. `product` is the
+ * order's main gel/gas line (title, image, variant, price, qty) and carries the
+ * reorder cart link - every gel/gas line of the order, same quantities. `others`
+ * names any further gel/gas lines so the lead can say the button reorders those too.
+ */
+export function buildReorderReminder(product, unsub, { weeks = 3, others = [], kind = 'gels' } = {}) {
+  const title = product.title ?? 'your gels';
+  const variant = product.variantTitle && product.variantTitle !== 'Default Title' ? product.variantTitle : null;
+  const named = variant ? `${title} — ${variant}` : title;
+  const qty = Number(product.qty || 1);
+  const what = kind === 'gas' ? 'gas' : kind === 'both' ? 'gels & gas' : 'gels';
+  const extra = others.length
+    ? ` The button reorders it together with ${others.map((o) => `<strong>${esc(o)}</strong>`).join(', ')}.`
+    : '';
+  const extraText = others.length ? ` The link reorders it together with ${others.join(', ')}.` : '';
+  return buildRestockEmail(product, unsub, {
+    eyebrow: 'Time to restock',
+    subject: kind === 'both' ? `Running low on ${what}? Reorder them in one click` : `Running low on ${what}? Reorder ${named} in one click`,
+    leadHtml:
+      `It's been about ${weeks} weeks since you ordered ${qty > 1 ? `${qty} &times; ` : ''}<strong>${esc(named)}</strong>. ` +
+      `Restock in one click — same as last time, straight into your cart.${extra}`,
+    introText:
+      `It's been about ${weeks} weeks since you ordered ${qty > 1 ? `${qty} x ` : ''}"${named}". ` +
+      `Reorder in one click — same as last time.${extraText}`,
+    ctaLabel: 'Reorder now',
+    footerHtml: `You're getting this because you bought ${what} from ${esc(FROM_NAME)} and agreed to hear from us.`,
+    footerText: `You're getting this because you bought ${what} from ${FROM_NAME} and agreed to hear from us.`,
+  });
+}
+
+/** Send one reorder reminder to a past customer. */
+export async function sendReorderReminder(email, product, unsub, opts = {}) {
+  const { subject, text, html } = buildReorderReminder(product, unsub, opts);
+  if (opts.dryRun) {
+    console.log(`  [dry run] would remind ${email}: "${subject}"`);
+    return { dryRun: true };
+  }
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user || !pass) throw new Error('GMAIL_USER / GMAIL_APP_PASSWORD not set for reorder reminders');
+  const info = await transport(user, pass).sendMail({ from: `${FROM_NAME} <${user}>`, to: email, subject, text, html });
+  console.log(`  reminded ${email}: "${subject}" (${info.messageId})`);
+  return info;
 }
 
 /** One cart item row (thumbnail + title + qty) for the recovery email. */

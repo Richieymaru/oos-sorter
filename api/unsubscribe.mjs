@@ -7,6 +7,7 @@ import { verifyUnsub, unsubscribe, unsubSecret, subscribe, wlToken } from '../wa
 import { longId, shortId } from '../shopify.mjs';
 import { safeRelPath, cartVariantId, applyClicked, applyUnsubscribed, applyBrowse } from '../notified.mjs';
 import { fetchProductsByIds } from '../catalog.mjs';
+import { isReminderKey, applyReminderClicked, applyReminderOptout } from '../reminders.mjs';
 import { isVariantInStock } from '../stock.mjs';
 
 async function readJson(req) {
@@ -69,6 +70,17 @@ export default async function handler(req, res) {
     const rel = safeRelPath(q.to);
     let dest = rel && shop ? `https://${shop}${rel}` : (shop ? `https://${shop}` : '/');
     const valid = product && email && sig && verifyUnsub(product, email, sig, unsubSecret());
+    // A reorder reminder (key r<order id>): record the click and go straight to the
+    // reorder cart - none of the waitlist's stock or re-subscribe handling applies.
+    if (isReminderKey(product)) {
+      if (valid) {
+        try { await applyReminderClicked(product, email); } catch (e) { console.error('reminder click log failed:', e.message); }
+      }
+      res.statusCode = 302;
+      res.setHeader('Location', dest);
+      res.end();
+      return;
+    }
     if (valid) {
       try { await applyClicked(email, product); } catch (e) { console.error('click log failed:', e.message); }
     }
@@ -110,6 +122,16 @@ export default async function handler(req, res) {
   if (!product || !email || !sig || !verifyUnsub(product, email, sig, unsubSecret())) {
     res.statusCode = 400;
     res.end(page('Invalid link', 'This unsubscribe link is invalid or has expired.'));
+    return;
+  }
+  if (isReminderKey(product)) {
+    try {
+      await applyReminderOptout(email);
+      res.end(page('Unsubscribed', 'You won&rsquo;t get reorder reminders from us anymore.'));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(page('Something went wrong', 'Please try the link again later.'));
+    }
     return;
   }
   try {

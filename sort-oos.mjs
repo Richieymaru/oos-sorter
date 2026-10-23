@@ -33,6 +33,7 @@
  *   Email (when FEATURE_NOTIFY): GMAIL_USER, GMAIL_APP_PASSWORD, NOTIFY_EMAIL
  */
 
+import { runReminders } from './reminders.mjs';
 import { pathToFileURL } from 'node:url';
 import {
   SHOP,
@@ -485,6 +486,15 @@ export async function runEngine({ sendDigest = SEND_DIGEST, handles: onlyParam =
         else if (at.emailRedacted) console.log('Attribution: order email is hidden — enable Level 2 protected customer data to track orders');
       } catch (e) { console.error('attribution failed:', e.message); }
     }
+  }
+
+  // Phase 3.55: gel & gas reorder reminders - at most once a day, full runs only,
+  // and only when turned on in Settings (reminders.mjs decides who is due).
+  if (settings.remindersEnabled && !only) {
+    try {
+      const rm = await runReminders(settings, { dryRun: DRY_RUN });
+      if (rm.ran) console.log(`Reminders: ${DRY_RUN ? 'would send' : 'sent'} ${rm.sent} of ${rm.due} due (${rm.status})${rm.reordered ? `, ${rm.reordered} reorder(s) attributed` : ''}`);
+    } catch (e) { console.error('reminders failed:', e.message); }
   }
 
   // Phase 3.6: product-change monitor — poll Shopify's event log for status AND

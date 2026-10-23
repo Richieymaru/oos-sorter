@@ -453,6 +453,7 @@ ${fontHead()}
   <a href="/notified">Notified</a>
   <a href="/activity">Activity</a>
   <a href="/funnels">Funnels</a>
+  <a href="/reminders">Reminders</a>
   <a href="/settings">Settings</a>
   <a href="/preview">Email preview</a>
 </ui-nav-menu>
@@ -465,6 +466,7 @@ ${fontHead()}
     ${tab('/notified', 'notified', 'Notified')}
     ${tab('/activity', 'activity', 'Activity')}
     ${tab('/funnels', 'funnels', 'Funnels')}
+    ${tab('/reminders', 'reminders', 'Reminders')}
     ${tab('/settings', 'settings', 'Settings')}
     ${tab('/preview', 'preview', 'Email preview')}
   </nav>

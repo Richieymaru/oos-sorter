@@ -126,6 +126,10 @@ export function normalizeSettings(obj) {
     incentiveMajorGift: normalizeSingle(o.incentiveMajorGift ?? o.incentiveMajorGiftProducts, ''),
     incentiveMajorGiftImage: normalizeImageUrl(o.incentiveMajorGiftImage),
     incentiveMajorGiftVariantId: normalizeId(o.incentiveMajorGiftVariantId),
+    // Gel & gas reorder reminders (reminders.mjs). OFF by default; days after the
+    // order before the one "running low?" email goes out.
+    remindersEnabled: o.remindersEnabled === true,
+    reminderDays: clampInt(o.reminderDays, 21, 7, 90),
   };
 }
 
