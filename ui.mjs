@@ -453,6 +453,7 @@ ${fontHead()}
   <a href="/notified">Notified</a>
   <a href="/activity">Activity</a>
   <a href="/funnels">Funnels</a>
+  <a href="/features">Features</a>
   <a href="/reminders">Reminders</a>
   <a href="/settings">Settings</a>
   <a href="/preview">Email preview</a>
@@ -466,6 +467,7 @@ ${fontHead()}
     ${tab('/notified', 'notified', 'Notified')}
     ${tab('/activity', 'activity', 'Activity')}
     ${tab('/funnels', 'funnels', 'Funnels')}
+    ${tab('/features', 'features', 'Features')}
     ${tab('/reminders', 'reminders', 'Reminders')}
     ${tab('/settings', 'settings', 'Settings')}
     ${tab('/preview', 'preview', 'Email preview')}
@@ -792,9 +794,9 @@ function rangeLabel(win) {
 }
 
 /** Segmented date-range picker — each option links to /funnels?range=KEY. */
-function rangePicker(activeKey) {
+function rangePicker(activeKey, base = '/funnels') {
   return `<div class="fn-ranges" role="tablist" aria-label="Date range">${FUNNEL_RANGES.map((r) =>
-    `<a href="/funnels?range=${r.key}" class="fn-range-opt${r.key === activeKey ? ' on' : ''}" role="tab" aria-selected="${r.key === activeKey}">${esc(r.label)}</a>`
+    `<a href="${base}?range=${r.key}" class="fn-range-opt${r.key === activeKey ? ' on' : ''}" role="tab" aria-selected="${r.key === activeKey}">${esc(r.label)}</a>`
   ).join('')}</div>`;
 }
 
@@ -804,6 +806,173 @@ function prodThumb(url) {
   if (!url) return PROD_PH;
   const src = url + (url.includes('?') ? '&' : '?') + 'width=72';
   return `<img class="fn-thumb" src="${esc(src)}" alt="" width="32" height="32" loading="lazy" onerror="this.style.visibility='hidden'">`;
+}
+
+const FF_CSS = `
+.ff .ff-hero{display:grid;grid-template-columns:1.12fr 1fr;gap:18px;margin-bottom:18px}
+.ff .ff-main{padding:24px 26px;border-top:3px solid var(--accent)}
+.ff .ff-eyebrow{font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.ff .ff-big{font-family:var(--display);font-weight:800;font-size:48px;line-height:1;margin:12px 0 2px;letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+.ff .ff-meta{display:flex;gap:14px;align-items:center;margin-top:12px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.ff .ff-meta b{color:var(--ink)}
+.ff .ff-side{display:grid;grid-template-rows:1fr 1fr;gap:18px}
+.ff .ff-mini{padding:17px 19px;display:flex;flex-direction:column;justify-content:center;border-left:3px solid var(--accent)}
+.ff .ff-mini.blue{border-left-color:var(--info)}
+.ff .ff-mini .k{font-family:var(--display);font-weight:800;font-size:30px;letter-spacing:-.04em;color:var(--accent)}
+.ff .ff-mini.blue .k{color:var(--info)}
+.ff .ff-mini .l{font-size:12px;color:var(--muted);margin-top:3px}
+.ff .ff-grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:8px;align-items:start}
+.ff .ff-card{padding:22px 24px}
+.ff .ff-ch{display:flex;align-items:center;gap:9px}
+.ff .ff-ch h3{font-family:var(--display);font-size:16px;margin:0;font-weight:700}
+.ff .ff-chip{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+.ff .blue .ff-chip{background:var(--info)}
+.ff .ff-sub{font-size:11.5px;color:var(--faint);margin:3px 0 16px}
+.ff .ff-funnel{display:flex;flex-direction:column;gap:9px}
+.ff .ff-row{display:grid;grid-template-columns:96px 1fr 52px;align-items:center;gap:11px}
+.ff .ff-lab{font-size:12px;color:var(--muted)}
+.ff .ff-track{height:28px;background:var(--neutral-wash,#eef1f4);border-radius:8px;overflow:hidden}
+.ff .ff-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,var(--accent),var(--accent-2,var(--accent)))}
+.ff .blue .ff-fill{background:linear-gradient(90deg,var(--info),#5b86f0)}
+.ff .ff-fill.last{background:var(--accent-100)}
+.ff .blue .ff-fill.last{background:#c9d8fb}
+.ff .ff-val{font-family:var(--display);font-weight:800;font-size:15px;text-align:right}
+.ff .ff-d{grid-column:2 / 4;font-size:10.5px;color:var(--faint);text-align:right;margin-top:-4px;font-weight:600}
+.ff .ff-rev{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+.ff .ff-rev .l{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.09em;font-weight:600}
+.ff .ff-rev .v{font-family:var(--display);font-weight:800;font-size:23px;color:var(--accent-ink)}
+.ff .blue .ff-rev .v{color:var(--info-ink,var(--info))}
+.ff .ff-h{font-family:var(--display);font-size:18px;font-weight:700;margin:30px 2px 3px;letter-spacing:-.01em}
+.ff .ff-hs{font-size:12.5px;color:var(--muted);margin:0 2px 15px}
+.ff .ff-behave{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.ff .ff-lbrow{display:grid;grid-template-columns:96px 1fr 40px 92px;align-items:center;gap:11px;margin-bottom:9px}
+.ff .ff-lbrow .nm{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ff .ff-lbrow.worst .ff-fill{background:linear-gradient(90deg,#b5761b,#d79a3c)}
+.ff .ff-lbrow.worst .ff-val{color:var(--warn)}
+.ff .ff-drp{font-size:11px;color:var(--faint);text-align:right;font-weight:600}
+.ff .ff-drp.bad{color:var(--warn);font-weight:700}
+.ff .ff-legend{display:flex;gap:16px;margin-bottom:14px;font-size:11px;color:var(--muted)}
+.ff .ff-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:var(--accent)}
+.ff .ff-legend i.m{background:repeating-linear-gradient(45deg,#e9c483,#e9c483 3px,#f0d49f 3px,#f0d49f 6px)}
+.ff .ff-demrow{display:grid;grid-template-columns:96px 1fr;gap:11px;align-items:center;margin-bottom:12px}
+.ff .ff-demrow .n{font-size:12.5px;color:var(--ink);font-weight:600}
+.ff .ff-gap{height:26px;border-radius:8px;background:var(--neutral-wash,#eef1f4);display:flex;overflow:hidden}
+.ff .ff-met{background:linear-gradient(90deg,var(--accent),var(--accent-2,var(--accent)));height:100%}
+.ff .ff-miss{background:repeating-linear-gradient(45deg,#e9c483,#e9c483 6px,#f0d49f 6px,#f0d49f 12px);height:100%;display:flex;align-items:center;justify-content:flex-end;padding-right:8px}
+.ff .ff-miss b{font-size:10.5px;color:#8a5a12;font-weight:800;white-space:nowrap}
+.ff .ff-unmet{margin-top:15px;background:var(--warn-wash);border:1px solid color-mix(in srgb,var(--warn) 28%,var(--line));border-radius:12px;padding:12px 14px}
+.ff .ff-unmet p{margin:0;font-size:12.5px;color:#7a5212;line-height:1.45}
+.ff .ff-unmet b{color:#5e3f0c}
+.ff .ff-recs{display:flex;flex-direction:column;gap:12px}
+.ff .ff-rec{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow-sm)}
+.ff .ff-rec.hot{border-left-color:var(--accent)}
+.ff .ff-rank{font-family:var(--display);font-weight:800;font-size:22px;color:var(--faint);width:24px;text-align:center}
+.ff .ff-rec h4{margin:0 0 3px;font-size:14.5px;font-weight:700}
+.ff .ff-rec ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted);line-height:1.45}
+.ff .ff-imp{text-align:right}
+.ff .ff-imp .up{font-family:var(--display);font-weight:800;font-size:19px;color:var(--accent)}
+.ff .ff-imp .ul{font-size:10.5px;color:var(--faint)}
+@media(max-width:860px){.ff .ff-hero,.ff .ff-grid2,.ff .ff-behave{grid-template-columns:1fr}}
+`;
+
+/**
+ * The Feature Funnels page. `view` = FeatureView from analyzeFeatures, or { error }.
+ * Emerald = Find My Blaster, blue = Upgrade, amber = leaks / unmet demand.
+ */
+export function featureFunnelsBody(view) {
+  const v = view || {};
+  const win = v.window;
+  const range = rangeLabel(win);
+  const picker = rangePicker((win && win.key) || '30d', '/features');
+  const head = `<style>${FF_CSS}</style><div class="ff"><div class="pagehead"><h1>Feature Funnels</h1><p>How your Find My Blaster quiz and Upgrade Your Blaster pages are used, and whether they turn into real orders.</p>${range ? `<div class="fn-range">📅 ${esc(range)}</div>` : ''}${picker}</div>`;
+  const pf = v.perFeature || {};
+  const feats = [pf.fmb, pf.ugb].filter(Boolean);
+  const usage = feats.reduce((n, f) => n + ((f.stages && f.stages[0] && f.stages[0].count) || 0), 0);
+  const touched = (v.totals && v.totals.orders) || 0;
+
+  if (v.error) {
+    return head + `<div class="card pad"><b>Couldn't load feature data.</b><p class="muted" style="margin-top:6px">${esc(v.error)}</p></div></div>`;
+  }
+  if (!feats.length || (!usage && !touched)) {
+    return head + `<div class="card pad"><b>No feature activity yet.</b><p class="muted" style="margin-top:6px">Nothing in this date range. Once shoppers use the quiz or the Upgrade pages, their funnels and the orders they drive will show here.</p></div></div>`;
+  }
+
+  const cur = v.currency;
+  const t = v.totals || {};
+  const fmb = pf.fmb, ugb = pf.ugb;
+
+  const hero = `<div class="ff-hero">
+    <div class="card ff-main">
+      <div class="ff-eyebrow">Revenue your two features drove</div>
+      <div class="ff-big">${esc(money(cur, t.revenue))}</div>
+      <div class="ff-meta">
+        ${t.trendPct != null ? badge(`${t.trendPct >= 0 ? '▲' : '▼'} ${Math.abs(t.trendPct)}% vs previous period`, t.trendPct >= 0 ? 'ok' : 'warn') : ''}
+        <span><b>${touched}</b> orders touched</span>
+      </div>
+    </div>
+    <div class="ff-side">
+      ${fmb ? `<div class="card ff-mini"><div class="k">${fmb.orders}</div><div class="l">Orders from ${esc(fmb.label)} · ${esc(money(cur, fmb.revenue))}</div></div>` : ''}
+      ${ugb ? `<div class="card ff-mini blue"><div class="k">${ugb.orders}</div><div class="l">Orders from ${esc(ugb.label)} · ${esc(money(cur, ugb.revenue))}</div></div>` : ''}
+    </div>
+  </div>`;
+
+  const funnelCard = (f, cls, sub) => {
+    const st = f.stages || [];
+    const top = Math.max((st[0] && st[0].count) || 0, 1);
+    return `<div class="card ff-card ${cls}">
+      <div class="ff-ch"><span class="ff-chip"></span><h3>${esc(f.label)}</h3></div>
+      <p class="ff-sub">${esc(sub)}</p>
+      <div class="ff-funnel">${st.map((s, i) => {
+        const prev = i ? st[i - 1].count : 0;
+        const drop = i && prev ? Math.round((1 - s.count / prev) * 100) : null;
+        return `<div class="ff-row"><span class="ff-lab">${esc(s.label)}</span><div class="ff-track"><div class="ff-fill${i === st.length - 1 && i > 0 ? ' last' : ''}" style="width:${Math.max(2, Math.round((s.count / top) * 100))}%"></div></div><span class="ff-val">${s.count}</span>${drop != null ? `<span class="ff-d">−${drop}%</span>` : ''}</div>`;
+      }).join('')}</div>
+      <div class="ff-rev"><span class="l">Revenue it sold · ${f.orders} order${f.orders === 1 ? '' : 's'}</span><span class="v">${esc(money(cur, f.revenue))}</span></div>
+    </div>`;
+  };
+  const funnels = `<div class="ff-grid2">
+    ${fmb ? funnelCard(fmb, '', 'The quiz · opened → bought') : ''}
+    ${ugb ? funnelCard(ugb, 'blue', 'Shop-by-part + learn hub · engaged → bought') : ''}
+  </div>`;
+
+  // Behavior: drop-off as left-aligned bars, worst step in amber.
+  const d = v.dropoff;
+  const steps = (d && d.steps) || [];
+  const stepTop = Math.max((steps[0] && steps[0].reached) || 0, 1);
+  const dropCard = `<div class="card ff-card">
+    <div class="ff-ch"><h3 style="font-size:15px">Quiz drop-off</h3></div>
+    <p class="ff-sub">${steps.length ? `${steps[0].reached} opened. How many are still answering, and the drop since the last step` : 'No quiz step data in this range.'}</p>
+    ${steps.map((s, i) => {
+      const worst = d.worstIndex === i;
+      return `<div class="ff-lbrow${worst ? ' worst' : ''}"><span class="nm" title="${esc(s.label)}">${esc(s.label)}</span><div class="ff-track"><div class="ff-fill" style="width:${Math.max(2, Math.round((s.reached / stepTop) * 100))}%"></div></div><span class="ff-val">${s.reached}</span><span class="ff-drp${worst ? ' bad' : ''}">${s.dropPct == null || !i ? '—' : `−${s.dropPct}%${worst ? ' ◀ worst' : ''}`}</span></div>`;
+    }).join('')}
+  </div>`;
+
+  const dem = v.demand || [];
+  const wc = v.worstCombo;
+  const demCard = `<div class="card ff-card">
+    <div class="ff-ch"><h3 style="font-size:15px">What shoppers ask for</h3></div>
+    <p class="ff-sub">Each bar is how many picked that answer. The striped part is demand you can't stock right now.</p>
+    ${dem.length ? `<div class="ff-legend"><span><i></i>You stock this</span><span><i class="m"></i>Unmet demand</span></div>
+    ${dem.map((r) => {
+      const cov = Math.min(100, Math.max(0, Math.round(r.coveragePct)));
+      const un = 100 - cov;
+      return `<div class="ff-demrow"><span class="n" title="${esc(r.q)}">${esc(r.a)}${r.approx ? ' <span class="faint" style="font-weight:500">approx</span>' : ''}</span><div class="ff-gap"><div class="ff-met" style="width:${cov}%"></div><div class="ff-miss" style="width:${un}%">${un >= 15 ? `<b>${Math.round(r.unmetPct)}% unmet</b>` : ''}</div></div></div>`;
+    }).join('')}` : `<div class="empty">No answer data yet.</div>`}
+    ${wc ? `<div class="ff-unmet"><p><b>${wc.wanted} quizzers</b> wanted <b>${esc(wc.label)}</b>. You have only <b>${wc.inStock} in stock</b>. That is the quiz's biggest dead end, and your biggest missed sale.</p></div>` : ''}
+  </div>`;
+
+  const recs = v.recs || [];
+  const recHtml = recs.length ? `<div class="ff-recs">${recs.map((r, i) => `<div class="ff-rec${i === 0 ? ' hot' : ''}"><span class="ff-rank">${i + 1}</span>
+      <div><h4>${esc(r.text)}</h4>${r.fix && r.fix.length ? `<ul>${r.fix.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}</div>
+      ${r.impact ? `<div class="ff-imp"><div class="up">${esc(r.impact.up)}</div><div class="ul">${esc(r.impact.unit)}</div></div>` : '<span></span>'}
+    </div>`).join('')}</div>` : `<div class="card pad muted">Nothing to fix right now.</div>`;
+
+  return head + hero + funnels +
+    `<div class="ff-h">Behavior: where it leaks</div><p class="ff-hs">Read from quiz steps and the answers people pick. This is the part that tells you what to fix.</p>
+    <div class="ff-behave">${dropCard}${demCard}</div>
+    <div class="ff-h">Do this to lift conversion</div><p class="ff-hs">Ranked by estimated impact. Each one is generated from the behavior above.</p>
+    ${recHtml}</div>`;
 }
 
 export function funnelsBody(view) {
