@@ -89,6 +89,13 @@ export function sanitizeEvent(body) {
   return ev;
 }
 
+/** Pure: sanitize a { batch: [events] } body into valid events (max 50). Never throws. */
+export function sanitizeBatch(body) {
+  const b = body && typeof body === 'object' ? body.batch : null;
+  if (!Array.isArray(b)) return [];
+  return b.slice(0, 50).map(sanitizeEvent).filter(Boolean);
+}
+
 /** Pure: keep only the newest `maxDays` day keys. */
 export function trimStats(stats, maxDays = 90) {
   const keys = Object.keys(stats.days ?? {}).sort();

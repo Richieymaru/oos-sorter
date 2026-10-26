@@ -4,7 +4,7 @@
  *   node feature-stats.test.mjs
  */
 
-import { emptyStats, applyEvent, trimStats, sanitizeEvent } from './feature-stats.mjs';
+import { emptyStats, applyEvent, trimStats, sanitizeEvent, sanitizeBatch } from './feature-stats.mjs';
 
 let failures = 0;
 let checks = 0;
@@ -116,6 +116,26 @@ ok('emptyStats fresh each call', JSON.stringify(emptyStats()) === e0);
   ok('sanitize: NaN n dropped', !('n' in sanitizeEvent({ f: 'fmb', e: 'step', n: 'abc' })));
   const x = sanitizeEvent({ f: 'ugb', e: 'open', evil: 1, email: 'a@b.c' });
   ok('sanitize: drops extra keys', JSON.stringify(Object.keys(x).sort()) === '["e","f"]');
+}
+
+// sanitizeBatch
+{
+  const good = { f: 'fmb', e: 'open' };
+  const r = sanitizeBatch({ batch: [good, { f: 'zzz', e: 'open' }, { f: 'fmb', e: 'step', n: 1 }] });
+  ok('batch: keeps only valid', r.length === 2 && r[0].e === 'open' && r[1].n === 1);
+  ok('batch: non-array -> []', sanitizeBatch({ batch: 'x' }).length === 0 && sanitizeBatch({}).length === 0 && sanitizeBatch(null).length === 0);
+  ok('batch: capped at 50', sanitizeBatch({ batch: Array.from({ length: 60 }, () => good) }).length === 50);
+  ok('batch: hostile dropped', sanitizeBatch({ batch: [{ f: '__proto__', e: 'x' }, { f: 'fmb', e: 'hack' }, null, 5] }).length === 0);
+
+  const evs = sanitizeBatch({ batch: [
+    { f: 'fmb', e: 'open' }, { f: 'fmb', e: 'step', n: 1 },
+    { f: 'fmb', e: 'pick', q: 'budget', a: 'Under $300' }, { f: 'fmb', e: 'pick', q: 'power', a: 'Gas' },
+  ] });
+  let st = emptyStats();
+  for (const ev of evs) st = applyEvent(st, ev, D);
+  const fm = st.days[D].fmb;
+  ok('batch fold: open + step', fm.open === 1 && fm.step[0] === 1);
+  ok('batch fold: both picks kept', fm.picks['budget:Under $300'] === 1 && fm.picks['power:Gas'] === 1);
 }
 
 // trim

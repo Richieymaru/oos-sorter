@@ -9,7 +9,7 @@ import { safeRelPath, cartVariantId, applyClicked, applyUnsubscribed, applyBrows
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isReminderKey, applyReminderClicked, applyReminderOptout } from '../reminders.mjs';
 import { isVariantInStock } from '../stock.mjs';
-import { sanitizeEvent, applyEvent, loadFeatureStats, saveFeatureStats } from '../feature-stats.mjs';
+import { sanitizeEvent, sanitizeBatch, applyEvent, loadFeatureStats, saveFeatureStats } from '../feature-stats.mjs';
 import { loadSettings } from '../settings.mjs';
 
 async function readJson(req) {
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
   // --- Feature Funnels beacon (storefront FMB/UGB to here), cross-origin. ---
   // Gated on settings.featureFunnels; always 200s, never leaks errors. Stores no PII
   // (sanitizeEvent keeps only known keys). Read-modify-write on one metafield, so
-  // concurrent beacons can lose an increment - accepted for this low-volume store.
+  // concurrent single beacons can lose an increment; the storefront sends a batch per session.
   if (String(q.fev || '') === '1' || req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -51,12 +51,24 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
     res.setHeader('Content-Type', 'application/json');
     try {
-      const ev = sanitizeEvent(await readJson(req));
-      if (ev) {
-        const settings = await loadSettings().catch(() => ({}));
-        if (settings.featureFunnels) {
-          const s = await loadFeatureStats();
-          await saveFeatureStats(applyEvent(s, ev, new Date().toISOString().slice(0, 10)));
+      const body = await readJson(req);
+      const today = new Date().toISOString().slice(0, 10);
+      const settings = await loadSettings().catch(() => ({}));
+      if (settings.featureFunnels) {
+        if (Array.isArray(body?.batch)) {
+          // One beacon per session: ONE load + ONE save, so events can't clobber each other.
+          const evs = sanitizeBatch(body);
+          if (evs.length) {
+            let st = await loadFeatureStats();
+            for (const ev of evs) st = applyEvent(st, ev, today);
+            await saveFeatureStats(st);
+          }
+        } else {
+          const ev = sanitizeEvent(body);
+          if (ev) {
+            const s = await loadFeatureStats();
+            await saveFeatureStats(applyEvent(s, ev, today));
+          }
         }
       }
     } catch (e) { console.error('feature event failed:', e.message); }
