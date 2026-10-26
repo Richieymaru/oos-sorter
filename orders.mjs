@@ -20,7 +20,8 @@ const BASE_FIELDS = `
   createdAt
   sourceName
   currentTotalPriceSet { shopMoney { amount currencyCode } }
-  lineItems(first: 10) { nodes { title quantity product { id } } }`;
+  customAttributes { key value }
+  lineItems(first: 10) { nodes { title quantity product { id } customAttributes { key value } } }`;
 
 // Adds traffic-source / funnel data — needs protected customer data access.
 const JOURNEY_FIELDS = `
@@ -47,6 +48,9 @@ function windowFilter(since, until) {
   return parts.join(' AND ') || `created_at:>='${new Date(Date.now() - 30 * 86400000).toISOString()}'`;
 }
 
+/** Value of a { key, value } attribute list entry, or null (tolerant of missing/empty). */
+const attr = (list, key) => (Array.isArray(list) ? list.find((a) => a && a.key === key)?.value ?? null : null);
+
 /** Normalise one raw order node into a flat, framework-free shape. */
 export function normalizeOrder(n) {
   const money = n.currentTotalPriceSet?.shopMoney || {};
@@ -56,10 +60,12 @@ export function normalizeOrder(n) {
     source: n.sourceName || null,
     amount: Number(money.amount || 0),
     currency: money.currencyCode || null,
+    origin: attr(n.customAttributes, '_origin'),
     items: (n.lineItems?.nodes || []).map((li) => ({
       title: li.title || '(untitled)',
       qty: Number(li.quantity || 0),
       id: li.product?.id ? String(li.product.id).split('/').pop() : null,
+      src: attr(li.customAttributes, '_src'),
     })),
     journey: j
       ? {
