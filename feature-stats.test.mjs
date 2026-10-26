@@ -83,6 +83,25 @@ const e0 = JSON.stringify(emptyStats());
 applyEvent(emptyStats(), { f: 'fmb', e: 'open' }, D);
 ok('emptyStats fresh each call', JSON.stringify(emptyStats()) === e0);
 
+// hostile keys
+{
+  let h = emptyStats();
+  for (const k of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'prototype']) {
+    h = applyEvent(h, { f: 'ugb', e: 'blaster', b: k }, D);
+    h = applyEvent(h, { f: 'fmb', e: 'pick', q: k, a: k }, D);
+  }
+  h = applyEvent(h, { f: 'ugb', e: 'blaster', b: '__proto__' }, D);
+  const rt = JSON.parse(JSON.stringify(h));
+  const h2 = applyEvent(rt, { f: 'ugb', e: 'blaster', b: 'toString' }, D);
+  const bl = h2.days[D].ugb.blaster;
+  ok('hostile keys: own counters', Object.hasOwn(bl, '__proto__') && bl['__proto__'] === 2 && bl.constructor === 1 && bl.toString === 2 && bl.hasOwnProperty === 1);
+  ok('hostile keys: picks own', h.days[D].fmb.picks['toString:toString'] === 1);
+  ok('hostile keys: no pollution', ({}).toString === Object.prototype.toString && ({}).polluted === undefined && Object.getPrototypeOf(h.days[D].ugb.blaster) === Object.prototype);
+  ok('hostile keys: survive JSON round-trip', JSON.stringify(rt) === JSON.stringify(h));
+  const other = applyEvent(h, { f: 'ugb', e: 'open' }, '2026-10-25');
+  ok('hostile keys: other day clean', Object.keys(other.days['2026-10-25'].ugb.blaster).length === 0);
+}
+
 // trim
 const big = emptyStats();
 for (let i = 0; i < 200; i++) {

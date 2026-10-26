@@ -24,6 +24,13 @@ const emptyDay = () => ({
   ugb: { open: 0, blaster: {}, fits: 0, add: 0 },
 });
 
+// Untrusted keys: read with hasOwn, write with defineProperty so '__proto__',
+// 'constructor', 'toString' etc. become plain own counters and never touch the prototype.
+function bump(map, key) {
+  const n = Object.hasOwn(map, key) ? Number(map[key]) || 0 : 0;
+  Object.defineProperty(map, key, { value: n + 1, enumerable: true, writable: true, configurable: true });
+}
+
 const clamp = (v) => String(v ?? '').slice(0, CLAMP);
 
 /** Pure: returns a new stats object with the one counter for `ev` bumped on `ymd`. */
@@ -41,7 +48,7 @@ export function applyEvent(stats, ev, ymd) {
       fmb.step[n - 1]++;
     } else if (ev.e === 'pick') {
       const k = `${clamp(ev.q)}:${clamp(ev.a)}`;
-      fmb.picks[k] = (fmb.picks[k] || 0) + 1;
+      bump(fmb.picks, k);
     } else if (ev.e === 'done') {
       fmb.done++;
       if (ev.m === 0) fmb.deadEnd++;
@@ -50,7 +57,7 @@ export function applyEvent(stats, ev, ymd) {
     if (ev.e === 'open') ugb.open++;
     else if (ev.e === 'blaster') {
       const b = clamp(ev.b);
-      ugb.blaster[b] = (ugb.blaster[b] || 0) + 1;
+      bump(ugb.blaster, b);
     } else if (ev.e === 'fits') ugb.fits++;
     else if (ev.e === 'add') ugb.add++;
     else return stats;
@@ -76,7 +83,7 @@ export async function loadFeatureStats() {
   if (!raw) return emptyStats();
   try {
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed.days !== 'object') return emptyStats();
+    if (!parsed || typeof parsed.days !== 'object' || Array.isArray(parsed.days)) return emptyStats();
     return { ...emptyStats(), ...parsed };
   } catch {
     console.warn('  ! oos_sort.feature_stats metafield was unparseable — starting fresh');
