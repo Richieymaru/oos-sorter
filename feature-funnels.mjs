@@ -1,4 +1,5 @@
 /** Feature funnels — pure attribution of orders to features. No network. */
+import { resolveRange } from './funnels.mjs';
 const FEATURES = ['find-my-blaster', 'upgrade'];
 
 /**
@@ -201,6 +202,7 @@ export function worstCombo(demand, products) {
  * Ranked recommendations. `impact` values are rough heuristic estimates, not forecasts.
  * Order: unmet demand combo, worst quiz drop-off step, low upgrade add-rate.
  */
+// `attribution` is accepted but reserved (unused in v1).
 export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
   const recs = [];
   if (combo && combo.wanted > 0) {
@@ -235,7 +237,7 @@ export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
 
 /** Compose the Feature Funnels page view model. Tolerates empty/missing inputs. */
 export function analyzeFeatures({ orders = [], stats = null, products = [], window = null } = {}) {
-  const win = window || resolveRange('all');
+  const win = window || resolveRange('all'); // 'all' is not a key -> yields the 30d default; Tasks 8/10 always pass a window
   const attribution = attributeOrders(orders || []);
   // sumStats compares plain strings against YYYY-MM-DD keys; resolveRange gives full ISO.
   const summed = sumStats(stats, { since: win.since && win.since.slice(0, 10), until: win.until && win.until.slice(0, 10) });

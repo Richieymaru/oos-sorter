@@ -104,5 +104,38 @@ ok('worstCombo gas + under 300', wc && wc.label === 'Gas + Under $300' && wc.inS
 ok('worstCombo null no demand', worstCombo([], stock) === null);
 ok('worstCombo empty products', worstCombo(dem, []).inStock === 0);
 
+// --- recs + composer ---
+const recDrop = { steps: [{ label: 'Opened', reached: 10, dropPct: 0 }, { label: 'Q1 · Player', reached: 4, dropPct: 60 }], worstIndex: 1 };
+const combo0 = { label: 'Gas + Under $300', wanted: 8, inStock: 1 };
+const recs = buildFeatureRecs({ dropoff: recDrop, worstCombo: combo0, ugb: { opens: 40, adds: 2 }, attribution: {} });
+ok('recs 3 ranked: combo, step, ugb', recs.length === 3 && recs[0].text.includes('Gas + Under $300') && recs[1].text.includes('Q1') && recs[1].text.includes('60%') && recs[2].text.includes('Upgrade'));
+ok('recs each fix + impact + tone', recs.every((r) => r.fix.length > 0 && r.impact && r.impact.up && r.impact.unit && r.tone && r.text));
+ok('recs guard wanted=0', buildFeatureRecs({ worstCombo: { ...combo0, wanted: 0 } }).length === 0);
+ok('recs guard worstIndex=0', buildFeatureRecs({ dropoff: { steps: recDrop.steps, worstIndex: 0 } }).length === 0);
+ok('recs guard worstIndex -1', buildFeatureRecs({ dropoff: { steps: recDrop.steps, worstIndex: -1 } }).length === 0);
+ok('recs guard opens<10', buildFeatureRecs({ ugb: { opens: 9, adds: 0 } }).length === 0);
+ok('recs ugb healthy none', buildFeatureRecs({ ugb: { opens: 40, adds: 20 } }).length === 0);
+ok('recs ugb low alone', buildFeatureRecs({ ugb: { opens: 40, adds: 2 } }).length === 1);
+ok('recs empty', buildFeatureRecs({}).length === 0 && buildFeatureRecs().length === 0);
+
+const ev = (src, origin) => ({ amount: 100, currency: 'PHP', items: [{ qty: 1, src }], origin });
+const an = analyzeFeatures({
+  orders: [ev('find-my-blaster'), ev('upgrade'), ev(undefined, 'find-my-blaster'), ev(undefined, undefined)],
+  stats: { days: {
+    '2026-10-05': { fmb: { open: 10, step: [6, 5, 4, 3, 2], done: 2, deadEnd: 0, picks: { 'power:Gas': 5 } }, ugb: { open: 4, blaster: {}, fits: 1, add: 1 } },
+    '2026-10-04': { fmb: { open: 99, step: [0, 0, 0, 0, 0], done: 99, deadEnd: 0, picks: {} }, ugb: { open: 99, blaster: {}, fits: 0, add: 99 } },
+  } },
+  products: [], window: { key: '30d', label: 'x', since: '2026-10-05T00:00:00.000Z', until: '2026-10-05T23:59:59.999Z' },
+});
+ok('analyze shape', an.totals && an.perFeature.fmb && an.perFeature.ugb && an.dropoff && Array.isArray(an.recs) && Array.isArray(an.demand) && 'worstCombo' in an && an.currency);
+ok('analyze since-boundary day included, prior day excluded', an.perFeature.fmb.stages[0].count === 10 && an.perFeature.fmb.stages[1].count === 2 && an.perFeature.ugb.stages[0].count === 4 && an.perFeature.ugb.stages[1].count === 1);
+ok('analyze stage labels', an.perFeature.fmb.stages.map((s) => s.label).join() === 'Opened,Finished,Ordered' && an.perFeature.ugb.stages.map((s) => s.label).join() === 'Engaged,Added to cart,Ordered');
+ok('analyze ordered counts', an.perFeature.fmb.stages[2].count === 1 && an.perFeature.ugb.stages[2].count === 1 && an.perFeature.fmb.key === 'find-my-blaster' && an.perFeature.ugb.key === 'upgrade');
+ok('analyze totals', an.totals.orders === 3 && an.totals.revenue === an.perFeature.fmb.revenue + an.perFeature.ugb.revenue && an.totals.revenue === 200 && an.totals.trendPct === null);
+ok('analyze dropoff + demand + combo', an.dropoff.steps.length === 6 && an.demand.length === 1 && an.worstCombo && an.worstCombo.wanted === 5);
+for (const [name, v] of [['{}', analyzeFeatures({})], ['()', analyzeFeatures()], ['no window', analyzeFeatures({ orders: [], stats: { days: {} } })]]) {
+  ok(`analyze empty ${name}`, v.totals.revenue === 0 && v.totals.orders === 0 && v.totals.trendPct === null && v.recs.length === 0 && v.worstCombo === null && v.perFeature.fmb.orders === 0 && v.perFeature.ugb.stages.every((s) => s.count === 0) && v.window && v.demand.length === 0);
+}
+
 console.log(`\n${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);
