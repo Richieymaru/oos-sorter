@@ -5,6 +5,7 @@
     { "source": "/waitlists", "destination": "/api/waitlists" },
     { "source": "/notified", "destination": "/api/waitlists?view=notified" },
     { "source": "/funnels", "destination": "/api/index?view=funnels" },
+    { "source": "/features", "destination": "/api/index?view=features" },
     { "source": "/activity", "destination": "/api/index?view=activity" },
     { "source": "/assistant", "destination": "/api/index?view=assistant" },
     { "source": "/settings", "destination": "/api/settings" },
