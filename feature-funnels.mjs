@@ -100,3 +100,97 @@ export function ugbSummary(summed) {
     topBlasters,
   };
 }
+
+/* ---- demand vs stock ---- */
+
+const fpsNum = (t) => { const m = /(\d{2,3})/.exec(String(t || '')); return m ? parseInt(m[1], 10) : null; };
+const has = (list, word) => String(list || '').split(',').map((s) => s.trim()).includes(word);
+const band = (n, lo, hi) => n != null && Number.isFinite(n) && n >= lo && n < hi;
+
+/**
+ * Quiz answer -> product matcher. KEEP IN SYNC with assets/gbu-find-my-blaster.js
+ * (theme quiz). Keys are the question keys / short answer labels the beacon sends.
+ * A product missing the needed field never matches (empty string / null fail).
+ */
+export const FMB_QUESTIONS = {
+  experience: [
+    { short: 'Starter', match: (p) => p.experience === 'Starter' },
+    { short: 'Intermediate', match: (p) => p.experience === 'Intermediate' },
+    { short: 'Advanced', match: (p) => p.experience === 'Advanced' },
+  ],
+  budget: [
+    { short: 'Under $300', match: (p) => band(p.price, 0, 300) },
+    { short: '$300 to $700', match: (p) => band(p.price, 300, 700) },
+    { short: '$700 and above', match: (p) => band(p.price, 700, Infinity) },
+  ],
+  power: [ // power is a list ("Electric, Gas"): membership
+    { short: 'Electric', match: (p) => has(p.power, 'Electric') },
+    { short: 'Gas', match: (p) => has(p.power, 'Gas') },
+    { short: 'Manual', match: (p) => has(p.power, 'Manual') },
+  ],
+  material: [
+    { short: 'Full metal', match: (p) => p.material === 'Full Metal' },
+    { short: 'Nylon', match: (p) => p.material === 'Nylon' },
+    { short: 'Metal + nylon', match: (p) => p.material === 'Full Metal + Nylon' },
+  ],
+  fps: [ // free text, so approximate
+    { short: 'Under 250 FPS', match: (p) => band(fpsNum(p.fps), 0, 250), approx: true },
+    { short: '250 to 320 FPS', match: (p) => band(fpsNum(p.fps), 250, 320), approx: true },
+    { short: '320+ FPS', match: (p) => band(fpsNum(p.fps), 320, Infinity), approx: true },
+  ],
+};
+
+const findRule = (q, a) => (FMB_QUESTIONS[q] || []).find((r) => r.short === a) || null;
+const inStockOf = (products) => (products || []).filter((p) => p && p.inStock);
+
+/**
+ * Per picked answer: how well in-stock catalog covers it.
+ * supply = inStockCount / all in-stock products; demand = answer's share of its
+ * own question's picks. coveragePct = min(100, supply / demand * 100), so an
+ * answer wanted by 60% of people but matched by 10% of stock covers ~17%.
+ * unmetPct = 100 - coveragePct. No demand or no stock -> coveragePct 0.
+ */
+export function demandVsStock(demand, products) {
+  const live = inStockOf(products);
+  const qTotal = {};
+  for (const d of demand || []) qTotal[d.q] = (qTotal[d.q] || 0) + d.picks;
+  const out = [];
+  for (const d of demand || []) {
+    const rule = findRule(d.q, d.a);
+    if (!rule) continue;
+    const inStockCount = live.filter((p) => rule.match(p)).length;
+    const demandWithinQ = qTotal[d.q] ? d.picks / qTotal[d.q] : 0;
+    const supply = live.length ? inStockCount / live.length : 0;
+    const coveragePct = demandWithinQ > 0 && supply > 0 ? Math.min(100, (supply / demandWithinQ) * 100) : 0;
+    const row = { q: d.q, a: d.a, demandShare: d.share, inStockCount, coveragePct, unmetPct: 100 - coveragePct };
+    if (rule.approx) row.approx = true;
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * The most-wanted answer pair (across two different questions) with the fewest
+ * in-stock matches, ranked by demand per unit of stock (min of the two answers' picks / (inStock+1)). Falls back to single answers when
+ * only one question was answered. Null when no demand.
+ */
+export function worstCombo(demand, products) {
+  const rows = (demand || []).filter((d) => d.picks > 0 && findRule(d.q, d.a));
+  if (!rows.length) return null;
+  const live = inStockOf(products);
+  const cands = rows.map((r) => ({ label: r.a, wanted: r.picks, rules: [findRule(r.q, r.a)] }));
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      if (rows[i].q === rows[j].q) continue;
+      cands.push({ label: `${rows[i].a} + ${rows[j].a}`, wanted: Math.min(rows[i].picks, rows[j].picks), rules: [findRule(rows[i].q, rows[i].a), findRule(rows[j].q, rows[j].a)] });
+    }
+  }
+  const pairs = cands.filter((c) => c.rules.length === 2);
+  let best = null;
+  for (const c of pairs.length ? pairs : cands) {
+    const inStock = live.filter((p) => c.rules.every((r) => r.match(p))).length;
+    const unmet = c.wanted / (inStock + 1); // demand per unit of stock
+    if (!best || unmet > best.unmet) best = { label: c.label, wanted: c.wanted, inStock, unmet };
+  }
+  return { label: best.label, wanted: best.wanted, inStock: best.inStock };
+}

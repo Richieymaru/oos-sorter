@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Pure tests for feature funnels. node feature-funnels.test.mjs — no env, no network. */
 import { normalizeOrder } from './orders.mjs';
-import { attributeOrders, sumStats, quizDropoff, answerDemand, ugbSummary } from './feature-funnels.mjs';
+import { attributeOrders, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS } from './feature-funnels.mjs';
 import { emptyStats } from './feature-stats.mjs';
 
 let failures = 0, checks = 0;
@@ -78,6 +78,31 @@ ok('demand empty', answerDemand(sumStats(emptyStats(), {})).length === 0);
 const us = ugbSummary(all);
 ok('ugb summary', us.opens === 5 && us.blasterPicks === 8 && us.fitsViewed === 1 && us.adds === 3);
 ok('ugb topBlasters sorted', us.topBlasters[0].handle === 'y' && us.topBlasters[0].picks === 5 && us.topBlasters[1].handle === 'x');
+
+// --- demand vs stock ---
+const P = (o) => ({ id: '1', price: 500, power: 'Electric', experience: 'Starter', material: 'Nylon', fps: '230 FPS', inStock: true, ...o });
+const stock = [P({ power: 'Gas', price: 250 }), ...Array.from({ length: 9 }, () => P({}))];
+const dem = [
+  { q: 'power', a: 'Gas', picks: 9, share: 0.45 }, { q: 'power', a: 'Electric', picks: 1, share: 0.05 },
+  { q: 'budget', a: 'Under $300', picks: 8, share: 0.4 }, { q: 'fps', a: '320+ FPS', picks: 2, share: 0.1 },
+];
+const dvs = demandVsStock(dem, stock);
+const gasRow = dvs.find((r) => r.q === 'power' && r.a === 'Gas');
+ok('dvs gas: 1 in stock, high unmet', gasRow.inStockCount === 1 && gasRow.unmetPct > 80 && near(gasRow.coveragePct + gasRow.unmetPct, 100));
+ok('dvs fps approx', dvs.find((r) => r.q === 'fps').approx === true && !gasRow.approx);
+ok('dvs comma power list', demandVsStock([{ q: 'power', a: 'Gas', picks: 1, share: 1 }], [P({ power: 'Electric, Gas' })])[0].inStockCount === 1);
+const miss = demandVsStock(dem, [P({ power: undefined, fps: undefined, price: undefined })]);
+ok('dvs missing field skipped', miss.find((r) => r.a === 'Gas').inStockCount === 0 && miss.find((r) => r.a === 'Under $300').inStockCount === 0 && miss.find((r) => r.a === '320+ FPS').inStockCount === 0);
+ok('dvs out-of-stock not counted', demandVsStock([{ q: 'power', a: 'Gas', picks: 1, share: 1 }], [P({ power: 'Gas', inStock: false })])[0].inStockCount === 0);
+const dz = demandVsStock(dem, []);
+ok('dvs empty products', dz.length === 4 && dz.every((r) => r.coveragePct === 0 && r.unmetPct === 100 && Number.isFinite(r.demandShare)));
+ok('dvs empty demand', demandVsStock([], stock).length === 0);
+ok('dvs unknown answer ignored', demandVsStock([{ q: 'zzz', a: 'x', picks: 1, share: 1 }], stock).length === 0);
+ok('FMB_QUESTIONS keys', Object.keys(FMB_QUESTIONS).join() === 'experience,budget,power,material,fps');
+const wc = worstCombo(dem, stock);
+ok('worstCombo gas + under 300', wc && wc.label === 'Gas + Under $300' && wc.inStock === 1 && wc.wanted === 8);
+ok('worstCombo null no demand', worstCombo([], stock) === null);
+ok('worstCombo empty products', worstCombo(dem, []).inStock === 0);
 
 console.log(`\n${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);

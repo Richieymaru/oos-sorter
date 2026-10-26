@@ -13,6 +13,7 @@
  */
 
 import { gql, longId, shortId } from './shopify.mjs';
+import { isInStock } from './stock.mjs';
 
 /* ---- online-fulfilling locations (cached per process) ---- */
 
@@ -211,6 +212,49 @@ export async function productsForInventoryItem(inventoryItemId) {
   const ids = new Set();
   for (const v of d.inventoryItem?.variants?.nodes ?? []) if (v.product?.id) ids.add(v.product.id);
   return [...ids];
+}
+
+/**
+ * Quiz-collection products with the custom metafields the Find My Blaster quiz
+ * matches on, plus price and online in-stock. Feeds demandVsStock().
+ * price = lowest variant price. Missing metafields come back as ''.
+ */
+export async function fetchBlasterAttributes(handle) {
+  const ids = await fetchCollectionProductIds(handle);
+  if (!ids.length) return [];
+  const onlineLocIds = await getOnlineLocationIds();
+  const out = [];
+  const CHUNK = 100;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const data = await gql(
+      `query Blasters($ids: [ID!]!) {
+         nodes(ids: $ids) {
+           ... on Product {
+             id title handle status tracksInventory totalInventory
+             power: metafield(namespace: "custom", key: "power_source") { value }
+             experience: metafield(namespace: "custom", key: "experience_level") { value }
+             material: metafield(namespace: "custom", key: "build_material") { value }
+             fps: metafield(namespace: "custom", key: "key_specs_fps") { value }
+             variants(first: 100) { nodes { ${variantFields(onlineLocIds)} } }
+           }
+         }
+       }`,
+      { ids: ids.slice(i, i + CHUNK).map(longId) }
+    );
+    out.push(...data.nodes.filter(Boolean));
+  }
+  return normalize(out, onlineLocIds).map((p) => {
+    const prices = p.variants.nodes.map((v) => Number(v.price)).filter(Number.isFinite);
+    return {
+      id: shortId(p.id),
+      price: prices.length ? Math.min(...prices) : 0,
+      power: p.power?.value || '',
+      experience: p.experience?.value || '',
+      material: p.material?.value || '',
+      fps: p.fps?.value || '',
+      inStock: isInStock(p),
+    };
+  });
 }
 
 /** Fetch specific products by short id, each variant carrying `onlineAvailable`. */
