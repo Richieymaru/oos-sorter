@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /** Pure tests for feature funnels. node feature-funnels.test.mjs — no env, no network. */
 import { normalizeOrder } from './orders.mjs';
-import { attributeOrders } from './feature-funnels.mjs';
+import { attributeOrders, sumStats, quizDropoff, answerDemand, ugbSummary } from './feature-funnels.mjs';
+import { emptyStats } from './feature-stats.mjs';
 
 let failures = 0, checks = 0;
 function ok(label, cond) { checks++; if (!cond) { failures++; console.error(`FAIL ${label}`); } else console.log(`  ok  ${label}`); }
@@ -45,6 +46,38 @@ ok('empty: zeros, no throw', a4.features.upgrade.orders === 0 && a4.features['fi
 
 const a5 = attributeOrders([mk(0, [[1, 'upgrade']]), mk(10, [[0, 'upgrade']])]);
 ok('zero amount/qty: no NaN', a5.features.upgrade.orders === 2 && a5.features.upgrade.revenue === 0);
+
+// --- behavior analysis ---
+const st = emptyStats();
+st.days['2026-10-01'] = { fmb: { open: 100, step: [80, 60, 20, 15, 10], done: 5, deadEnd: 1, picks: { '1:a': 3, '2:b': 1 } }, ugb: { open: 4, blaster: { x: 2 }, fits: 1, add: 1 } };
+st.days['2026-10-02'] = { fmb: { open: 50, step: [40, 30, 10, 5, 5], done: 2, deadEnd: 0, picks: { '1:a': 2, '3:c': 4 } }, ugb: { open: 1, blaster: { x: 1, y: 5 }, fits: 0, add: 2 } };
+st.days['2026-10-03'] = { fmb: { open: 10, step: [0, 0, 0, 0, 0], done: 0, deadEnd: 0, picks: {} }, ugb: { open: 0, blaster: {}, fits: 0, add: 0 } };
+const all = sumStats(st, { since: null, until: null });
+ok('sumStats totals', all.fmb.open === 160 && all.fmb.step[0] === 120 && all.fmb.picks['1:a'] === 5 && all.ugb.blaster.x === 3);
+const win = sumStats(st, { since: '2026-10-02', until: '2026-10-02' });
+ok('sumStats date filter', win.fmb.open === 50 && win.fmb.picks['3:c'] === 4 && win.ugb.blaster.y === 5);
+const hostile = emptyStats();
+hostile.days['2026-10-01'] = JSON.parse('{"fmb":{"open":1,"step":[0,0,0,0,0],"done":0,"deadEnd":0,"picks":{"__proto__":2}},"ugb":{"open":0,"blaster":{"__proto__":3},"fits":0,"add":0}}');
+const hs = sumStats(hostile, {});
+ok('sumStats proto-safe', ({}).x === undefined && Object.getPrototypeOf(hs.fmb.picks) === Object.prototype && Object.hasOwn(hs.fmb.picks, '__proto__') && hs.fmb.picks['__proto__'] === 2);
+ok('sumStats empty', sumStats(emptyStats(), {}).fmb.open === 0);
+
+const qd = quizDropoff(all);
+ok('dropoff labels', qd.steps.map((s) => s.label).join('|') === 'Opened|Q1 · Player|Q2 · Budget|Q3 · Power|Q4 · Build|Q5 · Velocity');
+ok('dropoff reached', qd.steps.map((s) => s.reached).join(',') === '160,120,90,30,20,15');
+ok('dropoff row0 zero', qd.steps[0].dropPct === 0);
+ok('dropoff worst', qd.worstIndex === 3 && near(qd.steps[3].dropPct, 100 * 60 / 90));
+const qe = quizDropoff(sumStats(emptyStats(), {}));
+ok('dropoff empty', qe.worstIndex === -1 && qe.steps.length === 6 && qe.steps.every((s) => s.reached === 0 && s.dropPct === 0));
+
+const ad = answerDemand(all);
+ok('demand sorted', ad[0].q === '1' && ad[0].a === 'a' && ad[0].picks === 5 && ad[1].picks >= ad[2].picks);
+ok('demand shares sum 1', Math.abs(ad.reduce((s, r) => s + r.share, 0) - 1) < 1e-9);
+ok('demand empty', answerDemand(sumStats(emptyStats(), {})).length === 0);
+
+const us = ugbSummary(all);
+ok('ugb summary', us.opens === 5 && us.blasterPicks === 8 && us.fitsViewed === 1 && us.adds === 3);
+ok('ugb topBlasters sorted', us.topBlasters[0].handle === 'y' && us.topBlasters[0].picks === 5 && us.topBlasters[1].handle === 'x');
 
 console.log(`\n${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);
