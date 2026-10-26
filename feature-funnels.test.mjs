@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Pure tests for feature funnels. node feature-funnels.test.mjs — no env, no network. */
 import { normalizeOrder } from './orders.mjs';
-import { attributeOrders, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS } from './feature-funnels.mjs';
+import { attributeOrders, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS, buildFeatureRecs, analyzeFeatures } from './feature-funnels.mjs';
 import { emptyStats } from './feature-stats.mjs';
 
 let failures = 0, checks = 0;

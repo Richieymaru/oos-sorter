@@ -194,3 +194,70 @@ export function worstCombo(demand, products) {
   }
   return { label: best.label, wanted: best.wanted, inStock: best.inStock };
 }
+
+/* ---- recommendations + page view model ---- */
+
+/**
+ * Ranked recommendations. `impact` values are rough heuristic estimates, not forecasts.
+ * Order: unmet demand combo, worst quiz drop-off step, low upgrade add-rate.
+ */
+export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
+  const recs = [];
+  if (combo && combo.wanted > 0) {
+    recs.push({
+      tone: 'danger',
+      text: `Stock more ${combo.label}: ${combo.wanted} quiz takers want it and only ${combo.inStock} in-stock product${combo.inStock === 1 ? '' : 's'} match.`,
+      fix: [`Add or restock products matching ${combo.label}`, 'Or tighten the quiz so it stops promising what you cannot ship'],
+      impact: { up: 'Est. +10-20% quiz-to-order conversion (heuristic)', unit: 'per quiz taker with this need' },
+    });
+  }
+  const steps = (dropoff && dropoff.steps) || [];
+  if (dropoff && dropoff.worstIndex > 0 && steps[dropoff.worstIndex]) {
+    const s = steps[dropoff.worstIndex];
+    recs.push({
+      tone: 'warn',
+      text: `Fix the "${s.label}" step: ${Math.round(s.dropPct)}% of people quit here.`,
+      fix: ['Simplify the question or its answer options', 'Check it on mobile and make the choices obvious'],
+      impact: { up: `Est. recover a third of the ${Math.round(s.dropPct)}% drop (heuristic)`, unit: 'more finished quizzes' },
+    });
+  }
+  const opens = Number(ugb && ugb.opens) || 0, adds = Number(ugb && ugb.adds) || 0;
+  if (opens >= 10 && adds / opens < 0.15) {
+    recs.push({
+      tone: 'warn',
+      text: `Upgrade Your Blaster: only ${Math.round((adds / opens) * 100)}% of ${opens} engaged visitors add an upgrade to cart.`,
+      fix: ['Show compatible upgrades higher up', 'Add price or "fits your blaster" cues next to the add button'],
+      impact: { up: 'Est. 2x add-to-cart rate if lifted to ~15% (heuristic)', unit: 'more upgrade add-to-carts' },
+    });
+  }
+  return recs;
+}
+
+/** Compose the Feature Funnels page view model. Tolerates empty/missing inputs. */
+export function analyzeFeatures({ orders = [], stats = null, products = [], window = null } = {}) {
+  const win = window || resolveRange('all');
+  const attribution = attributeOrders(orders || []);
+  // sumStats compares plain strings against YYYY-MM-DD keys; resolveRange gives full ISO.
+  const summed = sumStats(stats, { since: win.since && win.since.slice(0, 10), until: win.until && win.until.slice(0, 10) });
+  const dropoff = quizDropoff(summed);
+  const demandRows = answerDemand(summed);
+  const demand = demandVsStock(demandRows, products || []);
+  const combo = worstCombo(demandRows, products || []);
+  const ugb = ugbSummary(summed);
+  const f = attribution.features['find-my-blaster'] || { orders: 0, revenue: 0 };
+  const u = attribution.features['upgrade'] || { orders: 0, revenue: 0 };
+  const touched = (orders || []).filter((o) => o && (o.origin || (o.items || []).some((i) => i && i.src))).length;
+  return {
+    window: win,
+    currency: attribution.currency,
+    totals: { revenue: f.revenue + u.revenue, orders: touched, trendPct: null },
+    perFeature: {
+      fmb: { key: 'find-my-blaster', label: 'Find My Blaster', stages: [{ label: 'Opened', count: summed.fmb.open }, { label: 'Finished', count: summed.fmb.done }, { label: 'Ordered', count: f.orders }], revenue: f.revenue, orders: f.orders },
+      ugb: { key: 'upgrade', label: 'Upgrade Your Blaster', stages: [{ label: 'Engaged', count: summed.ugb.open }, { label: 'Added to cart', count: summed.ugb.add }, { label: 'Ordered', count: u.orders }], revenue: u.revenue, orders: u.orders },
+    },
+    dropoff,
+    demand,
+    worstCombo: combo,
+    recs: buildFeatureRecs({ dropoff, worstCombo: combo, ugb, attribution }),
+  };
+}
