@@ -110,6 +110,7 @@ const combo0 = { label: 'Gas + Under $300', wanted: 8, inStock: 1 };
 const recs = buildFeatureRecs({ dropoff: recDrop, worstCombo: combo0, ugb: { opens: 40, adds: 2 }, attribution: {} });
 ok('recs 3 ranked: combo, step, ugb', recs.length === 3 && recs[0].text.includes('Gas + Under $300') && recs[1].text.includes('Q1') && recs[1].text.includes('60%') && recs[2].text.includes('Upgrade'));
 ok('recs each fix + impact + tone', recs.every((r) => r.fix.length > 0 && r.impact && r.impact.up && r.impact.unit && r.tone && r.text));
+ok('recs impact is short figure + unit', recs.every((r) => typeof r.impact.up === 'string' && r.impact.up.length <= 6 && /^[+\d]/.test(r.impact.up) && r.impact.unit.length <= 24));
 ok('recs guard wanted=0', buildFeatureRecs({ worstCombo: { ...combo0, wanted: 0 } }).length === 0);
 ok('recs guard worstIndex=0', buildFeatureRecs({ dropoff: { steps: recDrop.steps, worstIndex: 0 } }).length === 0);
 ok('recs guard worstIndex -1', buildFeatureRecs({ dropoff: { steps: recDrop.steps, worstIndex: -1 } }).length === 0);

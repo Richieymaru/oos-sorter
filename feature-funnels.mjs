@@ -208,9 +208,9 @@ export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
   if (combo && combo.wanted > 0) {
     recs.push({
       tone: 'danger',
-      text: `Stock more ${combo.label}: ${combo.wanted} quiz takers want it and only ${combo.inStock} in-stock product${combo.inStock === 1 ? '' : 's'} match.`,
+      text: `Stock more ${combo.label}: ${combo.wanted} quiz takers want it and only ${combo.inStock} in-stock product${combo.inStock === 1 ? '' : 's'} match. Rough estimate: restocking could lift quiz orders 10-20%.`,
       fix: [`Add or restock products matching ${combo.label}`, 'Or tighten the quiz so it stops promising what you cannot ship'],
-      impact: { up: 'Est. +10-20% quiz-to-order conversion (heuristic)', unit: 'per quiz taker with this need' },
+      impact: { up: '+15%', unit: 'est. quiz orders' },
     });
   }
   const steps = (dropoff && dropoff.steps) || [];
@@ -218,18 +218,18 @@ export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
     const s = steps[dropoff.worstIndex];
     recs.push({
       tone: 'warn',
-      text: `Fix the "${s.label}" step: ${Math.round(s.dropPct)}% of people quit here.`,
+      text: `Fix the "${s.label}" step: ${Math.round(s.dropPct)}% of people quit here. Rough estimate: fixing it could recover about a third of them.`,
       fix: ['Simplify the question or its answer options', 'Check it on mobile and make the choices obvious'],
-      impact: { up: `Est. recover a third of the ${Math.round(s.dropPct)}% drop (heuristic)`, unit: 'more finished quizzes' },
+      impact: { up: `+${Math.round(s.dropPct / 3)}%`, unit: 'est. finishers' },
     });
   }
   const opens = Number(ugb && ugb.opens) || 0, adds = Number(ugb && ugb.adds) || 0;
   if (opens >= 10 && adds / opens < 0.15) {
     recs.push({
       tone: 'warn',
-      text: `Upgrade Your Blaster: only ${Math.round((adds / opens) * 100)}% of ${opens} engaged visitors add an upgrade to cart.`,
+      text: `Upgrade Your Blaster: only ${Math.round((adds / opens) * 100)}% of ${opens} engaged visitors add an upgrade to cart. Rough estimate: lifting it to about 15% would roughly double add-to-carts.`,
       fix: ['Show compatible upgrades higher up', 'Add price or "fits your blaster" cues next to the add button'],
-      impact: { up: 'Est. 2x add-to-cart rate if lifted to ~15% (heuristic)', unit: 'more upgrade add-to-carts' },
+      impact: { up: '2x', unit: 'est. add-to-carts' },
     });
   }
   return recs;

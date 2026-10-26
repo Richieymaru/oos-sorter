@@ -869,7 +869,7 @@ const FF_CSS = `
 .ff .ff-rank{font-family:var(--display);font-weight:800;font-size:22px;color:var(--faint);width:24px;text-align:center}
 .ff .ff-rec h4{margin:0 0 3px;font-size:14.5px;font-weight:700}
 .ff .ff-rec ul{margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted);line-height:1.45}
-.ff .ff-imp{text-align:right}
+.ff .ff-imp{text-align:right;max-width:130px}
 .ff .ff-imp .up{font-family:var(--display);font-weight:800;font-size:19px;color:var(--accent)}
 .ff .ff-imp .ul{font-size:10.5px;color:var(--faint)}
 @media(max-width:860px){.ff .ff-hero,.ff .ff-grid2,.ff .ff-behave{grid-template-columns:1fr}}
@@ -944,7 +944,7 @@ export function featureFunnelsBody(view) {
     <p class="ff-sub">${steps.length ? `${steps[0].reached} opened. How many are still answering, and the drop since the last step` : 'No quiz step data in this range.'}</p>
     ${steps.map((s, i) => {
       const worst = d.worstIndex === i;
-      return `<div class="ff-lbrow${worst ? ' worst' : ''}"><span class="nm" title="${esc(s.label)}">${esc(s.label)}</span><div class="ff-track"><div class="ff-fill" style="width:${Math.max(2, Math.round((s.reached / stepTop) * 100))}%"></div></div><span class="ff-val">${s.reached}</span><span class="ff-drp${worst ? ' bad' : ''}">${s.dropPct == null || !i ? '—' : `−${s.dropPct}%${worst ? ' ◀ worst' : ''}`}</span></div>`;
+      return `<div class="ff-lbrow${worst ? ' worst' : ''}"><span class="nm" title="${esc(s.label)}">${esc(s.label)}</span><div class="ff-track"><div class="ff-fill" style="width:${Math.max(2, Math.round((s.reached / stepTop) * 100))}%"></div></div><span class="ff-val">${s.reached}</span><span class="ff-drp${worst ? ' bad' : ''}">${s.dropPct == null || !i ? '—' : `−${Math.round(s.dropPct)}%${worst ? ' ◀ worst' : ''}`}</span></div>`;
     }).join('')}
   </div>`;
 
