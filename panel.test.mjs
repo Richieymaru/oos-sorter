@@ -12,7 +12,7 @@ function eq(label, got, want) {
 
 console.log('--- normalizeSettings ---');
 const E = []; // no recipients
-const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', freeGiftGasProduct: '', freeGiftGasImage: '', freeGiftGasVariantId: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '', remindersEnabled: false, reminderDays: 21 };
+const base = { sort: false, notify: false, draft: false, waitlist: false, monitor: false, featureFunnels: false, notifyEmails: E, slackWebhook: '', monitorSlackWebhook: '', sheetWebhook: '', nudgeDays: 2, emailLogoUrl: '', freeGiftEnabled: false, freeGiftProduct: 'Free gels', freeGiftImage: '', freeGiftVariantId: '', freeGiftGasProduct: '', freeGiftGasImage: '', freeGiftGasVariantId: '', incentivesEnabled: false, incentiveTier1: 200, incentiveTier2: 500, incentiveTier3: 1000, incentiveMinorGift: '', incentiveMinorGiftImage: '', incentiveMinorGiftVariantId: '', incentiveMajorGift: '', incentiveMajorGiftImage: '', incentiveMajorGiftVariantId: '', remindersEnabled: false, reminderDays: 21 };
 eq('empty -> all false', normalizeSettings({}), base);
 eq('freeGift off by default', normalizeSettings({}).freeGiftEnabled, false);
 eq('freeGift default product is Free gels', normalizeSettings({}).freeGiftProduct, 'Free gels');
@@ -62,6 +62,7 @@ eq('waitlist toggle', normalizeSettings({ waitlist: true }).waitlist, true);
 eq('monitor toggle', normalizeSettings({ monitor: true }).monitor, true);
 eq('recipients parsed inside settings', normalizeSettings({ notifyEmails: 'A@x.com, b@y.com' }).notifyEmails, ['a@x.com', 'b@y.com']);
 
+eq('featureFunnels toggle', [normalizeSettings({ featureFunnels: true }).featureFunnels, normalizeSettings({ featureFunnels: 'true' }).featureFunnels], [true, false]);
 eq('slack webhook stored inside settings', normalizeSettings({ slackWebhook: 'https://hooks.slack.com/services/A/B/C' }).slackWebhook, 'https://hooks.slack.com/services/A/B/C');
 eq('sheet webhook stored inside settings', normalizeSettings({ sheetWebhook: 'https://script.google.com/macros/s/AAA/exec' }).sheetWebhook, 'https://script.google.com/macros/s/AAA/exec');
 eq('monitor slack webhook stored + validated', normalizeSettings({ monitorSlackWebhook: 'https://hooks.slack.com/services/M/N/O' }).monitorSlackWebhook, 'https://hooks.slack.com/services/M/N/O');

@@ -91,6 +91,7 @@ export function normalizeSettings(obj) {
     draft: o.draft === true,
     waitlist: o.waitlist === true,
     monitor: o.monitor === true,
+    featureFunnels: o.featureFunnels === true,
     notifyEmails: normalizeEmails(o.notifyEmails),
     slackWebhook: normalizeSlackWebhook(o.slackWebhook),
     monitorSlackWebhook: normalizeSlackWebhook(o.monitorSlackWebhook),

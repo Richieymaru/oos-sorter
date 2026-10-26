@@ -6,7 +6,7 @@ import { loadMonitorLog, monitorTag, fetchSheetActivity } from '../monitor-log.m
 import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
-  shell, setPageHeaders, statCard, badge, activityFeed, funnelsBody, areaChart,
+  shell, setPageHeaders, featureFunnelsBody, statCard, badge, activityFeed, funnelsBody, areaChart,
   relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner, paginator,
 } from '../ui.mjs';
 import { activeSaleReminder } from '../sales-calendar.mjs';
@@ -16,7 +16,9 @@ import { fetchOrders, fetchAbandonedCheckouts, fetchAbandonedCheckout } from '..
 import { buildRecoveryEmail, sendRecovery } from '../notify.mjs';
 import { getShopContext } from '../shopify.mjs';
 import { analyzeFunnels, analyzeCheckout, checkoutInsights, resolveRange, topProductsByCategory } from '../funnels.mjs';
-import { fetchCollectionProductIds, fetchProductImages } from '../catalog.mjs';
+import { fetchCollectionProductIds, fetchProductImages, fetchBlasterAttributes } from '../catalog.mjs';
+import { loadFeatureStats } from '../feature-stats.mjs';
+import { analyzeFeatures } from '../feature-funnels.mjs';
 import { ttlMemo } from '../cache.mjs';
 
 export const config = { maxDuration: 30 };
@@ -29,6 +31,10 @@ const cachedOrders = ttlMemo(fetchOrders, 120000);
 const cachedAbandoned = ttlMemo(fetchAbandonedCheckouts, 120000);
 const cachedCollectionIds = ttlMemo(fetchCollectionProductIds, 600000);
 const cachedProductImages = ttlMemo(fetchProductImages, 600000);
+const cachedBlasterAttrs = ttlMemo(fetchBlasterAttributes, 600000);
+
+// The Find My Blaster quiz's collection (theme fmb_collection).
+const FMB_COLLECTION_HANDLE = process.env.FMB_COLLECTION_HANDLE || 'your-perfect-blaster';
 
 // Funnels "top products by category" — collection membership per category.
 // Store-specific (GBU); move to settings if this ever ships to another store.
@@ -189,6 +195,32 @@ export default async function handler(req, res) {
     }
     setPageHeaders(res);
     res.end(shell({ title: 'Funnels', active: 'funnels', body }));
+    return;
+  }
+
+  // --- Feature Funnels (GET /features) — Find My Blaster + Upgrade Your Blaster
+  //     usage & conversion. Gated on settings.featureFunnels. ---
+  if (param(req, 'view') === 'features') {
+    let body;
+    try {
+      const win = resolveRange(param(req, 'range') || '30d');
+      const settings = await loadSettings().catch(() => ({}));
+      if (!settings.featureFunnels) {
+        body = featureFunnelsBody({ error: 'Turn on Feature Funnels in Settings to start tracking usage and conversion.' });
+      } else {
+        const [ordRes, stats, products] = await Promise.all([
+          cachedOrders({ since: win.since, until: win.until }),
+          loadFeatureStats().catch(() => null),
+          cachedBlasterAttrs(FMB_COLLECTION_HANDLE).catch(() => []),
+        ]);
+        body = featureFunnelsBody(analyzeFeatures({ orders: ordRes.orders, stats, products, window: win }));
+      }
+    } catch (e) {
+      console.error('features: fetch failed —', e.message);
+      body = featureFunnelsBody({ error: 'Feature data is temporarily unavailable.' });
+    }
+    setPageHeaders(res);
+    res.end(shell({ title: 'Features', active: 'features', body }));
     return;
   }
 
