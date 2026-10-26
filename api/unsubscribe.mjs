@@ -9,6 +9,8 @@ import { safeRelPath, cartVariantId, applyClicked, applyUnsubscribed, applyBrows
 import { fetchProductsByIds } from '../catalog.mjs';
 import { isReminderKey, applyReminderClicked, applyReminderOptout } from '../reminders.mjs';
 import { isVariantInStock } from '../stock.mjs';
+import { sanitizeEvent, applyEvent, loadFeatureStats, saveFeatureStats } from '../feature-stats.mjs';
+import { loadSettings } from '../settings.mjs';
 
 async function readJson(req) {
   if (req.body && typeof req.body === 'object') return req.body;
@@ -36,6 +38,31 @@ h1{font-size:1.3rem;margin:0 0 .5rem} p{color:#5f6875;line-height:1.5}</style>
 
 export default async function handler(req, res) {
   const q = query(req);
+
+  // --- Feature Funnels beacon (storefront FMB/UGB to here), cross-origin. ---
+  // Gated on settings.featureFunnels; always 200s, never leaks errors. Stores no PII
+  // (sanitizeEvent keeps only known keys). Read-modify-write on one metafield, so
+  // concurrent beacons can lose an increment - accepted for this low-volume store.
+  if (String(q.fev || '') === '1' || req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const ev = sanitizeEvent(await readJson(req));
+      if (ev) {
+        const settings = await loadSettings().catch(() => ({}));
+        if (settings.featureFunnels) {
+          const s = await loadFeatureStats();
+          await saveFeatureStats(applyEvent(s, ev, new Date().toISOString().slice(0, 10)));
+        }
+      }
+    } catch (e) { console.error('feature event failed:', e.message); }
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
 
   // --- Web Pixel browsing events (storefront Web Pixel → here), cross-origin. ---
   // The pixel sends { wl, event, products:[{title}] }; we match wl to a notified

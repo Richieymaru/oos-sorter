@@ -66,6 +66,29 @@ export function applyEvent(stats, ev, ymd) {
   return { ...stats, days: { ...stats.days, [ymd]: day } };
 }
 
+const KNOWN = {
+  fmb: ['open', 'step', 'pick', 'done'],
+  ugb: ['open', 'blaster', 'fits', 'add'],
+};
+
+/** Pure: validate/clamp an untrusted beacon body. Returns a clean event or null. Never throws. */
+export function sanitizeEvent(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const { f, e } = body;
+  if (typeof f !== 'string' || !Object.hasOwn(KNOWN, f)) return null;
+  if (typeof e !== 'string' || !KNOWN[f].includes(e)) return null;
+  const ev = { f, e };
+  for (const k of ['q', 'a', 'b']) {
+    if (typeof body[k] === 'string') ev[k] = body[k].slice(0, CLAMP);
+  }
+  for (const k of ['n', 'm']) {
+    if (body[k] === undefined || body[k] === null || body[k] === '') continue;
+    const n = Math.trunc(Number(body[k]));
+    if (Number.isFinite(n)) ev[k] = n;
+  }
+  return ev;
+}
+
 /** Pure: keep only the newest `maxDays` day keys. */
 export function trimStats(stats, maxDays = 90) {
   const keys = Object.keys(stats.days ?? {}).sort();

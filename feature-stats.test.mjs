@@ -4,7 +4,7 @@
  *   node feature-stats.test.mjs
  */
 
-import { emptyStats, applyEvent, trimStats } from './feature-stats.mjs';
+import { emptyStats, applyEvent, trimStats, sanitizeEvent } from './feature-stats.mjs';
 
 let failures = 0;
 let checks = 0;
@@ -100,6 +100,22 @@ ok('emptyStats fresh each call', JSON.stringify(emptyStats()) === e0);
   ok('hostile keys: survive JSON round-trip', JSON.stringify(rt) === JSON.stringify(h));
   const other = applyEvent(h, { f: 'ugb', e: 'open' }, '2026-10-25');
   ok('hostile keys: other day clean', Object.keys(other.days['2026-10-25'].ugb.blaster).length === 0);
+}
+
+// sanitizeEvent
+{
+  const v = sanitizeEvent({ f: 'fmb', e: 'pick', q: 'power', a: 'Gas' });
+  ok('sanitize: accepts valid', v && v.f === 'fmb' && v.e === 'pick' && v.q === 'power' && v.a === 'Gas');
+  ok('sanitize: rejects missing f', sanitizeEvent({ e: 'open' }) === null);
+  ok('sanitize: rejects unknown e', sanitizeEvent({ f: 'fmb', e: 'hack' }) === null);
+  ok('sanitize: e must match f', sanitizeEvent({ f: 'ugb', e: 'pick' }) === null);
+  ok('sanitize: rejects non-object', sanitizeEvent(null) === null && sanitizeEvent('x') === null);
+  ok('sanitize: clamps a', sanitizeEvent({ f: 'fmb', e: 'pick', a: 'x'.repeat(500) }).a.length === 60);
+  const d = sanitizeEvent({ f: 'fmb', e: 'done', m: '0' });
+  ok('sanitize: m coerced to number 0', d.m === 0 && typeof d.m === 'number');
+  ok('sanitize: NaN n dropped', !('n' in sanitizeEvent({ f: 'fmb', e: 'step', n: 'abc' })));
+  const x = sanitizeEvent({ f: 'ugb', e: 'open', evil: 1, email: 'a@b.c' });
+  ok('sanitize: drops extra keys', JSON.stringify(Object.keys(x).sort()) === '["e","f"]');
 }
 
 // trim
