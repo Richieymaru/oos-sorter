@@ -67,6 +67,12 @@ const STEP_LABELS = ['Opened', 'Q1 · Player', 'Q2 · Budget', 'Q3 · Power', 'Q
 export function quizDropoff(summed) {
   const f = (summed && summed.fmb) || {};
   const counts = [Number(f.open) || 0, ...[0, 1, 2, 3, 4].map((i) => Number((f.step || [])[i]) || 0)];
+  // A funnel can only shrink: reaching a later step means you passed every earlier
+  // one. The quiz AUTO-SKIPS a question when only one option is left (no beacon fires
+  // for it), which would otherwise show that step as 0 while a later step is >0 — a
+  // phantom 100% drop and a false "fix this step" rec. Back-fill each step with the max
+  // of the steps after it so a skipped step inherits the next real step's count.
+  for (let i = counts.length - 2; i >= 0; i--) counts[i] = Math.max(counts[i], counts[i + 1]);
   let worstIndex = -1, worst = 0;
   const steps = counts.map((reached, i) => {
     const prev = i ? counts[i - 1] : 0;

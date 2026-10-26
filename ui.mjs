@@ -809,6 +809,11 @@ function prodThumb(url) {
 }
 
 const FF_CSS = `
+.ff .fn-range{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface);border:1px solid var(--line);padding:5px 11px;border-radius:999px}
+.ff .fn-ranges{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.ff .fn-range-opt{font-size:12.5px;font-weight:600;padding:6px 13px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);text-decoration:none;transition:background .15s,color .15s,border-color .15s}
+.ff .fn-range-opt:hover{background:var(--hover);color:var(--ink)}
+.ff .fn-range-opt.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .ff .ff-hero{display:grid;grid-template-columns:1.12fr 1fr;gap:18px;margin-bottom:18px}
 .ff .ff-main{padding:24px 26px;border-top:3px solid var(--accent)}
 .ff .ff-eyebrow{font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:700}

@@ -69,6 +69,11 @@ ok('dropoff row0 zero', qd.steps[0].dropPct === 0);
 ok('dropoff worst', qd.worstIndex === 3 && near(qd.steps[3].dropPct, 100 * 60 / 90));
 const qe = quizDropoff(sumStats(emptyStats(), {}));
 ok('dropoff empty', qe.worstIndex === -1 && qe.steps.length === 6 && qe.steps.every((s) => s.reached === 0 && s.dropPct === 0));
+// Auto-skipped step: Q4 (step[3]) never beaconed but Q5 (step[4]) reached — funnel must stay
+// monotonic (back-fill), so no phantom 100% drop / false "fix Q4" worst step.
+const qs = quizDropoff({ fmb: { open: 1, step: [1, 1, 1, 0, 1] } });
+ok('dropoff auto-skip monotonic', qs.steps.map((s) => s.reached).join(',') === '1,1,1,1,1,1');
+ok('dropoff auto-skip no phantom worst', qs.worstIndex === -1 && qs.steps.every((s) => s.dropPct === 0));
 
 const ad = answerDemand(all);
 ok('demand sorted', ad[0].q === '1' && ad[0].a === 'a' && ad[0].picks === 5 && ad[1].picks >= ad[2].picks);
