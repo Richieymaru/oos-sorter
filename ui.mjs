@@ -955,12 +955,12 @@ export function featureFunnelsBody(view) {
   const wc = v.worstCombo;
   const demCard = `<div class="card ff-card">
     <div class="ff-ch"><h3 style="font-size:15px">What shoppers ask for</h3></div>
-    <p class="ff-sub">Each bar is how many picked that answer. The striped part is demand you can't stock right now.</p>
-    ${dem.length ? `<div class="ff-legend"><span><i></i>You stock this</span><span><i class="m"></i>Unmet demand</span></div>
+    <p class="ff-sub">Each bar is how many picked that answer. The striped part is what you don't have enough stock for.</p>
+    ${dem.length ? `<div class="ff-legend"><span><i></i>In stock</span><span><i class="m"></i>Not enough stock</span></div>
     ${dem.map((r) => {
       const cov = Math.min(100, Math.max(0, Math.round(r.coveragePct)));
       const un = 100 - cov;
-      return `<div class="ff-demrow"><span class="n" title="${esc(r.q)}">${esc(r.a)}${r.approx ? ' <span class="faint" style="font-weight:500">approx</span>' : ''}</span><div class="ff-gap"><div class="ff-met" style="width:${cov}%"></div><div class="ff-miss" style="width:${un}%">${un >= 15 ? `<b>${Math.round(r.unmetPct)}% unmet</b>` : ''}</div></div></div>`;
+      return `<div class="ff-demrow"><span class="n" title="${esc(r.q)}">${esc(r.a)}${r.approx ? ' <span class="faint" style="font-weight:500">approx</span>' : ''}</span><div class="ff-gap"><div class="ff-met" style="width:${cov}%"></div><div class="ff-miss" style="width:${un}%">${un >= 15 ? `<b>${Math.round(r.unmetPct)}% not in stock</b>` : ''}</div></div></div>`;
     }).join('')}` : `<div class="empty">No answer data yet.</div>`}
     ${wc ? `<div class="ff-unmet"><p><b>${wc.wanted} quizzers</b> wanted <b>${esc(wc.label)}</b>. You have only <b>${wc.inStock} in stock</b>. That is the quiz's biggest dead end, and your biggest missed sale.</p></div>` : ''}
   </div>`;
