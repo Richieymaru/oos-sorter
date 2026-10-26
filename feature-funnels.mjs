@@ -105,7 +105,16 @@ export function ugbSummary(summed) {
 /* ---- demand vs stock ---- */
 
 const fpsNum = (t) => { const m = /(\d{2,3})/.exec(String(t || '')); return m ? parseInt(m[1], 10) : null; };
-const has = (list, word) => String(list || '').split(',').map((s) => s.trim()).includes(word);
+// List membership. Accepts a JSON-array string (Shopify list metafield .value,
+// e.g. '["Electric","Gas"]') or a comma list ("Electric, Gas"); case-insensitive.
+const has = (list, word) => {
+  const s = String(list || '').trim();
+  let arr = null;
+  if (s.startsWith('[')) { try { const j = JSON.parse(s); if (Array.isArray(j)) arr = j; } catch { /* fall back to comma split */ } }
+  if (!arr) arr = s.split(',');
+  const w = String(word).toLowerCase();
+  return arr.some((x) => String(x).trim().toLowerCase() === w);
+};
 const band = (n, lo, hi) => n != null && Number.isFinite(n) && n >= lo && n < hi;
 
 /**

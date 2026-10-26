@@ -103,6 +103,18 @@ const wc = worstCombo(dem, stock);
 ok('worstCombo gas + under 300', wc && wc.label === 'Gas + Under $300' && wc.inStock === 1 && wc.wanted === 8);
 ok('worstCombo null no demand', worstCombo([], stock) === null);
 ok('worstCombo empty products', worstCombo(dem, []).inStock === 0);
+// power is a Shopify LIST metafield: Admin API .value is a JSON-array string
+const jp = (power) => P({ power, price: 250 });
+const pw = (a, prods) => demandVsStock([{ q: 'power', a, picks: 1, share: 1 }], prods)[0].inStockCount;
+ok('power json array matches Electric', pw('Electric', [jp('["Electric","Gas"]')]) === 1);
+ok('power json array matches Gas', pw('Gas', [jp('["Electric","Gas"]')]) === 1);
+ok('power json array no false match', pw('Manual', [jp('["Electric","Gas"]')]) === 0);
+ok('power comma form still matches', pw('Gas', [jp('Electric, Gas')]) === 1 && pw('Electric', [jp('Electric, Gas')]) === 1);
+ok('power malformed json falls back', pw('Gas', [jp('[Electric, Gas')]) === 1);
+const jstock = [jp('["Electric"]'), jp('["Gas"]'), jp('["Electric","Gas"]')];
+const jdem = [{ q: 'power', a: 'Gas', picks: 6, share: 0.6 }, { q: 'budget', a: 'Under $300', picks: 6, share: 0.6 }];
+const jwc = worstCombo(jdem, jstock);
+ok('worstCombo json power sane coverage', jwc && jwc.inStock === 2);
 
 // --- recs + composer ---
 const recDrop = { steps: [{ label: 'Opened', reached: 10, dropPct: 0 }, { label: 'Q1 · Player', reached: 4, dropPct: 60 }], worstIndex: 1 };

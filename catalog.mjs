@@ -248,7 +248,7 @@ export async function fetchBlasterAttributes(handle) {
     return {
       id: shortId(p.id),
       price: prices.length ? Math.min(...prices) : 0,
-      power: p.power?.value || '',
+      power: p.power?.value || '', // list metafield: arrives as a JSON-array string, e.g. '["Electric","Gas"]'
       experience: p.experience?.value || '',
       material: p.material?.value || '',
       fps: p.fps?.value || '',

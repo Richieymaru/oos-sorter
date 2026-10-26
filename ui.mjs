@@ -890,6 +890,9 @@ export function featureFunnelsBody(view) {
   const usage = feats.reduce((n, f) => n + ((f.stages && f.stages[0] && f.stages[0].count) || 0), 0);
   const touched = (v.totals && v.totals.orders) || 0;
 
+  if (v.off) {
+    return head + `<div class="card pad"><b>Feature Funnels is off</b><p class="muted" style="margin-top:6px">Turn it on in Settings to start tracking Find My Blaster and Upgrade Your Blaster usage and conversion.</p></div></div>`;
+  }
   if (v.error) {
     return head + `<div class="card pad"><b>Couldn't load feature data.</b><p class="muted" style="margin-top:6px">${esc(v.error)}</p></div></div>`;
   }

@@ -202,11 +202,11 @@ export default async function handler(req, res) {
   //     usage & conversion. Gated on settings.featureFunnels. ---
   if (param(req, 'view') === 'features') {
     let body;
+    const win = resolveRange(param(req, 'range') || '30d');
     try {
-      const win = resolveRange(param(req, 'range') || '30d');
       const settings = await loadSettings().catch(() => ({}));
       if (!settings.featureFunnels) {
-        body = featureFunnelsBody({ error: 'Turn on Feature Funnels in Settings to start tracking usage and conversion.' });
+        body = featureFunnelsBody({ off: true, window: win });
       } else {
         const [ordRes, stats, products] = await Promise.all([
           cachedOrders({ since: win.since, until: win.until }),
@@ -217,7 +217,7 @@ export default async function handler(req, res) {
       }
     } catch (e) {
       console.error('features: fetch failed —', e.message);
-      body = featureFunnelsBody({ error: 'Feature data is temporarily unavailable.' });
+      body = featureFunnelsBody({ error: 'Feature data is temporarily unavailable.', window: win });
     }
     setPageHeaders(res);
     res.end(shell({ title: 'Features', active: 'features', body }));
