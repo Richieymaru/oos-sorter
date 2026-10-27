@@ -4,6 +4,7 @@
  *   node feature-stats.test.mjs
  */
 
+import { sumStats } from './feature-funnels.mjs';
 import { emptyStats, applyEvent, trimStats, sanitizeEvent, sanitizeBatch } from './feature-stats.mjs';
 
 let failures = 0;
@@ -100,6 +101,15 @@ ok('emptyStats fresh each call', JSON.stringify(emptyStats()) === e0);
   ok('hostile keys: survive JSON round-trip', JSON.stringify(rt) === JSON.stringify(h));
   const other = applyEvent(h, { f: 'ugb', e: 'open' }, '2026-10-25');
   ok('hostile keys: other day clean', Object.keys(other.days['2026-10-25'].ugb.blaster).length === 0);
+}
+
+// fmb add
+{
+  const a = applyEvent(emptyStats(), { f: 'fmb', e: 'add' }, '2026-10-05');
+  ok('fmb add increments', a.days['2026-10-05'].fmb.add === 1);
+  ok('sanitize accepts fmb add', sanitizeEvent({ f: 'fmb', e: 'add' }) !== null);
+  const b = applyEvent(a, { f: 'fmb', e: 'add' }, '2026-10-06');
+  ok('sumStats sums fmb.add', sumStats(b, {}).fmb.add === 2);
 }
 
 // sanitizeEvent

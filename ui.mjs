@@ -932,8 +932,8 @@ export function featureFunnelsBody(view) {
       <p class="ff-sub">${esc(sub)}</p>
       <div class="ff-funnel">${st.map((s, i) => {
         const prev = i ? st[i - 1].count : 0;
-        const drop = i && prev ? Math.round((1 - s.count / prev) * 100) : null;
-        return `<div class="ff-row"><span class="ff-lab">${esc(s.label)}</span><div class="ff-track"><div class="ff-fill${i === st.length - 1 && i > 0 ? ' last' : ''}" style="width:${Math.max(2, Math.round((s.count / top) * 100))}%"></div></div><span class="ff-val">${s.count}</span>${drop != null ? `<span class="ff-d">−${drop}%</span>` : ''}</div>`;
+        const drop = i && prev ? Math.max(0, Math.round((1 - s.count / prev) * 100)) : null;
+        return `<div class="ff-row"><span class="ff-lab">${esc(s.label)}</span><div class="ff-track"><div class="ff-fill${i === st.length - 1 && i > 0 ? ' last' : ''}" style="width:${Math.min(100, Math.max(2, Math.round((s.count / top) * 100)))}%"></div></div><span class="ff-val">${s.count}</span>${drop != null ? `<span class="ff-d">${drop > 0 ? `−${drop}%` : '—'}</span>` : ''}</div>`;
       }).join('')}</div>
       <div class="ff-rev"><span class="l">Revenue it sold · ${f.orders} order${f.orders === 1 ? '' : 's'}</span><span class="v">${esc(money(cur, f.revenue))}</span></div>
     </div>`;

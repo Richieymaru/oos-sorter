@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Pure tests for feature funnels. node feature-funnels.test.mjs — no env, no network. */
 import { normalizeOrder } from './orders.mjs';
-import { attributeOrders, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS, buildFeatureRecs, analyzeFeatures } from './feature-funnels.mjs';
+import { attributeOrders, attributeByOrigin, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS, buildFeatureRecs, analyzeFeatures } from './feature-funnels.mjs';
 import { emptyStats } from './feature-stats.mjs';
 
 let failures = 0, checks = 0;
@@ -147,13 +147,23 @@ const an = analyzeFeatures({
 });
 ok('analyze shape', an.totals && an.perFeature.fmb && an.perFeature.ugb && an.dropoff && Array.isArray(an.recs) && Array.isArray(an.demand) && 'worstCombo' in an && an.currency);
 ok('analyze since-boundary day included, prior day excluded', an.perFeature.fmb.stages[0].count === 10 && an.perFeature.fmb.stages[1].count === 2 && an.perFeature.ugb.stages[0].count === 4 && an.perFeature.ugb.stages[1].count === 1);
-ok('analyze stage labels', an.perFeature.fmb.stages.map((s) => s.label).join() === 'Opened,Finished,Ordered' && an.perFeature.ugb.stages.map((s) => s.label).join() === 'Engaged,Added to cart,Ordered');
-ok('analyze ordered counts', an.perFeature.fmb.stages[2].count === 1 && an.perFeature.ugb.stages[2].count === 1 && an.perFeature.fmb.key === 'find-my-blaster' && an.perFeature.ugb.key === 'upgrade');
-ok('analyze totals', an.totals.orders === 3 && an.totals.revenue === an.perFeature.fmb.revenue + an.perFeature.ugb.revenue && an.totals.revenue === 200 && an.totals.trendPct === null);
+ok('analyze stage labels', an.perFeature.fmb.stages.map((s) => s.label).join() === 'Opened,Finished,Added to cart,Ordered' && an.perFeature.ugb.stages.map((s) => s.label).join() === 'Engaged,Added to cart,Ordered');
+ok('analyze ordered counts', an.perFeature.fmb.stages[3].count === 1 && an.perFeature.ugb.stages[2].count === 0 && an.perFeature.fmb.stages[2].count === 0 && an.perFeature.fmb.key === 'find-my-blaster' && an.perFeature.ugb.key === 'upgrade');
+ok('analyze totals', an.totals.orders === 3 && an.totals.revenue === an.perFeature.fmb.revenue + an.perFeature.ugb.revenue && an.totals.revenue === 100 && an.perFeature.fmb.revenue === 100 && an.perFeature.fmb.orders === 1 && an.perFeature.ugb.orders === 0 && an.totals.trendPct === null);
 ok('analyze dropoff + demand + combo', an.dropoff.steps.length === 6 && an.demand.length === 1 && an.worstCombo && an.worstCombo.wanted === 5);
 for (const [name, v] of [['{}', analyzeFeatures({})], ['()', analyzeFeatures()], ['no window', analyzeFeatures({ orders: [], stats: { days: {} } })]]) {
   ok(`analyze empty ${name}`, v.totals.revenue === 0 && v.totals.orders === 0 && v.totals.trendPct === null && v.recs.length === 0 && v.worstCombo === null && v.perFeature.fmb.orders === 0 && v.perFeature.ugb.stages.every((s) => s.count === 0) && v.window && v.demand.length === 0);
 }
+
+// --- attributeByOrigin ---
+const bo = attributeByOrigin([{ amount: 120, currency: 'PHP', items: [], origin: 'find-my-blaster' }, { amount: 80, items: [], origin: 'upgrade' }, { amount: 50, items: [{ qty: 1, src: 'upgrade' }], origin: null }]);
+ok('origin fmb credited full amount', bo.features['find-my-blaster'].orders === 1 && bo.features['find-my-blaster'].revenue === 120);
+ok('origin upgrade credited; no-origin neither', bo.features.upgrade.orders === 1 && bo.features.upgrade.revenue === 80 && bo.currency === 'PHP');
+const bz = attributeByOrigin([]);
+ok('origin empty zeros', bz.features.upgrade.revenue === 0 && bz.features['find-my-blaster'].orders === 0 && bz.currency === 'USD');
+ok('origin non-numeric amount -> 0', attributeByOrigin([{ amount: 'abc', origin: 'upgrade' }]).features.upgrade.revenue === 0);
+const an4 = analyzeFeatures({ stats: { days: { '2026-10-05': { fmb: { open: 10, step: [0, 0, 0, 0, 0], done: 4, deadEnd: 0, add: 3, picks: {} }, ugb: { open: 0, blaster: {}, fits: 0, add: 0 } } } }, window: { key: '30d', label: 'x', since: '2026-10-05T00:00:00.000Z', until: '2026-10-05T23:59:59.999Z' } });
+ok('fmb funnel Added to cart from fmb.add', an4.perFeature.fmb.stages[2].label === 'Added to cart' && an4.perFeature.fmb.stages[2].count === 3);
 
 console.log(`\n${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);

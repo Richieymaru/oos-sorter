@@ -20,7 +20,7 @@ const CLAMP = 60;
 export const emptyStats = () => ({ version: 1, days: {} });
 
 const emptyDay = () => ({
-  fmb: { open: 0, step: [0, 0, 0, 0, 0], done: 0, deadEnd: 0, picks: {} },
+  fmb: { open: 0, step: [0, 0, 0, 0, 0], done: 0, deadEnd: 0, add: 0, picks: {} },
   ugb: { open: 0, blaster: {}, fits: 0, add: 0 },
 });
 
@@ -52,7 +52,8 @@ export function applyEvent(stats, ev, ymd) {
     } else if (ev.e === 'done') {
       fmb.done++;
       if (ev.m === 0) fmb.deadEnd++;
-    } else return stats;
+    } else if (ev.e === 'add') fmb.add++;
+    else return stats;
   } else {
     if (ev.e === 'open') ugb.open++;
     else if (ev.e === 'blaster') {
@@ -67,7 +68,7 @@ export function applyEvent(stats, ev, ymd) {
 }
 
 const KNOWN = {
-  fmb: ['open', 'step', 'pick', 'done'],
+  fmb: ['open', 'step', 'pick', 'done', 'add'],
   ugb: ['open', 'blaster', 'fits', 'add'],
 };
 

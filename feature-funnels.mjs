@@ -30,6 +30,21 @@ export function attributeOrders(orders) {
   return { currency: (orders && orders[0] && orders[0].currency) || 'USD', features };
 }
 
+/**
+ * "Influenced" attribution: credit the feature named by the order's `origin`
+ * (cart attribute set when the modal was opened) with the WHOLE order amount.
+ * One origin per order, so no double counting.
+ */
+export function attributeByOrigin(orders) {
+  const features = Object.fromEntries(FEATURES.map((f) => [f, { orders: 0, revenue: 0 }]));
+  for (const order of orders || []) {
+    if (!order || !FEATURES.includes(order.origin)) continue;
+    features[order.origin].orders++;
+    features[order.origin].revenue += Number(order.amount) || 0;
+  }
+  return { currency: (orders && orders[0] && orders[0].currency) || 'USD', features };
+}
+
 // Untrusted map keys: read with hasOwn, write with defineProperty so
 // '__proto__' stays an own data property and never touches the prototype.
 function addTo(map, key, n) {
@@ -42,7 +57,7 @@ function mergeMap(into, from) {
 
 /** Sum every day bucket with since <= ymd <= until (null = unbounded) into one DayBucket. */
 export function sumStats(stats, { since = null, until = null } = {}) {
-  const out = { fmb: { open: 0, step: [0, 0, 0, 0, 0], done: 0, deadEnd: 0, picks: {} }, ugb: { open: 0, blaster: {}, fits: 0, add: 0 } };
+  const out = { fmb: { open: 0, step: [0, 0, 0, 0, 0], done: 0, deadEnd: 0, add: 0, picks: {} }, ugb: { open: 0, blaster: {}, fits: 0, add: 0 } };
   const days = (stats && stats.days) || {};
   for (const ymd of Object.keys(days)) {
     if (since && ymd < since) continue;
@@ -51,6 +66,7 @@ export function sumStats(stats, { since = null, until = null } = {}) {
     out.fmb.open += Number(fmb.open) || 0;
     out.fmb.done += Number(fmb.done) || 0;
     out.fmb.deadEnd += Number(fmb.deadEnd) || 0;
+    out.fmb.add += Number(fmb.add) || 0;
     for (let i = 0; i < 5; i++) out.fmb.step[i] += Number((fmb.step || [])[i]) || 0;
     mergeMap(out.fmb.picks, fmb.picks);
     out.ugb.open += Number(ugb.open) || 0;
@@ -253,7 +269,7 @@ export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
 /** Compose the Feature Funnels page view model. Tolerates empty/missing inputs. */
 export function analyzeFeatures({ orders = [], stats = null, products = [], window = null } = {}) {
   const win = window || resolveRange('all'); // 'all' is not a key -> yields the 30d default; Tasks 8/10 always pass a window
-  const attribution = attributeOrders(orders || []);
+  const attribution = attributeByOrigin(orders || []);
   // sumStats compares plain strings against YYYY-MM-DD keys; resolveRange gives full ISO.
   const summed = sumStats(stats, { since: win.since && win.since.slice(0, 10), until: win.until && win.until.slice(0, 10) });
   const dropoff = quizDropoff(summed);
@@ -269,7 +285,7 @@ export function analyzeFeatures({ orders = [], stats = null, products = [], wind
     currency: attribution.currency,
     totals: { revenue: f.revenue + u.revenue, orders: touched, trendPct: null },
     perFeature: {
-      fmb: { key: 'find-my-blaster', label: 'Find My Blaster', stages: [{ label: 'Opened', count: summed.fmb.open }, { label: 'Finished', count: summed.fmb.done }, { label: 'Ordered', count: f.orders }], revenue: f.revenue, orders: f.orders },
+      fmb: { key: 'find-my-blaster', label: 'Find My Blaster', stages: [{ label: 'Opened', count: summed.fmb.open }, { label: 'Finished', count: summed.fmb.done }, { label: 'Added to cart', count: summed.fmb.add }, { label: 'Ordered', count: f.orders }], revenue: f.revenue, orders: f.orders },
       ugb: { key: 'upgrade', label: 'Upgrade Your Blaster', stages: [{ label: 'Engaged', count: summed.ugb.open }, { label: 'Added to cart', count: summed.ugb.add }, { label: 'Ordered', count: u.orders }], revenue: u.revenue, orders: u.orders },
     },
     dropoff,
