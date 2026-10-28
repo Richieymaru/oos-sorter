@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Pure tests for feature funnels. node feature-funnels.test.mjs — no env, no network. */
 import { normalizeOrder } from './orders.mjs';
-import { attributeOrders, attributeByOrigin, attributedOrders, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS, buildFeatureRecs, analyzeFeatures } from './feature-funnels.mjs';
+import { attributeOrders, attributeByOrigin, attributedOrders, titleMatch, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS, buildFeatureRecs, analyzeFeatures } from './feature-funnels.mjs';
 import { emptyStats } from './feature-stats.mjs';
 
 let failures = 0, checks = 0;
@@ -171,7 +171,7 @@ ok('line price read', priced.items[0].price === 499 && priced.items[0].qty === 2
 ok('line price absent -> 0', normalizeOrder({ lineItems: { nodes: [{ title: 'x', quantity: 1, customAttributes: [] }] } }).items[0].price === 0);
 
 // --- attributedOrders (per-order explorer) ---
-const mko = (o) => ({ createdAt: o.at, amount: o.amount, currency: o.cur || 'AUD', origin: o.origin ?? null, source: o.source ?? null, journey: o.journey ?? null, items: (o.items || []).map(([title, qty, price, src]) => ({ title, qty, price, src: src ?? null })) });
+const mko = (o) => ({ createdAt: o.at, amount: o.amount, currency: o.cur || 'AUD', origin: o.origin ?? null, source: o.source ?? null, journey: o.journey ?? null, picks: o.picks ?? {}, items: (o.items || []).map(([title, qty, price, src]) => ({ title, qty, price, src: src ?? null })) });
 const exp = attributedOrders([
   mko({ at: '2026-10-20T00:00:00Z', amount: 300, origin: 'find-my-blaster', items: [['Quiz Blaster', 1, 300, 'find-my-blaster']] }),
   mko({ at: '2026-10-25T00:00:00Z', amount: 150, origin: 'upgrade', items: [['Scope', 1, 150, null], ['Battery', 2, 20, null]] }),
@@ -191,6 +191,32 @@ ok('explorer empty/garbage tolerant', attributedOrders([]).length === 0 && attri
 const jr = attributedOrders([mko({ at: '2026-10-21T00:00:00Z', amount: 10, origin: 'find-my-blaster', journey: { source: 'google', landing: '/quiz', days: 2 }, items: [['x', 1, 10, null]] })])[0];
 ok('explorer passes journey through', jr.journey.source === 'google' && jr.journey.days === 2);
 ok('explorer in analyzeFeatures view', Array.isArray(an.explorer) && an.explorer.length === 3);
+
+// --- titleMatch + per-order picks (answers / chosen product / conversion) ---
+ok('titleMatch exact + contains', titleMatch('TEC9 SMG Tactical - Gel Blaster', 'TEC9 SMG Tactical') && titleMatch('TEC9', 'TEC9 SMG Tactical - Gel Blaster'));
+ok('titleMatch case-insensitive + spacing', titleMatch('tec9  smg', 'TEC9 SMG'));
+ok('titleMatch rejects short/empty', !titleMatch('A', 'A') && !titleMatch('Scope', '') && !titleMatch('', 'Scope'));
+ok('titleMatch rejects unrelated', !titleMatch('Battery Charger', 'TEC9 SMG Tactical'));
+
+const pk = attributedOrders([
+  mko({ at: '2026-10-27T00:00:00Z', amount: 300, origin: 'find-my-blaster',
+    picks: { answers: 'Player: Advanced · Power: Gas', fmb: 'TEC9 SMG Tactical' },
+    items: [['TEC9 SMG Tactical - Gel Blaster', 1, 300, null], ['Shipping Protection', 1, 4, null]] }),
+  mko({ at: '2026-10-26T00:00:00Z', amount: 50, origin: 'find-my-blaster',
+    picks: { answers: 'Player: Starter', fmb: 'Hi-Capa Gas Pistol' },
+    items: [['Gel Balls', 1, 6, null]] }),
+  mko({ at: '2026-10-25T00:00:00Z', amount: 145, origin: 'upgrade',
+    picks: { ugbBlaster: 'Kublai P1', ugb: 'Extended Magazine' },
+    items: [['Extended Magazine - Black', 1, 30, 'upgrade']] }),
+]);
+const pFmbHit = pk.find((o) => o.at === '2026-10-27T00:00:00Z');
+ok('fmb answers surfaced', pFmbHit.answers === 'Player: Advanced · Power: Gas' && pFmbHit.blaster === null);
+ok('fmb pick matched to a line -> direct + ★', pFmbHit.pick === 'TEC9 SMG Tactical' && pFmbHit.pickInOrder === true && pFmbHit.direct === true && pFmbHit.items[0].viaFeature === 'find-my-blaster' && pFmbHit.items[1].viaFeature === null);
+const pFmbMiss = pk.find((o) => o.at === '2026-10-26T00:00:00Z');
+ok('fmb pick NOT in order -> not direct, no ★', pFmbMiss.pick === 'Hi-Capa Gas Pistol' && pFmbMiss.pickInOrder === false && pFmbMiss.direct === false && pFmbMiss.items.every((i) => i.viaFeature === null));
+const pUgb = pk.find((o) => o.at === '2026-10-25T00:00:00Z');
+ok('ugb blaster + pick surfaced, _src line still ★', pUgb.blaster === 'Kublai P1' && pUgb.answers === null && pUgb.pick === 'Extended Magazine' && pUgb.pickInOrder === true && pUgb.items[0].viaFeature === 'upgrade');
+ok('no picks object -> graceful nulls', attributedOrders([mko({ at: '2026-10-20T00:00:00Z', amount: 10, origin: 'find-my-blaster', items: [['x', 1, 10, null]] })])[0].answers === null);
 
 console.log(`\n${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);

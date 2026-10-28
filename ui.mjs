@@ -895,6 +895,9 @@ const FF_CSS = `
 .ff .ff-obody{padding:4px 16px 15px;border-top:1px solid var(--line)}
 .ff .ff-src{font-size:12px;color:var(--muted);margin:12px 0 6px}
 .ff .ff-src b{color:var(--ink)}
+.ff .ff-pick{font-size:12.5px;color:var(--ink);margin:9px 0 2px;line-height:1.5}
+.ff .ff-plab{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:700;margin-right:8px}
+.ff .ff-conv{color:var(--accent-ink);font-weight:700;margin-left:4px}
 .ff .ff-items{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
 .ff .ff-items th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:700;padding:4px 8px;border-bottom:1px solid var(--line)}
 .ff .ff-items td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -1017,6 +1020,9 @@ export function featureFunnelsBody(view) {
         <summary><span class="ff-opill">${esc(fe.label)}</span><span class="ff-owhen">${esc(fmtWhen(o.at))}</span><span class="ff-otag${o.direct ? ' direct' : ''}">${o.direct ? 'added from it' : 'used it, then bought'}</span><span class="ff-ospace"></span><span class="ff-oamt">${esc(money(cur2, o.amount))}</span><span class="ff-ocar">▾</span></summary>
         <div class="ff-obody">
           ${j && (j.source || j.landing) ? `<div class="ff-src">Came from <b>${esc(j.source || 'direct')}</b>${j.landing ? ` · landed on <b>${esc(j.landing)}</b>` : ''}${j.days != null ? ` · ${j.days} day${j.days === 1 ? '' : 's'} to buy` : ''}</div>` : ''}
+          ${o.answers ? `<div class="ff-pick"><span class="ff-plab">Quiz answers</span>${esc(o.answers)}</div>` : ''}
+          ${o.blaster ? `<div class="ff-pick"><span class="ff-plab">Their blaster</span>${esc(o.blaster)}</div>` : ''}
+          ${o.pick ? `<div class="ff-pick"><span class="ff-plab">Picked ${o.feature === 'upgrade' ? 'upgrade' : 'from quiz'}</span>${esc(o.pick)} ${o.pickInOrder ? '<b class="ff-conv">✓ bought it</b>' : '<span class="faint">— not in this order</span>'}</div>` : ''}
           <table class="ff-items"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
           <tbody>${(o.items || []).map((i) => `<tr class="${i.viaFeature ? 'via' : ''}"><td>${esc(i.title)}${i.viaFeature ? `<span class="ff-via">★ ${i.viaFeature === 'upgrade' ? 'upgrade pick' : 'quiz pick'}</span>` : ''}</td><td class="num">${i.qty}</td><td class="num">${i.price ? esc(money(cur2, i.price)) : '—'}</td></tr>`).join('')}</tbody></table>
         </div>

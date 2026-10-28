@@ -58,6 +58,15 @@ export function attributeByOrigin(orders) {
  * Each item keeps its title, qty, listed unit price and `viaFeature` (the
  * feature it was added through, or null). Pure; tolerates missing fields.
  */
+// Loose product-title match (line title vs the picked product). Case-insensitive,
+// either contains the other; a short pick (<4 chars) never matches, to avoid noise.
+const normTitle = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+export function titleMatch(lineTitle, pick) {
+  const a = normTitle(lineTitle), b = normTitle(pick);
+  if (!a || !b || b.length < 4) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
 export function attributedOrders(orders) {
   const out = [];
   for (const o of orders || []) {
@@ -66,20 +75,32 @@ export function attributedOrders(orders) {
     const taggedLine = items.find((i) => i && FEATURES.includes(i.src)) || null;
     const origin = FEATURES.includes(o.origin) ? o.origin : null;
     if (!origin && !taggedLine) continue; // not touched by either feature
+    const feature = origin || taggedLine.src;
+    const picks = o.picks || {};
+    const isFmb = feature === 'find-my-blaster';
+    const pick = (isFmb ? picks.fmb : picks.ugb) || null; // product they pursued from the feature
+    const pickInOrder = pick ? items.some((i) => titleMatch(i.title, pick)) : false;
     out.push({
       at: o.createdAt || null,
-      feature: origin || taggedLine.src,
+      feature,
       origin,
-      direct: !!taggedLine,
+      // "added from it" when we have concrete evidence: a _src-tagged line, OR the
+      // product they picked in the feature is actually in this order.
+      direct: !!taggedLine || pickInOrder,
       amount: Number(o.amount) || 0,
       currency: o.currency || null,
       source: o.source || null,
       journey: o.journey || null,
+      answers: isFmb ? (picks.answers || null) : null,       // quiz answers (FMB)
+      blaster: !isFmb ? (picks.ugbBlaster || null) : null,   // chosen blaster (UGB)
+      pick,                                                  // product they picked
+      pickInOrder,
       items: items.map((i) => ({
         title: i.title || '(untitled)',
         qty: Number(i.qty) || 0,
         price: Number(i.price) || 0,
-        viaFeature: i && FEATURES.includes(i.src) ? i.src : null,
+        // ★ a line added straight from the feature (_src) OR the picked product.
+        viaFeature: (i && FEATURES.includes(i.src)) ? i.src : (pick && titleMatch(i.title, pick) ? feature : null),
       })),
     });
   }

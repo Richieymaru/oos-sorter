@@ -61,6 +61,14 @@ export function normalizeOrder(n) {
     amount: Number(money.amount || 0),
     currency: money.currencyCode || null,
     origin: attr(n.customAttributes, '_origin'),
+    // What the shopper answered / picked in each feature (cart attributes written
+    // by the theme; ride to the order like _origin). Present only going forward.
+    picks: {
+      answers: attr(n.customAttributes, '_fmb_answers'),
+      fmb: attr(n.customAttributes, '_fmb_pick'),
+      ugbBlaster: attr(n.customAttributes, '_ugb_blaster'),
+      ugb: attr(n.customAttributes, '_ugb_pick'),
+    },
     items: (n.lineItems?.nodes || []).map((li) => ({
       title: li.title || '(untitled)',
       qty: Number(li.quantity || 0),
