@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Pure tests for the notified-log helpers. node notified.test.mjs */
 import {
-  notifiedRow, appendNotified, trimToFit, markClicked, markNudged,
+  notifiedRow, appendNotified, trimToFit, markClicked, markNudged, markResent,
   markUnsubscribed, selectNudges, deriveStats, safeRelPath, cartVariantId, matchOrders, matchCarts,
   mergeBrowseRow, nudgeStage, MAX_NUDGES,
 } from './notified.mjs';
@@ -196,6 +196,23 @@ ok('caps viewed at 10', (() => {
   return r.br.viewed.length === 10 && r.br.viewed[9] === 'P14';
 })());
 ok('checkout_started flips cart true', mergeBrowseRow(b0, 'checkout_started', ['Rifle'], 'n').br.cart === true);
+
+console.log('--- markResent ---');
+const resLog = [
+  { e: 'a@x.com', p: '5', v: '2', t: 'X', ts: 'orig', c: null, n: null, ns: 0 },
+  { e: 'a@x.com', p: '5', v: '1', t: 'X', ts: 'older', c: null, n: null, ns: 0 },
+];
+const res1 = markResent(resLog, 'A@X.com', 'gid://shopify/Product/5', 'now1');
+ok('resent stamps rs on newest, leaves ts', res1[0].rs === 'now1' && res1[0].ts === 'orig' && res1[1].rs === undefined);
+const res2 = markResent(resLog, 'a@x.com', '5', 'now2', '1');
+ok('resent prefers the matching variant row', res2[1].rs === 'now2' && res2[0].rs === undefined);
+ok('resent overwrites on repeat', markResent(res1, 'a@x.com', '5', 'now3')[0].rs === 'now3');
+ok('resent no match -> same list', markResent(resLog, 'z@x.com', '9', 'now') === resLog);
+ok('resent does not disturb order attribution (ts unchanged)', (() => {
+  const l = markResent([{ e: 'a@x.com', p: '5', t: 'X', ts: '2026-10-01T00:00:00Z', o: null }], 'a@x.com', '5', '2026-10-20T00:00:00Z');
+  const { matched } = matchOrders(l, [{ email: 'a@x.com', createdAt: '2026-10-05T00:00:00Z', amount: 10, currency: 'AUD', productIds: ['5'] }]);
+  return matched === 1 && l[0].rs === '2026-10-20T00:00:00Z' && l[0].ts === '2026-10-01T00:00:00Z';
+})());
 
 console.log(`\n${failures ? 'FAILED' : 'PASSED'} — ${checks} checks, ${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

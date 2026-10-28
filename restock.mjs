@@ -18,7 +18,7 @@ import { fetchProductsByIds, fetchCollectionProductIds } from './catalog.mjs';
 import { isInStock, isVariantInStock } from './stock.mjs';
 import { readWaitlist, clearWaitlist, setWaitlist, unsubUrl, trackUrl, partitionByStock } from './waitlist.mjs';
 import { sendBackInStock, sendSoldOutAlert, sendNudge, sendAltVariant, formatMoney, buildBackInStock, buildAltVariant } from './notify.mjs';
-import { notifiedRow, recordNotified, applyNudged, loadNotified, selectNudges } from './notified.mjs';
+import { notifiedRow, recordNotified, applyNudged, applyResend, loadNotified, selectNudges } from './notified.mjs';
 import { loadState, saveState } from './state.mjs';
 import { loadSettings, incentiveFor, pickFreeGift } from './settings.mjs';
 
@@ -740,7 +740,9 @@ export async function resendOne(productGid, email, { variantId = null, base = nu
 
   if (!dryRun) {
     await sendBackInStock(email, payload, unsubUrl(base, short, email), { dryRun: false });
-    try { await applyNudged(email, short); } catch (e) { console.error('resend nudge-flag failed:', e.message); }
+    // Advance the nudge stage AND move the displayed "Notified" date to now (rs),
+    // so a resend shows the latest contact instead of the original notify date.
+    try { await applyResend(email, short, new Date().toISOString(), vId); } catch (e) { console.error('resend log update failed:', e.message); }
   }
   return { sent: 1, soldOut: false };
 }

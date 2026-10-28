@@ -84,6 +84,23 @@ function setNewest(log, email, productId, field, value) {
 
 export const markClicked = (log, email, productId, whenISO) => setNewest(log, email, productId, 'c', whenISO);
 
+/** Record a RESEND on the newest matching row: sets `rs` (resent-at), which the
+ *  Notified page shows in place of `ts` so the date reflects the latest email we
+ *  sent. `ts` stays the ORIGINAL-notify anchor (nudge cadence + order attribution
+ *  depend on it), so only the displayed date moves. Prefers the row matching the
+ *  resent variant when `variantId` is given; overwrites on each resend. */
+export function markResent(log, email, productId, whenISO, variantId = null) {
+  const e = lc(email), p = nid(productId);
+  const v = variantId == null || variantId === '' ? null : nid(variantId);
+  const list = Array.isArray(log) ? log : [];
+  let i = v != null ? list.findIndex((x) => x.e === e && x.p === p && x.v === v) : -1;
+  if (i < 0) i = list.findIndex((x) => x.e === e && x.p === p); // newest-first => most recent
+  if (i < 0) return list;
+  const next = list.slice();
+  next[i] = { ...next[i], rs: whenISO };
+  return next;
+}
+
 /**
  * Attribute real orders to notified shoppers — the waitlist's ROI. For each order
  * (email + product ids + createdAt + amount), mark every un-ordered notified row
@@ -333,6 +350,10 @@ export const applyClicked = (email, productId, whenISO = new Date().toISOString(
   applyMark((log) => markClicked(log, email, productId, whenISO));
 export const applyNudged = (email, productId, whenISO = new Date().toISOString()) =>
   applyMark((log) => markNudged(log, email, productId, whenISO));
+/** A manual resend: advance the nudge stage AND stamp the displayed resent-at
+ *  date, in one load+save. */
+export const applyResend = (email, productId, whenISO = new Date().toISOString(), variantId = null) =>
+  applyMark((log) => markResent(markNudged(log, email, productId, whenISO), email, productId, whenISO, variantId));
 export const applyUnsubscribed = (email, productId) =>
   applyMark((log) => markUnsubscribed(log, email, productId));
 

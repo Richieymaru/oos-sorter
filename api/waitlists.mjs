@@ -298,7 +298,7 @@ export default async function handler(req, res) {
         <td class="mono">${esc(r.e)}</td>
         <td>${esc(r.t)}</td>
         <td>${vName(r)}</td>
-        <td class="when">${fmtShort(r.ts)}</td>
+        <td class="when">${fmtShort(r.rs || r.ts)}${r.rs ? '<div class="faint" style="font-size:10.5px">resent</div>' : ''}</td>
         <td class="when">${r.c ? fmtShort(r.c) : '<span class="faint">&mdash;</span>'}</td>
         <td>${statusChip(r)}${engHint(r)}</td>
         <td>${resendCell(r)}</td>
