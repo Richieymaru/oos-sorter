@@ -877,6 +877,32 @@ const FF_CSS = `
 .ff .ff-imp{text-align:right;max-width:130px}
 .ff .ff-imp .up{font-family:var(--display);font-weight:800;font-size:19px;color:var(--accent)}
 .ff .ff-imp .ul{font-size:10.5px;color:var(--faint)}
+.ff .ff-exp{display:flex;flex-direction:column;gap:9px}
+.ff .ff-ord{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:12px;background:var(--surface);box-shadow:var(--shadow-sm);overflow:hidden}
+.ff .ff-ord.blue{border-left-color:var(--info)}
+.ff .ff-ord>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:13px 16px}
+.ff .ff-ord>summary::-webkit-details-marker{display:none}
+.ff .ff-ord>summary:hover{background:var(--hover)}
+.ff .ff-opill{font-size:11px;font-weight:700;color:#fff;background:var(--accent);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.ff .ff-ord.blue .ff-opill{background:var(--info)}
+.ff .ff-owhen{font-size:12.5px;color:var(--muted);font-weight:600}
+.ff .ff-otag{font-size:11px;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.ff .ff-otag.direct{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 35%,var(--line))}
+.ff .ff-ospace{flex:1}
+.ff .ff-oamt{font-family:var(--display);font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+.ff .ff-ocar{color:var(--faint);font-size:12px;transition:transform .15s}
+.ff .ff-ord[open]>summary .ff-ocar{transform:rotate(180deg)}
+.ff .ff-obody{padding:4px 16px 15px;border-top:1px solid var(--line)}
+.ff .ff-src{font-size:12px;color:var(--muted);margin:12px 0 6px}
+.ff .ff-src b{color:var(--ink)}
+.ff .ff-items{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.ff .ff-items th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:700;padding:4px 8px;border-bottom:1px solid var(--line)}
+.ff .ff-items td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.ff .ff-items td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ff .ff-items tr.via td{background:var(--accent-wash,color-mix(in srgb,var(--accent) 7%,transparent))}
+.ff .ff-via{display:inline-block;font-size:10px;font-weight:700;color:var(--accent-ink);background:color-mix(in srgb,var(--accent) 16%,transparent);border-radius:999px;padding:1px 7px;margin-left:7px;vertical-align:1px}
+.ff .ff-ord.blue .ff-items tr.via td{background:color-mix(in srgb,var(--info) 8%,transparent)}
+.ff .ff-ord.blue .ff-via{color:var(--info);background:color-mix(in srgb,var(--info) 15%,transparent)}
 @media(max-width:860px){.ff .ff-hero,.ff .ff-grid2,.ff .ff-behave{grid-template-columns:1fr}}
 `;
 
@@ -976,7 +1002,28 @@ export function featureFunnelsBody(view) {
       ${r.impact ? `<div class="ff-imp"><div class="up">${esc(r.impact.up)}</div><div class="ul">${esc(r.impact.unit)}</div></div>` : '<span></span>'}
     </div>`).join('')}</div>` : `<div class="card pad muted">Nothing to fix right now.</div>`;
 
-  return head + hero + funnels +
+  // Order explorer — the actual orders behind the hero numbers, newest first.
+  // Native <details> so it stays zero-JS. Each shows what the shopper added,
+  // the price, and which item came straight from the feature (★).
+  const FEAT = { 'find-my-blaster': { label: 'Find My Blaster', cls: '' }, upgrade: { label: 'Upgrade Your Blaster', cls: 'blue' } };
+  const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
+  const ex = v.explorer || [];
+  const explorer = ex.length ? `<div class="ff-h">Order explorer</div><p class="ff-hs">Every order these features touched, newest first — open one to see what the shopper added and what it cost. <span class="faint">Exact quiz answers aren't recorded per order yet; the ★ item is what they added straight from the feature.</span></p>
+    <div class="ff-exp">${ex.slice(0, 50).map((o) => {
+      const fe = FEAT[o.feature] || { label: o.feature, cls: '' };
+      const cur2 = o.currency || cur;
+      const j = o.journey;
+      return `<details class="ff-ord ${fe.cls}">
+        <summary><span class="ff-opill">${esc(fe.label)}</span><span class="ff-owhen">${esc(fmtWhen(o.at))}</span><span class="ff-otag${o.direct ? ' direct' : ''}">${o.direct ? 'added from it' : 'used it, then bought'}</span><span class="ff-ospace"></span><span class="ff-oamt">${esc(money(cur2, o.amount))}</span><span class="ff-ocar">▾</span></summary>
+        <div class="ff-obody">
+          ${j && (j.source || j.landing) ? `<div class="ff-src">Came from <b>${esc(j.source || 'direct')}</b>${j.landing ? ` · landed on <b>${esc(j.landing)}</b>` : ''}${j.days != null ? ` · ${j.days} day${j.days === 1 ? '' : 's'} to buy` : ''}</div>` : ''}
+          <table class="ff-items"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
+          <tbody>${(o.items || []).map((i) => `<tr class="${i.viaFeature ? 'via' : ''}"><td>${esc(i.title)}${i.viaFeature ? `<span class="ff-via">★ ${i.viaFeature === 'upgrade' ? 'upgrade pick' : 'quiz pick'}</span>` : ''}</td><td class="num">${i.qty}</td><td class="num">${i.price ? esc(money(cur2, i.price)) : '—'}</td></tr>`).join('')}</tbody></table>
+        </div>
+      </details>`;
+    }).join('')}${ex.length > 50 ? `<div class="faint" style="font-size:12px;padding:4px 2px">Showing the 50 most recent of ${ex.length} touched orders.</div>` : ''}</div>` : '';
+
+  return head + hero + funnels + explorer +
     `<div class="ff-h">Behavior: where it leaks</div><p class="ff-hs">Read from quiz steps and the answers people pick. This is the part that tells you what to fix.</p>
     <div class="ff-behave">${dropCard}${demCard}</div>
     <div class="ff-h">Do this to lift conversion</div><p class="ff-hs">Ranked by estimated impact. Each one is generated from the behavior above.</p>

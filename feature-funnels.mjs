@@ -45,6 +45,48 @@ export function attributeByOrigin(orders) {
   return { currency: (orders && orders[0] && orders[0].currency) || 'USD', features };
 }
 
+/**
+ * Per-order explorer rows: every order either feature touched, newest first.
+ *
+ * "Touched" = the order carries an `_origin` naming a feature (first-touch,
+ * influenced) OR a line whose `_src` names a feature (added straight from it).
+ * `feature` is the one we credit — origin when present, else the first tagged
+ * line's feature — matching attributeByOrigin's hero/funnel numbers. `direct`
+ * is true when a feature-tagged item actually landed on the order, so the UI
+ * can tell "added from it" from "used it, then bought something else".
+ *
+ * Each item keeps its title, qty, listed unit price and `viaFeature` (the
+ * feature it was added through, or null). Pure; tolerates missing fields.
+ */
+export function attributedOrders(orders) {
+  const out = [];
+  for (const o of orders || []) {
+    if (!o) continue;
+    const items = o.items || [];
+    const taggedLine = items.find((i) => i && FEATURES.includes(i.src)) || null;
+    const origin = FEATURES.includes(o.origin) ? o.origin : null;
+    if (!origin && !taggedLine) continue; // not touched by either feature
+    out.push({
+      at: o.createdAt || null,
+      feature: origin || taggedLine.src,
+      origin,
+      direct: !!taggedLine,
+      amount: Number(o.amount) || 0,
+      currency: o.currency || null,
+      source: o.source || null,
+      journey: o.journey || null,
+      items: items.map((i) => ({
+        title: i.title || '(untitled)',
+        qty: Number(i.qty) || 0,
+        price: Number(i.price) || 0,
+        viaFeature: i && FEATURES.includes(i.src) ? i.src : null,
+      })),
+    });
+  }
+  out.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+  return out;
+}
+
 // Untrusted map keys: read with hasOwn, write with defineProperty so
 // '__proto__' stays an own data property and never touches the prototype.
 function addTo(map, key, n) {
@@ -291,6 +333,7 @@ export function analyzeFeatures({ orders = [], stats = null, products = [], wind
     dropoff,
     demand,
     worstCombo: combo,
+    explorer: attributedOrders(orders || []),
     recs: buildFeatureRecs({ dropoff, worstCombo: combo, ugb, attribution }),
   };
 }

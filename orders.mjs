@@ -21,7 +21,7 @@ const BASE_FIELDS = `
   sourceName
   currentTotalPriceSet { shopMoney { amount currencyCode } }
   customAttributes { key value }
-  lineItems(first: 10) { nodes { title quantity product { id } customAttributes { key value } } }`;
+  lineItems(first: 10) { nodes { title quantity originalUnitPriceSet { shopMoney { amount } } product { id } customAttributes { key value } } }`;
 
 // Adds traffic-source / funnel data — needs protected customer data access.
 const JOURNEY_FIELDS = `
@@ -64,6 +64,9 @@ export function normalizeOrder(n) {
     items: (n.lineItems?.nodes || []).map((li) => ({
       title: li.title || '(untitled)',
       qty: Number(li.quantity || 0),
+      // Listed unit price. Same MoneyBag shape as currentTotalPriceSet above
+      // (proven against the store's 2026-07 schema); 0 when absent.
+      price: Number(li.originalUnitPriceSet?.shopMoney?.amount || 0),
       id: li.product?.id ? String(li.product.id).split('/').pop() : null,
       src: attr(li.customAttributes, '_src'),
     })),

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Pure tests for feature funnels. node feature-funnels.test.mjs — no env, no network. */
 import { normalizeOrder } from './orders.mjs';
-import { attributeOrders, attributeByOrigin, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS, buildFeatureRecs, analyzeFeatures } from './feature-funnels.mjs';
+import { attributeOrders, attributeByOrigin, attributedOrders, sumStats, quizDropoff, answerDemand, ugbSummary, demandVsStock, worstCombo, FMB_QUESTIONS, buildFeatureRecs, analyzeFeatures } from './feature-funnels.mjs';
 import { emptyStats } from './feature-stats.mjs';
 
 let failures = 0, checks = 0;
@@ -164,6 +164,33 @@ ok('origin empty zeros', bz.features.upgrade.revenue === 0 && bz.features['find-
 ok('origin non-numeric amount -> 0', attributeByOrigin([{ amount: 'abc', origin: 'upgrade' }]).features.upgrade.revenue === 0);
 const an4 = analyzeFeatures({ stats: { days: { '2026-10-05': { fmb: { open: 10, step: [0, 0, 0, 0, 0], done: 4, deadEnd: 0, add: 3, picks: {} }, ugb: { open: 0, blaster: {}, fits: 0, add: 0 } } } }, window: { key: '30d', label: 'x', since: '2026-10-05T00:00:00.000Z', until: '2026-10-05T23:59:59.999Z' } });
 ok('fmb funnel Added to cart from fmb.add', an4.perFeature.fmb.stages[2].label === 'Added to cart' && an4.perFeature.fmb.stages[2].count === 3);
+
+// --- normalizeOrder surfaces line price ---
+const priced = normalizeOrder({ lineItems: { nodes: [{ title: 'Blaster', quantity: 2, originalUnitPriceSet: { shopMoney: { amount: '499.00' } }, customAttributes: [] }] } });
+ok('line price read', priced.items[0].price === 499 && priced.items[0].qty === 2);
+ok('line price absent -> 0', normalizeOrder({ lineItems: { nodes: [{ title: 'x', quantity: 1, customAttributes: [] }] } }).items[0].price === 0);
+
+// --- attributedOrders (per-order explorer) ---
+const mko = (o) => ({ createdAt: o.at, amount: o.amount, currency: o.cur || 'AUD', origin: o.origin ?? null, source: o.source ?? null, journey: o.journey ?? null, items: (o.items || []).map(([title, qty, price, src]) => ({ title, qty, price, src: src ?? null })) });
+const exp = attributedOrders([
+  mko({ at: '2026-10-20T00:00:00Z', amount: 300, origin: 'find-my-blaster', items: [['Quiz Blaster', 1, 300, 'find-my-blaster']] }),
+  mko({ at: '2026-10-25T00:00:00Z', amount: 150, origin: 'upgrade', items: [['Scope', 1, 150, null], ['Battery', 2, 20, null]] }),
+  mko({ at: '2026-10-22T00:00:00Z', amount: 90, origin: null, items: [['Part', 1, 90, 'upgrade']] }),
+  mko({ at: '2026-10-10T00:00:00Z', amount: 40, origin: null, items: [['Random', 1, 40, null]] }),
+]);
+ok('explorer excludes untouched orders', exp.length === 3);
+ok('explorer newest first', exp.map((o) => o.at).join() === '2026-10-25T00:00:00Z,2026-10-22T00:00:00Z,2026-10-20T00:00:00Z');
+const fmbRow = exp.find((o) => o.at === '2026-10-20T00:00:00Z');
+ok('explorer direct add flagged', fmbRow.feature === 'find-my-blaster' && fmbRow.direct === true && fmbRow.items[0].viaFeature === 'find-my-blaster' && fmbRow.items[0].price === 300);
+const infRow = exp.find((o) => o.at === '2026-10-25T00:00:00Z');
+ok('explorer influenced (origin, no tagged line)', infRow.feature === 'upgrade' && infRow.direct === false && infRow.items.every((i) => i.viaFeature === null));
+const srcOnly = exp.find((o) => o.at === '2026-10-22T00:00:00Z');
+ok('explorer src-only credited to that feature', srcOnly.feature === 'upgrade' && srcOnly.origin === null && srcOnly.direct === true);
+ok('explorer carries amount/currency', infRow.amount === 150 && infRow.currency === 'AUD');
+ok('explorer empty/garbage tolerant', attributedOrders([]).length === 0 && attributedOrders().length === 0 && attributedOrders([null, {}]).length === 0);
+const jr = attributedOrders([mko({ at: '2026-10-21T00:00:00Z', amount: 10, origin: 'find-my-blaster', journey: { source: 'google', landing: '/quiz', days: 2 }, items: [['x', 1, 10, null]] })])[0];
+ok('explorer passes journey through', jr.journey.source === 'google' && jr.journey.days === 2);
+ok('explorer in analyzeFeatures view', Array.isArray(an.explorer) && an.explorer.length === 3);
 
 console.log(`\n${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);
