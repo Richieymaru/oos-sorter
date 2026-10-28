@@ -898,6 +898,7 @@ const FF_CSS = `
 .ff .ff-pick{font-size:12.5px;color:var(--ink);margin:9px 0 2px;line-height:1.5}
 .ff .ff-plab{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);font-weight:700;margin-right:8px}
 .ff .ff-conv{color:var(--accent-ink);font-weight:700;margin-left:4px}
+.ff .ff-nocap{font-style:italic;opacity:.85}
 .ff .ff-items{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
 .ff .ff-items th{text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);font-weight:700;padding:4px 8px;border-bottom:1px solid var(--line)}
 .ff .ff-items td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -1011,7 +1012,7 @@ export function featureFunnelsBody(view) {
   const FEAT = { 'find-my-blaster': { label: 'Find My Blaster', cls: '' }, upgrade: { label: 'Upgrade Your Blaster', cls: 'blue' } };
   const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
   const ex = v.explorer || [];
-  const explorer = ex.length ? `<div class="ff-h">Order explorer</div><p class="ff-hs">Every order these features touched, newest first — open one to see what the shopper added and what it cost. <span class="faint">Exact quiz answers aren't recorded per order yet; the ★ item is what they added straight from the feature.</span></p>
+  const explorer = ex.length ? `<div class="ff-h">Order explorer</div><p class="ff-hs">Every order these features touched, newest first — open one to see the quiz answers, the product they picked, and whether they bought it (★). <span class="faint">Per-order answer &amp; pick capture went live Oct 28, 2026 — orders placed before that show “not recorded” and can’t be back-filled.</span></p>
     <div class="ff-exp">${ex.slice(0, 50).map((o) => {
       const fe = FEAT[o.feature] || { label: o.feature, cls: '' };
       const cur2 = o.currency || cur;
@@ -1020,9 +1021,10 @@ export function featureFunnelsBody(view) {
         <summary><span class="ff-opill">${esc(fe.label)}</span><span class="ff-owhen">${esc(fmtWhen(o.at))}</span><span class="ff-otag${o.direct ? ' direct' : ''}">${o.direct ? 'added from it' : 'used it, then bought'}</span><span class="ff-ospace"></span><span class="ff-oamt">${esc(money(cur2, o.amount))}</span><span class="ff-ocar">▾</span></summary>
         <div class="ff-obody">
           ${j && (j.source || j.landing) ? `<div class="ff-src">Came from <b>${esc(j.source || 'direct')}</b>${j.landing ? ` · landed on <b>${esc(j.landing)}</b>` : ''}${j.days != null ? ` · ${j.days} day${j.days === 1 ? '' : 's'} to buy` : ''}</div>` : ''}
-          ${o.answers ? `<div class="ff-pick"><span class="ff-plab">Quiz answers</span>${esc(o.answers)}</div>` : ''}
+          ${o.captured ? `${o.answers ? `<div class="ff-pick"><span class="ff-plab">Quiz answers</span>${esc(o.answers)}</div>` : ''}
           ${o.blaster ? `<div class="ff-pick"><span class="ff-plab">Their blaster</span>${esc(o.blaster)}</div>` : ''}
-          ${o.pick ? `<div class="ff-pick"><span class="ff-plab">Picked ${o.feature === 'upgrade' ? 'upgrade' : 'from quiz'}</span>${esc(o.pick)} ${o.pickInOrder ? '<b class="ff-conv">✓ bought it</b>' : '<span class="faint">— not in this order</span>'}</div>` : ''}
+          ${o.pick ? `<div class="ff-pick"><span class="ff-plab">Picked ${o.feature === 'upgrade' ? 'upgrade' : 'from quiz'}</span>${esc(o.pick)} ${o.pickInOrder ? '<b class="ff-conv">✓ bought it</b>' : '<span class="faint">— not in this order</span>'}</div>` : ''}`
+          : `<div class="ff-pick ff-nocap"><span class="ff-plab">Quiz answers &amp; pick</span><span class="faint">not recorded — this order predates per-order capture (live Oct 28, 2026)</span></div>`}
           <table class="ff-items"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th></tr></thead>
           <tbody>${(o.items || []).map((i) => `<tr class="${i.viaFeature ? 'via' : ''}"><td>${esc(i.title)}${i.viaFeature ? `<span class="ff-via">★ ${i.viaFeature === 'upgrade' ? 'upgrade pick' : 'quiz pick'}</span>` : ''}</td><td class="num">${i.qty}</td><td class="num">${i.price ? esc(money(cur2, i.price)) : '—'}</td></tr>`).join('')}</tbody></table>
         </div>

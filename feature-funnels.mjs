@@ -80,10 +80,17 @@ export function attributedOrders(orders) {
     const isFmb = feature === 'find-my-blaster';
     const pick = (isFmb ? picks.fmb : picks.ugb) || null; // product they pursued from the feature
     const pickInOrder = pick ? items.some((i) => titleMatch(i.title, pick)) : false;
+    const answers = isFmb ? (picks.answers || null) : null;
+    const blaster = !isFmb ? (picks.ugbBlaster || null) : null;
+    // Did this order carry ANY of the per-order capture (answers/blaster/pick)?
+    // Orders placed before capture went live have none — surfaced in the UI so a
+    // blank card reads as "not recorded", not "broken".
+    const captured = !!(answers || blaster || pick);
     out.push({
       at: o.createdAt || null,
       feature,
       origin,
+      captured,
       // "added from it" when we have concrete evidence: a _src-tagged line, OR the
       // product they picked in the feature is actually in this order.
       direct: !!taggedLine || pickInOrder,
@@ -91,8 +98,8 @@ export function attributedOrders(orders) {
       currency: o.currency || null,
       source: o.source || null,
       journey: o.journey || null,
-      answers: isFmb ? (picks.answers || null) : null,       // quiz answers (FMB)
-      blaster: !isFmb ? (picks.ugbBlaster || null) : null,   // chosen blaster (UGB)
+      answers,                                               // quiz answers (FMB)
+      blaster,                                               // chosen blaster (UGB)
       pick,                                                  // product they picked
       pickInOrder,
       items: items.map((i) => ({

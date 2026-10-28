@@ -218,5 +218,10 @@ const pUgb = pk.find((o) => o.at === '2026-10-25T00:00:00Z');
 ok('ugb blaster + pick surfaced, _src line still ★', pUgb.blaster === 'Kublai P1' && pUgb.answers === null && pUgb.pick === 'Extended Magazine' && pUgb.pickInOrder === true && pUgb.items[0].viaFeature === 'upgrade');
 ok('no picks object -> graceful nulls', attributedOrders([mko({ at: '2026-10-20T00:00:00Z', amount: 10, origin: 'find-my-blaster', items: [['x', 1, 10, null]] })])[0].answers === null);
 
+// --- captured flag: distinguishes "nothing recorded" (pre-tracking) from a working order ---
+ok('captured true when answers/pick present', pFmbHit.captured === true && pUgb.captured === true);
+ok('captured false when no picks (predates tracking)', attributedOrders([mko({ at: '2026-10-20T00:00:00Z', amount: 10, origin: 'find-my-blaster', items: [['x', 1, 10, null]] })])[0].captured === false);
+ok('captured true with only a blaster (ugb, no part picked yet)', attributedOrders([mko({ at: '2026-10-19T00:00:00Z', amount: 10, origin: 'upgrade', picks: { ugbBlaster: 'Kublai P1' }, items: [['x', 1, 10, null]] })])[0].captured === true);
+
 console.log(`\n${checks - failures}/${checks} passed`);
 process.exit(failures ? 1 : 0);
