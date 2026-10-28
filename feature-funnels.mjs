@@ -304,7 +304,7 @@ export function worstCombo(demand, products) {
  * Order: unmet demand combo, worst quiz drop-off step, low upgrade add-rate.
  */
 // `attribution` is accepted but reserved (unused in v1).
-export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
+export function buildFeatureRecs({ dropoff, worstCombo: combo } = {}) {
   const recs = [];
   if (combo && combo.wanted > 0) {
     recs.push({
@@ -324,15 +324,10 @@ export function buildFeatureRecs({ dropoff, worstCombo: combo, ugb } = {}) {
       impact: { up: `+${Math.round(s.dropPct / 3)}%`, unit: 'est. finishers' },
     });
   }
-  const opens = Number(ugb && ugb.opens) || 0, adds = Number(ugb && ugb.adds) || 0;
-  if (opens >= 10 && adds / opens < 0.15) {
-    recs.push({
-      tone: 'warn',
-      text: `Upgrade Your Blaster: only ${Math.round((adds / opens) * 100)}% of ${opens} engaged visitors add an upgrade to cart. Rough estimate: lifting it to about 15% would roughly double add-to-carts.`,
-      fix: ['Show compatible upgrades higher up', 'Add price or "fits your blaster" cues next to the add button'],
-      impact: { up: '2x', unit: 'est. add-to-carts' },
-    });
-  }
+  // No add-to-cart rec: it was built on ugb.adds, the same quick-add-only counter
+  // that structurally undercounts (multi-variant upgrades add via the PDP, which
+  // never beacons), so the ratio was always tiny and the rec always fired a false
+  // "only X% add to cart" alarm. Dropped until add tracking covers the PDP path.
   return recs;
 }
 
@@ -355,8 +350,13 @@ export function analyzeFeatures({ orders = [], stats = null, products = [], wind
     currency: attribution.currency,
     totals: { revenue: f.revenue + u.revenue, orders: touched, trendPct: null },
     perFeature: {
-      fmb: { key: 'find-my-blaster', label: 'Find My Blaster', stages: [{ label: 'Opened', count: summed.fmb.open }, { label: 'Finished', count: summed.fmb.done }, { label: 'Added to cart', count: summed.fmb.add }, { label: 'Ordered', count: f.orders }], revenue: f.revenue, orders: f.orders },
-      ugb: { key: 'upgrade', label: 'Upgrade Your Blaster', stages: [{ label: 'Engaged', count: summed.ugb.open }, { label: 'Added to cart', count: summed.ugb.add }, { label: 'Ordered', count: u.orders }], revenue: u.revenue, orders: u.orders },
+      // No "Added to cart" stage: the add beacon only fires on single-variant
+      // quick-add. Multi-variant blasters route "Choose options" -> PDP -> native
+      // add, which never beacons, so the count structurally undercounts (showed 1
+      // add vs 5 orders) and misreads as a broken funnel. Opened -> Finished ->
+      // Ordered is the honest shape. The raw .add counter stays in the data model.
+      fmb: { key: 'find-my-blaster', label: 'Find My Blaster', stages: [{ label: 'Opened', count: summed.fmb.open }, { label: 'Finished', count: summed.fmb.done }, { label: 'Ordered', count: f.orders }], revenue: f.revenue, orders: f.orders },
+      ugb: { key: 'upgrade', label: 'Upgrade Your Blaster', stages: [{ label: 'Engaged', count: summed.ugb.open }, { label: 'Ordered', count: u.orders }], revenue: u.revenue, orders: u.orders },
     },
     dropoff,
     demand,

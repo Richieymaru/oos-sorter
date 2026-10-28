@@ -124,16 +124,15 @@ ok('worstCombo json power sane coverage', jwc && jwc.inStock === 2);
 // --- recs + composer ---
 const recDrop = { steps: [{ label: 'Opened', reached: 10, dropPct: 0 }, { label: 'Q1 · Player', reached: 4, dropPct: 60 }], worstIndex: 1 };
 const combo0 = { label: 'Gas + Under $300', wanted: 8, inStock: 1 };
-const recs = buildFeatureRecs({ dropoff: recDrop, worstCombo: combo0, ugb: { opens: 40, adds: 2 }, attribution: {} });
-ok('recs 3 ranked: combo, step, ugb', recs.length === 3 && recs[0].text.includes('Gas + Under $300') && recs[1].text.includes('Q1') && recs[1].text.includes('60%') && recs[2].text.includes('Upgrade'));
+const recs = buildFeatureRecs({ dropoff: recDrop, worstCombo: combo0, attribution: {} });
+ok('recs 2 ranked: combo, step', recs.length === 2 && recs[0].text.includes('Gas + Under $300') && recs[1].text.includes('Q1') && recs[1].text.includes('60%'));
 ok('recs each fix + impact + tone', recs.every((r) => r.fix.length > 0 && r.impact && r.impact.up && r.impact.unit && r.tone && r.text));
 ok('recs impact is short figure + unit', recs.every((r) => typeof r.impact.up === 'string' && r.impact.up.length <= 6 && /^[+\d]/.test(r.impact.up) && r.impact.unit.length <= 24));
 ok('recs guard wanted=0', buildFeatureRecs({ worstCombo: { ...combo0, wanted: 0 } }).length === 0);
 ok('recs guard worstIndex=0', buildFeatureRecs({ dropoff: { steps: recDrop.steps, worstIndex: 0 } }).length === 0);
 ok('recs guard worstIndex -1', buildFeatureRecs({ dropoff: { steps: recDrop.steps, worstIndex: -1 } }).length === 0);
-ok('recs guard opens<10', buildFeatureRecs({ ugb: { opens: 9, adds: 0 } }).length === 0);
-ok('recs ugb healthy none', buildFeatureRecs({ ugb: { opens: 40, adds: 20 } }).length === 0);
-ok('recs ugb low alone', buildFeatureRecs({ ugb: { opens: 40, adds: 2 } }).length === 1);
+// add-to-cart rec dropped: the quick-add-only counter undercounts, so no ugb rec fires on it anymore
+ok('no ugb add-to-cart rec (unreliable counter)', buildFeatureRecs({ ugb: { opens: 40, adds: 2 } }).length === 0 && buildFeatureRecs({ ugb: { opens: 40, adds: 20 } }).length === 0);
 ok('recs empty', buildFeatureRecs({}).length === 0 && buildFeatureRecs().length === 0);
 
 const ev = (src, origin) => ({ amount: 100, currency: 'PHP', items: [{ qty: 1, src }], origin });
@@ -146,9 +145,9 @@ const an = analyzeFeatures({
   products: [], window: { key: '30d', label: 'x', since: '2026-10-05T00:00:00.000Z', until: '2026-10-05T23:59:59.999Z' },
 });
 ok('analyze shape', an.totals && an.perFeature.fmb && an.perFeature.ugb && an.dropoff && Array.isArray(an.recs) && Array.isArray(an.demand) && 'worstCombo' in an && an.currency);
-ok('analyze since-boundary day included, prior day excluded', an.perFeature.fmb.stages[0].count === 10 && an.perFeature.fmb.stages[1].count === 2 && an.perFeature.ugb.stages[0].count === 4 && an.perFeature.ugb.stages[1].count === 1);
-ok('analyze stage labels', an.perFeature.fmb.stages.map((s) => s.label).join() === 'Opened,Finished,Added to cart,Ordered' && an.perFeature.ugb.stages.map((s) => s.label).join() === 'Engaged,Added to cart,Ordered');
-ok('analyze ordered counts', an.perFeature.fmb.stages[3].count === 1 && an.perFeature.ugb.stages[2].count === 0 && an.perFeature.fmb.stages[2].count === 0 && an.perFeature.fmb.key === 'find-my-blaster' && an.perFeature.ugb.key === 'upgrade');
+ok('analyze since-boundary day included, prior day excluded', an.perFeature.fmb.stages[0].count === 10 && an.perFeature.fmb.stages[1].count === 2 && an.perFeature.ugb.stages[0].count === 4 && an.perFeature.ugb.stages[1].count === 0);
+ok('analyze stage labels (no Added to cart)', an.perFeature.fmb.stages.map((s) => s.label).join() === 'Opened,Finished,Ordered' && an.perFeature.ugb.stages.map((s) => s.label).join() === 'Engaged,Ordered');
+ok('analyze ordered counts', an.perFeature.fmb.stages[2].count === 1 && an.perFeature.ugb.stages[1].count === 0 && an.perFeature.fmb.key === 'find-my-blaster' && an.perFeature.ugb.key === 'upgrade');
 ok('analyze totals', an.totals.orders === 3 && an.totals.revenue === an.perFeature.fmb.revenue + an.perFeature.ugb.revenue && an.totals.revenue === 100 && an.perFeature.fmb.revenue === 100 && an.perFeature.fmb.orders === 1 && an.perFeature.ugb.orders === 0 && an.totals.trendPct === null);
 ok('analyze dropoff + demand + combo', an.dropoff.steps.length === 6 && an.demand.length === 1 && an.worstCombo && an.worstCombo.wanted === 5);
 for (const [name, v] of [['{}', analyzeFeatures({})], ['()', analyzeFeatures()], ['no window', analyzeFeatures({ orders: [], stats: { days: {} } })]]) {
@@ -163,7 +162,7 @@ const bz = attributeByOrigin([]);
 ok('origin empty zeros', bz.features.upgrade.revenue === 0 && bz.features['find-my-blaster'].orders === 0 && bz.currency === 'USD');
 ok('origin non-numeric amount -> 0', attributeByOrigin([{ amount: 'abc', origin: 'upgrade' }]).features.upgrade.revenue === 0);
 const an4 = analyzeFeatures({ stats: { days: { '2026-10-05': { fmb: { open: 10, step: [0, 0, 0, 0, 0], done: 4, deadEnd: 0, add: 3, picks: {} }, ugb: { open: 0, blaster: {}, fits: 0, add: 0 } } } }, window: { key: '30d', label: 'x', since: '2026-10-05T00:00:00.000Z', until: '2026-10-05T23:59:59.999Z' } });
-ok('fmb funnel Added to cart from fmb.add', an4.perFeature.fmb.stages[2].label === 'Added to cart' && an4.perFeature.fmb.stages[2].count === 3);
+ok('fmb funnel has no Added to cart stage', an4.perFeature.fmb.stages.length === 3 && an4.perFeature.fmb.stages.every((s) => s.label !== 'Added to cart') && an4.perFeature.fmb.stages.map((s) => s.label).join() === 'Opened,Finished,Ordered');
 
 // --- normalizeOrder surfaces line price ---
 const priced = normalizeOrder({ lineItems: { nodes: [{ title: 'Blaster', quantity: 2, originalUnitPriceSet: { shopMoney: { amount: '499.00' } }, customAttributes: [] }] } });
