@@ -9,6 +9,7 @@
  * Protected by RUN_TOKEN (Vercel env var). Reuses the same engine the CLI runs.
  */
 import { runEngine } from '../sort-oos.mjs';
+import { maybeRunAudit } from '../audit.mjs';
 
 // Give the run room to finish on the Vercel Hobby tier (default is short).
 export const config = { maxDuration: 60 };
@@ -46,8 +47,11 @@ export default async function handler(req, res) {
   const chunk = Number.isFinite(chunkN) && chunkN > 0 ? chunkN : null;
   try {
     const result = await runEngine({ sendDigest, chunk });
+    // Self-gating: a full product-status audit runs here at most once every 3
+    // days (see maybeRunAudit). It never throws, so it can't break the engine run.
+    const audit = await maybeRunAudit();
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ ok: true, ...result }));
+    res.end(JSON.stringify({ ok: true, ...result, audit }));
   } catch (err) {
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');

@@ -452,6 +452,7 @@ ${fontHead()}
   <a href="/waitlists">Waitlists</a>
   <a href="/notified">Notified</a>
   <a href="/activity">Activity</a>
+  <a href="/audit">Audit</a>
   <a href="/funnels">Funnels</a>
   <a href="/features">Features</a>
   <a href="/reminders">Reminders</a>
@@ -466,6 +467,7 @@ ${fontHead()}
     ${tab('/waitlists', 'waitlists', 'Waitlists')}
     ${tab('/notified', 'notified', 'Notified')}
     ${tab('/activity', 'activity', 'Activity')}
+    ${tab('/audit', 'audit', 'Audit')}
     ${tab('/funnels', 'funnels', 'Funnels')}
     ${tab('/features', 'features', 'Features')}
     ${tab('/reminders', 'reminders', 'Reminders')}
@@ -1366,4 +1368,166 @@ export function relTime(iso) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h} hr ago`;
   return `${Math.floor(h / 24)} d ago`;
+}
+
+/* -------------------------------------------------------- Product Audit page */
+
+const AUDIT_CSS = `
+.au .au-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:14px 0 6px}
+.au .au-when{font-size:12.5px;color:var(--muted);margin:2px 0 0}
+.au .au-when b{color:var(--ink)}
+.au .au-gen{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;padding:9px 18px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
+.au .au-gen:disabled{opacity:.6;cursor:default}
+.au .au-genmsg{font-size:12.5px;color:var(--muted);margin-left:10px}
+.au .au-pw{margin:10px 0 0}
+.au .au-h{font-family:var(--display);font-weight:800;font-size:17px;margin:26px 0 2px}
+.au .au-hs{font-size:13px;color:var(--muted);margin:0 0 12px}
+.au .au-buckets{display:flex;flex-direction:column;gap:9px}
+.au .au-bk{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.au .au-bk>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 15px;font-weight:600}
+.au .au-bk>summary::-webkit-details-marker{display:none}
+.au .au-bk>summary:hover{background:var(--hover)}
+.au .au-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.au .au-dot.a{background:var(--ok,#16a34a)} .au .au-dot.d{background:#d97706} .au .au-dot.u{background:#2563eb} .au .au-dot.r{background:var(--faint)} .au .au-dot.q{background:var(--faint)}
+.au .au-bkn{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--muted);font-weight:700}
+.au .au-list{padding:4px 15px 13px;columns:2;column-gap:28px}
+.au .au-list a,.au .au-list span.it{display:block;break-inside:avoid;font-size:13px;color:var(--ink);text-decoration:none;padding:3px 0;border-bottom:1px solid var(--line-2)}
+.au .au-list a:hover{color:var(--accent)}
+.au .au-rep{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;background:var(--surface);padding:14px 16px;box-shadow:var(--shadow-sm)}
+.au .au-rep.clean{border-left-color:var(--ok,#16a34a)}
+.au .au-rep.base{border-left-color:var(--faint)}
+.au .au-chg{display:flex;align-items:flex-start;gap:11px;padding:11px 0;border-top:1px solid var(--line-2)}
+.au .au-chg:first-of-type{border-top:0}
+.au .au-sev{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap;flex:none;margin-top:1px}
+.au .au-sev.danger{background:color-mix(in srgb,#dc2626 15%,transparent);color:#dc2626}
+.au .au-sev.warn{background:color-mix(in srgb,#d97706 16%,transparent);color:#b45309}
+.au .au-sev.info{background:color-mix(in srgb,#2563eb 14%,transparent);color:#2563eb}
+.au .au-sev.idle{background:var(--line-2);color:var(--muted)}
+.au .au-cbody{flex:1;min-width:0}
+.au .au-ct{font-size:14px;font-weight:600;color:var(--ink);text-decoration:none}
+.au .au-ct:hover{color:var(--accent)}
+.au .au-trans{font-size:12.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.au .au-who{font-size:12.5px;margin-top:3px}
+.au .au-who b{color:var(--ink)}
+.au .au-who .nf{color:var(--faint);font-style:italic}
+.au .au-hist{display:flex;flex-direction:column;gap:8px}
+.au .au-he{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.au .au-he>summary{list-style:none;cursor:pointer;padding:11px 14px;font-size:13px;display:flex;gap:10px;align-items:center}
+.au .au-he>summary::-webkit-details-marker{display:none}
+.au .au-he>summary:hover{background:var(--hover)}
+.au .au-hebody{padding:2px 14px 12px}
+@media(max-width:720px){.au .au-tiles{grid-template-columns:repeat(2,1fr)} .au .au-list{columns:1}}
+`;
+
+const AU_SLABEL = { a: 'Active', d: 'Draft', u: 'Unlisted', r: 'Archived', '?': 'Unknown' };
+
+/** The Product Audit page: full catalog state + what changed since last scan + who. */
+export function auditBody(view) {
+  const v = view || {};
+  const esc2 = esc;
+  const fmtWhen = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
+  const fmtIn = (ms) => {
+    if (ms == null) return '';
+    const d = Math.floor(ms / 86400000), h = Math.floor((ms % 86400000) / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+  const link = (id, label) => (v.adminBase ? `<a class="au-ct" href="${esc2(v.adminBase + id)}" target="_blank" rel="noopener">${esc2(label)}</a>` : `<span class="au-ct">${esc2(label)}</span>`);
+
+  const head = `<div class="pagehead"><h1>Product Audit</h1><p>A full scan of every product's status — Active, Draft (dropped), Unlisted, Archived — with what changed since the last scan and <b>who changed it</b>. Runs automatically every 3 days; press Generate to scan now.</p></div>`;
+
+  if (v.error) {
+    return `<div class="au"><style>${AUDIT_CSS}</style>${head}<div class="card pad" style="color:var(--danger,#dc2626)">${esc2(v.error)}</div></div>`;
+  }
+
+  const c = v.counts || { a: 0, d: 0, u: 0, r: 0, '?': 0, total: 0 };
+  const tiles = `<div class="au-tiles">
+    ${statCard({ value: c.a || 0, label: 'Active', tone: 'ok' })}
+    ${statCard({ value: c.d || 0, label: 'Draft (dropped)', tone: 'warn' })}
+    ${statCard({ value: c.u || 0, label: 'Unlisted', tone: 'info' })}
+    ${statCard({ value: c.r || 0, label: 'Archived' })}
+    ${statCard({ value: c.total || 0, label: 'Total products' })}
+  </div>`;
+
+  // Generate button + auth (mirrors the dashboard recovery action pattern).
+  const gen = `<div style="margin-top:14px">
+    <button type="button" class="au-gen" id="auGen">Generate scan now</button>
+    <span class="au-genmsg" id="auMsg"></span>
+    <div class="pw au-pw" id="auPwWrap"><label for="auPw">Panel password</label> <input type="password" id="auPw" placeholder="to run a scan" autocomplete="current-password"></div>
+    <p class="au-when">${v.lastAt ? `Last scan <b>${esc2(fmtWhen(v.lastAt))}</b> (${esc2(relTime(v.lastAt))}).` : 'No scan yet — press Generate to take the first snapshot.'}${v.lastAt && v.nextDue != null ? ` Next auto-scan in <b>${esc2(fmtIn(v.nextDue))}</b>.` : ''}</p>
+  </div>`;
+
+  const bucketList = (code, label) => {
+    const items = (v.buckets && v.buckets[code]) || [];
+    const dotCls = code === '?' ? 'q' : code;
+    return `<details class="au-bk"><summary><span class="au-dot ${dotCls}"></span>${esc2(label)}<span class="au-bkn">${items.length}</span></summary>
+      ${items.length ? `<div class="au-list">${items.map((p) => link(p.id, p.title)).join('')}</div>` : '<div class="au-list"><span class="it faint">None.</span></div>'}</details>`;
+  };
+  const buckets = `<div class="au-h">Catalog right now</div><p class="au-hs">Every product, grouped by status. Open a group to see which products are in it.</p>
+    <div class="au-buckets">${bucketList('a', 'Active')}${bucketList('d', 'Draft (dropped)')}${bucketList('u', 'Unlisted')}${bucketList('r', 'Archived')}${(v.buckets && v.buckets['?'] && v.buckets['?'].length) ? bucketList('?', 'Unknown status') : ''}</div>`;
+
+  // One change row: severity pill + product + transition + the culprit.
+  const sevOf = (ch) => {
+    if (ch.wentLive) return { cls: 'danger', label: '▲ Became active' };
+    if (ch.wentDark) return { cls: 'warn', label: ch.type === 'gone' ? '✖ Deleted (was live)' : '▼ Dropped / hidden' };
+    if (ch.type === 'new') return { cls: 'info', label: '+ New product' };
+    if (ch.type === 'gone') return { cls: 'idle', label: '✖ Deleted' };
+    return { cls: 'idle', label: '→ Status changed' };
+  };
+  const transOf = (ch) => {
+    if (ch.type === 'new') return `New product · now ${AU_SLABEL[ch.to] || ch.to}`;
+    if (ch.type === 'gone') return `Deleted · was ${AU_SLABEL[ch.from] || ch.from}`;
+    return `${AU_SLABEL[ch.from] || ch.from} → ${AU_SLABEL[ch.to] || ch.to}`;
+  };
+  const changeRow = (ch) => {
+    const s = sevOf(ch);
+    const who = ch.who
+      ? `Changed by <b>${esc2(ch.who)}</b>${ch.whoAt ? ` · ${esc2(fmtWhen(ch.whoAt))}` : ''}`
+      : `<span class="nf">Who: not found in the event log</span>`;
+    return `<div class="au-chg"><span class="au-sev ${s.cls}">${s.label}</span>
+      <div class="au-cbody">${link(ch.id, ch.title || '(untitled)')}<div class="au-trans">${esc2(transOf(ch))}</div><div class="au-who">${who}</div></div></div>`;
+  };
+
+  const renderReport = (r, latest) => {
+    if (!r) return '';
+    if (r.baseline) {
+      return `<div class="au-rep base"><b>Baseline scan</b> — captured ${r.total || (r.counts && r.counts.total) || 0} products on ${esc2(fmtWhen(r.at))}. Nothing to compare yet; the next scan will show what changed.</div>`;
+    }
+    const changes = r.changes || [];
+    if (!changes.length) {
+      return `<div class="au-rep clean"><b>No status changes</b> since the previous scan (${esc2(fmtWhen(r.at))}). ✓ Nothing dropped or went live unexpectedly.</div>`;
+    }
+    return `<div class="au-rep">${latest ? '' : `<div class="au-trans" style="margin-bottom:6px">${esc2(fmtWhen(r.at))}</div>`}${changes.map(changeRow).join('')}${r.truncated ? `<div class="au-trans" style="margin-top:8px">Showing the ${changes.length} most important changes this scan.</div>` : ''}</div>`;
+  };
+
+  const reports = v.reports || [];
+  const latest = reports[0] || null;
+  const latestSection = `<div class="au-h">What changed since the last scan</div><p class="au-hs">The report to share with your boss. Each change shows the product, the status it moved to, and who did it.</p>
+    ${latest ? renderReport(latest, true) : '<div class="card pad muted">No scan has run yet. Press <b>Generate scan now</b> above to take the first snapshot.</div>'}`;
+
+  const older = reports.slice(1);
+  const history = older.length ? `<div class="au-h">Earlier scans</div><p class="au-hs">The last ${older.length} report${older.length === 1 ? '' : 's'}.</p>
+    <div class="au-hist">${older.map((r) => {
+      const n = (r.changes || []).length;
+      const tag = r.baseline ? 'baseline' : n ? `${n} change${n === 1 ? '' : 's'}` : 'no changes';
+      return `<details class="au-he"><summary><b>${esc2(fmtWhen(r.at))}</b><span class="faint">${esc2(tag)}</span></summary><div class="au-hebody">${renderReport(r, false)}</div></details>`;
+    }).join('')}</div>` : '';
+
+  const script = `<script>(function(){
+    var embedded=(typeof shopify!=='undefined' && !!shopify.idToken);
+    var pwWrap=document.getElementById('auPwWrap'), pw=document.getElementById('auPw'), btn=document.getElementById('auGen'), msg=document.getElementById('auMsg');
+    if(embedded){ if(pwWrap) pwWrap.style.display='none'; } else { try{ if(pw) pw.value=localStorage.getItem('oos_pw')||''; }catch(e){} }
+    function authH(){ var h={'Content-Type':'application/json'}; if(embedded){ return Promise.resolve().then(function(){ return shopify.idToken(); }).then(function(t){ if(t) h['Authorization']='Bearer '+t; return h; }).catch(function(){ return h; }); } h['x-panel-password']=((pw&&pw.value)||'').trim(); return Promise.resolve(h); }
+    if(btn) btn.addEventListener('click', function(){
+      if(!embedded && !((pw&&pw.value)||'').trim()){ if(msg) msg.textContent='Enter the panel password'; if(pw) pw.focus(); return; }
+      btn.disabled=true; var old=btn.textContent; btn.textContent='Scanning\\u2026'; if(msg) msg.textContent='Reading every product \\u2014 this can take a moment.';
+      authH().then(function(h){ return fetch('/api/index',{method:'POST',headers:h,body:JSON.stringify({action:'run-audit'})}); })
+        .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {s:r.status,j:j}; }); })
+        .then(function(res){ var j=res.j;
+          if(res.s===200 && j.ok){ if(!embedded){ try{ localStorage.setItem('oos_pw',((pw&&pw.value)||'').trim()); }catch(e){} } if(msg) msg.textContent='Done \\u2014 refreshing\\u2026'; location.reload(); }
+          else { btn.disabled=false; btn.textContent=old; if(msg) msg.textContent=(res.s===401 ? (embedded?'Not authorized':'Wrong password') : (j.error||'Scan failed')); }
+        }).catch(function(){ btn.disabled=false; btn.textContent=old; if(msg) msg.textContent='Network error'; });
+    });
+  })();</script>`;
+
+  return `<div class="au"><style>${AUDIT_CSS}</style>${head}${tiles}${gen}${buckets}${latestSection}${history}${script}</div>`;
 }

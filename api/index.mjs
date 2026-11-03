@@ -7,8 +7,10 @@ import { loadNotified, deriveStats } from '../notified.mjs';
 import { fetchAllCollectionHandles } from '../sort-oos.mjs';
 import {
   shell, setPageHeaders, featureFunnelsBody, statCard, badge, activityFeed, funnelsBody, areaChart,
-  relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner, paginator,
+  relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner, paginator, auditBody,
 } from '../ui.mjs';
+import { loadAudit, runAudit, bucketize, summarizeStatuses, nextDueMs } from '../audit.mjs';
+import { fetchAllStatuses } from '../monitor.mjs';
 import { activeSaleReminder } from '../sales-calendar.mjs';
 import { requireAuth } from './_auth.mjs';
 import { assistantReply } from '../assistant.mjs';
@@ -132,6 +134,15 @@ export default async function handler(req, res) {
         return;
       }
 
+      // --- Product Audit: run a full-catalog status scan now (owner-triggered
+      //     Generate button on /audit). Reads every product, diffs vs last scan,
+      //     names the culprit, stores the report. ---
+      if (body.action === 'run-audit') {
+        const { report } = await runAudit();
+        res.end(JSON.stringify({ ok: true, baseline: !!report.baseline, changes: (report.changes || []).length, total: report.total }));
+        return;
+      }
+
       const messages = Array.isArray(body.messages) ? body.messages.slice(-16) : [];
       const reply = await assistantReply(messages);
       res.end(JSON.stringify({ ok: true, reply }));
@@ -245,6 +256,31 @@ export default async function handler(req, res) {
       </div>`;
     setPageHeaders(res);
     res.end(shell({ title: 'Activity', active: 'activity', body }));
+    return;
+  }
+
+  // --- Product Audit page (GET /audit) — full catalog status now + what changed
+  //     since the last scan + who. Live-reads statuses for the current buckets;
+  //     the change reports come from the stored oos_sort.audit metafield. ---
+  if (param(req, 'view') === 'audit') {
+    let body;
+    try {
+      const [{ statuses, titles }, audit] = await Promise.all([fetchAllStatuses(), loadAudit()]);
+      const handle = String(shopOf(req) || '').split('.')[0];
+      body = auditBody({
+        counts: summarizeStatuses(statuses),
+        buckets: bucketize(statuses, titles),
+        lastAt: audit.lastAt || null,
+        nextDue: audit.lastAt ? nextDueMs(audit.lastAt) : null,
+        reports: audit.reports || [],
+        adminBase: handle ? `https://admin.shopify.com/store/${handle}/products/` : null,
+      });
+    } catch (e) {
+      console.error('audit page:', e.message);
+      body = auditBody({ error: 'Could not read products. Check that the app is connected and has read_products access, then try again.' });
+    }
+    setPageHeaders(res);
+    res.end(shell({ title: 'Audit', active: 'audit', body }));
     return;
   }
 
