@@ -1373,7 +1373,9 @@ export function relTime(iso) {
 /* -------------------------------------------------------- Product Audit page */
 
 const AUDIT_CSS = `
-.au .au-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:14px 0 6px}
+.au .au-tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:14px 0 6px}
+@media(max-width:900px){.au .au-tiles{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:520px){.au .au-tiles{grid-template-columns:repeat(2,1fr)}}
 .au .au-when{font-size:12.5px;color:var(--muted);margin:2px 0 0}
 .au .au-when b{color:var(--ink)}
 .au .au-gen{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;padding:9px 18px;border-radius:10px;border:0;background:var(--accent);color:#fff;cursor:pointer}
@@ -1388,7 +1390,7 @@ const AUDIT_CSS = `
 .au .au-bk>summary::-webkit-details-marker{display:none}
 .au .au-bk>summary:hover{background:var(--hover)}
 .au .au-dot{width:9px;height:9px;border-radius:50%;flex:none}
-.au .au-dot.a{background:var(--ok,#16a34a)} .au .au-dot.d{background:#d97706} .au .au-dot.u{background:#2563eb} .au .au-dot.r{background:var(--faint)} .au .au-dot.q{background:var(--faint)}
+.au .au-dot.a{background:var(--ok,#16a34a)} .au .au-dot.d{background:#d97706} .au .au-dot.u{background:#2563eb} .au .au-dot.r{background:var(--faint)} .au .au-dot.q{background:var(--faint)} .au .au-dot.s{background:var(--danger,#dc2626)}
 .au .au-bkn{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--muted);font-weight:700}
 .au .au-list{padding:4px 15px 13px;columns:2;column-gap:28px}
 .au .au-list a,.au .au-list span.it{display:block;break-inside:avoid;font-size:13px;color:var(--ink);text-decoration:none;padding:3px 0;border-bottom:1px solid var(--line-2)}
@@ -1433,18 +1435,20 @@ export function auditBody(view) {
   };
   const link = (id, label) => (v.adminBase ? `<a class="au-ct" href="${esc2(v.adminBase + id)}" target="_blank" rel="noopener">${esc2(label)}</a>` : `<span class="au-ct">${esc2(label)}</span>`);
 
-  const head = `<div class="pagehead"><h1>Product Audit</h1><p>A full scan of every product's status — Active, Draft (dropped), Unlisted, Archived — with what changed since the last scan and <b>who changed it</b>. Runs automatically every 3 days; press Generate to scan now.</p></div>`;
+  const head = `<div class="pagehead"><h1>Product Audit</h1><p>A full scan of every product — its status (Active, Draft, Unlisted, Archived) and whether it's sold out. The report shows what changed since the last scan: products <b>dropped or made live</b> (and <b>who did it</b>), <b>new</b> and <b>deleted</b> products, and what <b>newly sold out</b> or came <b>back in stock</b>. Runs automatically every 3 days; press Generate to scan now.</p></div>`;
 
   if (v.error) {
     return `<div class="au"><style>${AUDIT_CSS}</style>${head}<div class="card pad" style="color:var(--danger,#dc2626)">${esc2(v.error)}</div></div>`;
   }
 
   const c = v.counts || { a: 0, d: 0, u: 0, r: 0, '?': 0, total: 0 };
+  const soldOut = v.soldOut || [];
   const tiles = `<div class="au-tiles">
     ${statCard({ value: c.a || 0, label: 'Active', tone: 'ok' })}
     ${statCard({ value: c.d || 0, label: 'Draft (dropped)', tone: 'warn' })}
     ${statCard({ value: c.u || 0, label: 'Unlisted', tone: 'info' })}
     ${statCard({ value: c.r || 0, label: 'Archived' })}
+    ${statCard({ value: soldOut.length, label: 'Sold out', tone: 'danger' })}
     ${statCard({ value: c.total || 0, label: 'Total products' })}
   </div>`;
 
@@ -1462,8 +1466,11 @@ export function auditBody(view) {
     return `<details class="au-bk"><summary><span class="au-dot ${dotCls}"></span>${esc2(label)}<span class="au-bkn">${items.length}</span></summary>
       ${items.length ? `<div class="au-list">${items.map((p) => link(p.id, p.title)).join('')}</div>` : '<div class="au-list"><span class="it faint">None.</span></div>'}</details>`;
   };
-  const buckets = `<div class="au-h">Catalog right now</div><p class="au-hs">Every product, grouped by status. Open a group to see which products are in it.</p>
-    <div class="au-buckets">${bucketList('a', 'Active')}${bucketList('d', 'Draft (dropped)')}${bucketList('u', 'Unlisted')}${bucketList('r', 'Archived')}${(v.buckets && v.buckets['?'] && v.buckets['?'].length) ? bucketList('?', 'Unknown status') : ''}</div>`;
+  // Sold out is inventory, not status — its own section, with its own list.
+  const soldSection = `<details class="au-bk"><summary><span class="au-dot s"></span>Sold out<span class="au-bkn">${soldOut.length}</span></summary>
+    ${soldOut.length ? `<div class="au-list">${soldOut.map((p) => link(p.id, p.title)).join('')}</div>` : '<div class="au-list"><span class="it faint">None — everything is in stock.</span></div>'}</details>`;
+  const buckets = `<div class="au-h">Catalog right now</div><p class="au-hs">Every product, grouped by status, plus what's sold out. Open a group to see which products are in it. (Sold out is inventory, so a product can be Active and sold out at the same time.)</p>
+    <div class="au-buckets">${bucketList('a', 'Active')}${bucketList('d', 'Draft (dropped)')}${bucketList('u', 'Unlisted')}${bucketList('r', 'Archived')}${(v.buckets && v.buckets['?'] && v.buckets['?'].length) ? bucketList('?', 'Unknown status') : ''}${soldSection}</div>`;
 
   // One change row: severity pill + product + transition + the culprit.
   const sevOf = (ch) => {
@@ -1487,16 +1494,33 @@ export function auditBody(view) {
       <div class="au-cbody">${link(ch.id, ch.title || '(untitled)')}<div class="au-trans">${esc2(transOf(ch))}</div><div class="au-who">${who}</div></div></div>`;
   };
 
+  // A sold-out / back-in-stock row. Inventory-driven, so no "who" — the note
+  // says so plainly instead of showing an empty culprit.
+  const stockRow = (p, kind) => {
+    const s = kind === 'out' ? { cls: 'warn', label: '▼ Newly sold out' } : { cls: 'ok', label: '▲ Back in stock' };
+    return `<div class="au-chg"><span class="au-sev ${s.cls}">${s.label}</span>
+      <div class="au-cbody">${link(p.id, p.title || '(untitled)')}<div class="au-who"><span class="nf">From customer orders / restock — no admin action</span></div></div></div>`;
+  };
+
+  const STOCK_CAP = 50;
+  const stockBlock = (list, kind) => {
+    if (!list || !list.length) return '';
+    const more = list.length > STOCK_CAP ? `<div class="au-trans" style="margin-top:4px">and ${list.length - STOCK_CAP} more.</div>` : '';
+    return list.slice(0, STOCK_CAP).map((p) => stockRow(p, kind)).join('') + more;
+  };
+
   const renderReport = (r, latest) => {
     if (!r) return '';
     if (r.baseline) {
-      return `<div class="au-rep base"><b>Baseline scan</b> — captured ${r.total || (r.counts && r.counts.total) || 0} products on ${esc2(fmtWhen(r.at))}. Nothing to compare yet; the next scan will show what changed.</div>`;
+      return `<div class="au-rep base"><b>Baseline scan</b> — captured ${r.total || (r.counts && r.counts.total) || 0} products${r.soldOutCount != null ? ` (${r.soldOutCount} sold out)` : ''} on ${esc2(fmtWhen(r.at))}. Nothing to compare yet; the next scan will show what changed.</div>`;
     }
     const changes = r.changes || [];
-    if (!changes.length) {
-      return `<div class="au-rep clean"><b>No status changes</b> since the previous scan (${esc2(fmtWhen(r.at))}). ✓ Nothing dropped or went live unexpectedly.</div>`;
+    const nso = r.newlySoldOut || [];
+    const bis = r.backInStock || [];
+    if (!changes.length && !nso.length && !bis.length) {
+      return `<div class="au-rep clean"><b>No changes</b> since the previous scan (${esc2(fmtWhen(r.at))}). ✓ Nothing dropped, went live, was added or deleted, and nothing newly sold out.</div>`;
     }
-    return `<div class="au-rep">${latest ? '' : `<div class="au-trans" style="margin-bottom:6px">${esc2(fmtWhen(r.at))}</div>`}${changes.map(changeRow).join('')}${r.truncated ? `<div class="au-trans" style="margin-top:8px">Showing the ${changes.length} most important changes this scan.</div>` : ''}</div>`;
+    return `<div class="au-rep">${latest ? '' : `<div class="au-trans" style="margin-bottom:6px">${esc2(fmtWhen(r.at))}</div>`}${changes.map(changeRow).join('')}${stockBlock(nso, 'out')}${stockBlock(bis, 'in')}${r.truncated ? `<div class="au-trans" style="margin-top:8px">Showing the ${changes.length} most important status changes this scan.</div>` : ''}</div>`;
   };
 
   const reports = v.reports || [];
@@ -1507,7 +1531,7 @@ export function auditBody(view) {
   const older = reports.slice(1);
   const history = older.length ? `<div class="au-h">Earlier scans</div><p class="au-hs">The last ${older.length} report${older.length === 1 ? '' : 's'}.</p>
     <div class="au-hist">${older.map((r) => {
-      const n = (r.changes || []).length;
+      const n = (r.changes || []).length + (r.newlySoldOut || []).length + (r.backInStock || []).length;
       const tag = r.baseline ? 'baseline' : n ? `${n} change${n === 1 ? '' : 's'}` : 'no changes';
       return `<details class="au-he"><summary><b>${esc2(fmtWhen(r.at))}</b><span class="faint">${esc2(tag)}</span></summary><div class="au-hebody">${renderReport(r, false)}</div></details>`;
     }).join('')}</div>` : '';

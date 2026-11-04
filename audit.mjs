@@ -27,6 +27,7 @@
 
 import { gql, getShopId, assertNoUserErrors } from './shopify.mjs';
 import { fetchAllStatuses, whoFromProductEvents, whoDeleted, labelOf } from './monitor.mjs';
+import { loadState } from './state.mjs';
 
 const NAMESPACE = 'oos_sort';
 const KEY = 'audit';
@@ -59,6 +60,38 @@ export function normalizeTitles(titles) {
     }
   }
   return out;
+}
+
+const idList = (arr) => (Array.isArray(arr) ? arr.map(String) : []);
+
+/** Current sold-out products as sorted {id,title}. Dedupes and drops ids that
+ *  are no longer in the catalog (`statuses`), so a deleted product can't linger
+ *  in the sold-out list. `soldIds` is the bare-id array from oos_sort.state. Pure. */
+export function soldOutList(soldIds, statuses, titles) {
+  const st = statuses && typeof statuses === 'object' ? statuses : {};
+  const seen = new Set();
+  const out = [];
+  for (const id of idList(soldIds)) {
+    if (seen.has(id) || !(id in st)) continue;
+    seen.add(id);
+    out.push({ id, title: titleOf(titles, id) });
+  }
+  out.sort((a, b) => a.title.localeCompare(b.title));
+  return out;
+}
+
+/** Sold-out transitions between two scans: products that newly sold out and
+ *  products that came back in stock, each as sorted {id,title}. Inventory-driven
+ *  (customer orders / restocks) — no "who". Pure. */
+export function diffSoldOut(prevSoldOut, currSoldOut, titles) {
+  const prev = new Set(idList(prevSoldOut));
+  const curr = new Set(idList(currSoldOut));
+  const name = (id) => ({ id, title: titleOf(titles, id) });
+  const byTitle = (a, b) => a.title.localeCompare(b.title);
+  return {
+    newlySoldOut: [...curr].filter((id) => !prev.has(id)).map(name).sort(byTitle),
+    backInStock: [...prev].filter((id) => !curr.has(id)).map(name).sort(byTitle),
+  };
 }
 
 /** Count products per status code from a { id: code } map. */
@@ -155,7 +188,7 @@ export function pushReport(history, report, cap = 12) {
 
 /* ------------------------------------------------------------- metafield io */
 
-const EMPTY = () => ({ statuses: {}, titles: {}, lastAt: null, reports: [] });
+const EMPTY = () => ({ statuses: {}, titles: {}, soldOut: [], lastAt: null, reports: [] });
 const METAFIELD_LIMIT = 131072;
 
 export async function loadAudit() {
@@ -175,11 +208,12 @@ export async function saveAudit(data) {
   const d = {
     statuses: data.statuses || {},
     titles: data.titles || {},
+    soldOut: Array.isArray(data.soldOut) ? data.soldOut.map(String) : [],
     lastAt: data.lastAt ?? null,
     reports: Array.isArray(data.reports) ? data.reports : [],
   };
   // Trim to fit the 128KB cap, cheapest-to-lose first: old reports, then the
-  // titles cache (only used to name deletes — codes still diff without it).
+  // titles cache (only used to name changes — codes/ids still diff without it).
   while (JSON.stringify(d).length > METAFIELD_LIMIT - 2048 && d.reports.length > 1) {
     d.reports = d.reports.slice(0, d.reports.length - 1);
   }
@@ -227,10 +261,18 @@ export async function runAudit({ now = new Date() } = {}) {
   const prevTitles = normalizeTitles(prev.titles); // tolerate older p-keyed snapshots
   const baseline = !prev.lastAt || Object.keys(prev.statuses || {}).length === 0;
 
+  // Sold-out is inventory, not status: reuse the set the engine's full sweep
+  // already maintains (oos_sort.state.soldOut, bare ids) — no new stock scan.
+  // Never let a state read break the scan.
+  let currSoldOut = [];
+  try { currSoldOut = idList((await loadState()).soldOut); } catch { currSoldOut = []; }
+
   let changes = baseline ? [] : diffStatuses(prev.statuses, statuses, titles, prevTitles);
   const truncated = changes.length > MAX_ATTRIBUTIONS;
   if (truncated) changes = changes.slice(0, MAX_ATTRIBUTIONS);
   for (const c of changes) Object.assign(c, await attribute(c));
+
+  const stock = baseline ? { newlySoldOut: [], backInStock: [] } : diffSoldOut(prev.soldOut, currSoldOut, titles);
 
   const report = {
     at: nowISO,
@@ -238,9 +280,12 @@ export async function runAudit({ now = new Date() } = {}) {
     counts: summarizeStatuses(statuses),
     total: Object.keys(statuses).length,
     changes,
+    soldOutCount: soldOutList(currSoldOut, statuses, titles).length,
+    newlySoldOut: stock.newlySoldOut,
+    backInStock: stock.backInStock,
     ...(truncated ? { truncated: true } : {}),
   };
-  const saved = await saveAudit({ statuses, titles, lastAt: nowISO, reports: pushReport(prev.reports, report) });
+  const saved = await saveAudit({ statuses, titles, soldOut: currSoldOut, lastAt: nowISO, reports: pushReport(prev.reports, report) });
   return { report, total: saved.statuses ? Object.keys(saved.statuses).length : report.total };
 }
 

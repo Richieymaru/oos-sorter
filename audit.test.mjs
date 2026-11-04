@@ -1,6 +1,6 @@
 /** Pure tests for the Product Status Audit. node audit.test.mjs — no env, no network. */
 import assert from 'node:assert';
-import { summarizeStatuses, bucketize, titleOf, diffStatuses, scanDue, nextDueMs, pushReport, normalizeTitles } from './audit.mjs';
+import { summarizeStatuses, bucketize, titleOf, diffStatuses, scanDue, nextDueMs, pushReport, normalizeTitles, soldOutList, diffSoldOut } from './audit.mjs';
 
 let pass = 0;
 const eq = (name, got, want) => { assert.deepStrictEqual(got, want, name); console.log('  ✓', name); pass++; };
@@ -56,6 +56,21 @@ eq('ordering: live flip, new-live, dark flip, deleted-live, other flip', dOrder.
   ['change:2', 'new:5', 'change:1', 'gone:4', 'change:3']);
 eq('empty diff when identical', diffStatuses({ 1: 'a' }, { 1: 'a' }), []);
 eq('null-safe', diffStatuses(null, null), []);
+
+console.log('--- soldOutList (current snapshot from state.soldOut) ---');
+const sl = soldOutList(['2', '1', '1', '9'], { 1: 'a', 2: 'a', 3: 'd' }, { 1: 'Beta', 2: 'Alpha' });
+ok('sorted by title, deduped', sl.length === 2 && sl[0].title === 'Alpha' && sl[0].id === '2' && sl[1].title === 'Beta');
+ok('drops ids not in catalog (deleted)', !sl.some((p) => p.id === '9'));
+eq('empty / garbage tolerant', soldOutList(null, null, null), []);
+
+console.log('--- diffSoldOut (newly sold out / back in stock) ---');
+const ds = diffSoldOut(['1', '2'], ['2', '3'], { 1: 'Was Low', 3: 'Just Dropped' });
+ok('newly sold out = in curr not prev', ds.newlySoldOut.length === 1 && ds.newlySoldOut[0].id === '3' && ds.newlySoldOut[0].title === 'Just Dropped');
+ok('back in stock = in prev not curr', ds.backInStock.length === 1 && ds.backInStock[0].id === '1' && ds.backInStock[0].title === 'Was Low');
+eq('no change -> both empty', diffSoldOut(['1'], ['1'], {}), { newlySoldOut: [], backInStock: [] });
+eq('null-safe', diffSoldOut(null, null, null), { newlySoldOut: [], backInStock: [] });
+const dsSort = diffSoldOut([], ['1', '2'], { 1: 'Zebra', 2: 'Apple' });
+ok('sorted by title', dsSort.newlySoldOut[0].title === 'Apple' && dsSort.newlySoldOut[1].title === 'Zebra');
 
 console.log('--- scanDue / nextDueMs ---');
 const T = (iso) => Date.parse(iso);

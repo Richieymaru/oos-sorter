@@ -9,7 +9,7 @@ import {
   shell, setPageHeaders, featureFunnelsBody, statCard, badge, activityFeed, funnelsBody, areaChart,
   relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner, paginator, auditBody,
 } from '../ui.mjs';
-import { loadAudit, runAudit, bucketize, summarizeStatuses, nextDueMs, normalizeTitles } from '../audit.mjs';
+import { loadAudit, runAudit, bucketize, summarizeStatuses, nextDueMs, normalizeTitles, soldOutList } from '../audit.mjs';
 import { fetchAllStatuses } from '../monitor.mjs';
 import { activeSaleReminder } from '../sales-calendar.mjs';
 import { requireAuth } from './_auth.mjs';
@@ -265,12 +265,18 @@ export default async function handler(req, res) {
   if (param(req, 'view') === 'audit') {
     let body;
     try {
-      const [{ statuses, titles }, audit] = await Promise.all([fetchAllStatuses(), loadAudit()]);
+      // state.soldOut (bare ids from the engine's last full sweep) gives the
+      // current sold-out list for free — no extra inventory scan. Don't let a
+      // state hiccup break the page.
+      const [{ statuses, titles }, audit, state] = await Promise.all([
+        fetchAllStatuses(), loadAudit(), loadState().catch(() => ({ soldOut: [] })),
+      ]);
       const handle = String(shopOf(req) || '').split('.')[0];
+      const nTitles = normalizeTitles(titles); // "p<id>" -> bare id so names resolve
       body = auditBody({
         counts: summarizeStatuses(statuses),
-        // titles come back keyed "p<id>"; normalize to bare id so names resolve.
-        buckets: bucketize(statuses, normalizeTitles(titles)),
+        buckets: bucketize(statuses, nTitles),
+        soldOut: soldOutList(state.soldOut, statuses, nTitles),
         lastAt: audit.lastAt || null,
         nextDue: audit.lastAt ? nextDueMs(audit.lastAt) : null,
         reports: audit.reports || [],
