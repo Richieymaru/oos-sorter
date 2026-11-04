@@ -9,7 +9,7 @@ import {
   shell, setPageHeaders, featureFunnelsBody, statCard, badge, activityFeed, funnelsBody, areaChart,
   relTime, esc, notConnectedBody, shopOf, APP_NAME, saleReminderBanner, paginator, auditBody,
 } from '../ui.mjs';
-import { loadAudit, runAudit, bucketize, summarizeStatuses, nextDueMs } from '../audit.mjs';
+import { loadAudit, runAudit, bucketize, summarizeStatuses, nextDueMs, normalizeTitles } from '../audit.mjs';
 import { fetchAllStatuses } from '../monitor.mjs';
 import { activeSaleReminder } from '../sales-calendar.mjs';
 import { requireAuth } from './_auth.mjs';
@@ -269,7 +269,8 @@ export default async function handler(req, res) {
       const handle = String(shopOf(req) || '').split('.')[0];
       body = auditBody({
         counts: summarizeStatuses(statuses),
-        buckets: bucketize(statuses, titles),
+        // titles come back keyed "p<id>"; normalize to bare id so names resolve.
+        buckets: bucketize(statuses, normalizeTitles(titles)),
         lastAt: audit.lastAt || null,
         nextDue: audit.lastAt ? nextDueMs(audit.lastAt) : null,
         reports: audit.reports || [],

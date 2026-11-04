@@ -1,6 +1,6 @@
 /** Pure tests for the Product Status Audit. node audit.test.mjs — no env, no network. */
 import assert from 'node:assert';
-import { summarizeStatuses, bucketize, titleOf, diffStatuses, scanDue, nextDueMs, pushReport } from './audit.mjs';
+import { summarizeStatuses, bucketize, titleOf, diffStatuses, scanDue, nextDueMs, pushReport, normalizeTitles } from './audit.mjs';
 
 let pass = 0;
 const eq = (name, got, want) => { assert.deepStrictEqual(got, want, name); console.log('  ✓', name); pass++; };
@@ -17,6 +17,17 @@ eq('titleOf missing -> untitled', titleOf({}, '9'), '(untitled)');
 const bk = bucketize({ 1: 'a', 2: 'd', 3: 'a', 4: 'x' }, { 1: 'Zeta', 3: 'Alpha', 2: 'Mid' });
 ok('bucketize groups + sorts by title', bk.a.length === 2 && bk.a[0].title === 'Alpha' && bk.a[1].title === 'Zeta' && bk.d[0].title === 'Mid');
 ok('bucketize unknown -> ?', bk['?'].length === 1 && bk['?'][0].id === '4');
+
+console.log('--- normalizeTitles (fetchAllStatuses keys titles "p<id>") ---');
+eq('strips leading p from numeric keys', normalizeTitles({ p1: 'A', p22: 'B' }), { 1: 'A', 22: 'B' });
+eq('leaves bare numeric keys as-is', normalizeTitles({ 3: 'C' }), { 3: 'C' });
+eq('null-safe', normalizeTitles(null), {});
+// The real bug: statuses are bare-keyed, titles came "p"-keyed -> all untitled.
+const pTitles = { p1: 'Zeta', p2: 'Mid', p3: 'Alpha' };
+const bkRaw = bucketize({ 1: 'a', 2: 'd', 3: 'a' }, pTitles);
+ok('reproduces bug: raw p-keyed titles -> untitled', bkRaw.a.every((x) => x.title === '(untitled)'));
+const bkFixed = bucketize({ 1: 'a', 2: 'd', 3: 'a' }, normalizeTitles(pTitles));
+ok('fixed: normalized titles resolve names', bkFixed.a[0].title === 'Alpha' && bkFixed.a[1].title === 'Zeta' && bkFixed.d[0].title === 'Mid');
 
 console.log('--- diffStatuses ---');
 const dChange = diffStatuses({ 1: 'd', 2: 'a', 3: 'a' }, { 1: 'a', 2: 'd', 3: 'a' }, { 1: 'Dropped One', 2: 'Was Live' });

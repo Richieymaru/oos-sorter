@@ -47,6 +47,20 @@ export function titleOf(titles, id) {
   return (t && String(t)) || '(untitled)';
 }
 
+/** fetchAllStatuses() keys titles "p<id>" (the monitor's delete-cache
+ *  convention), but statuses — and every audit lookup (bucketize, diffStatuses)
+ *  — is keyed by the BARE numeric id. Strip the leading "p" so titles[id] lines
+ *  up with statuses[id]; without this every product shows "(untitled)". Pure. */
+export function normalizeTitles(titles) {
+  const out = {};
+  if (titles && typeof titles === 'object') {
+    for (const k of Object.keys(titles)) {
+      out[/^p\d+$/.test(k) ? k.slice(1) : k] = titles[k];
+    }
+  }
+  return out;
+}
+
 /** Count products per status code from a { id: code } map. */
 export function summarizeStatuses(statuses) {
   const counts = { a: 0, d: 0, u: 0, r: 0, '?': 0, total: 0 };
@@ -207,11 +221,13 @@ async function attribute(change) {
  */
 export async function runAudit({ now = new Date() } = {}) {
   const nowISO = now.toISOString();
-  const { statuses, titles } = await fetchAllStatuses();
+  const { statuses, titles: rawTitles } = await fetchAllStatuses();
+  const titles = normalizeTitles(rawTitles); // "p<id>" -> bare id, to match statuses
   const prev = await loadAudit();
+  const prevTitles = normalizeTitles(prev.titles); // tolerate older p-keyed snapshots
   const baseline = !prev.lastAt || Object.keys(prev.statuses || {}).length === 0;
 
-  let changes = baseline ? [] : diffStatuses(prev.statuses, statuses, titles, prev.titles);
+  let changes = baseline ? [] : diffStatuses(prev.statuses, statuses, titles, prevTitles);
   const truncated = changes.length > MAX_ATTRIBUTIONS;
   if (truncated) changes = changes.slice(0, MAX_ATTRIBUTIONS);
   for (const c of changes) Object.assign(c, await attribute(c));
